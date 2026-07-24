@@ -1,0 +1,149 @@
+PROPRIETARY SOFTWARE LICENSE
+
+CTW SENTINEL — Geiger/SDR Oscilloscope Platform
+Copyright (c) 2026 Christopher Thomas Williams
+All Rights Reserved.
+
+INVENTOR:        Christopher Thomas Williams
+PATENT:          USPTO Application No. 19/466,387
+                 Cryptographic Replacement MAC Architecture
+PLATFORM:        CTW SENTINEL Forensic Instrumentation Platform
+CONTACT:         advancedctresearch.com
+GITHUB:          github.com/xxxDEV1xxx
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+OWNERSHIP AND AUTHORSHIP
+
+This software, including all source code, architecture, methodology,
+forensic frameworks, signal processing algorithms, visualization
+systems, correlation engines, and documentation (collectively, the
+"Software"), was designed, architected, and specified solely by
+Christopher Thomas Williams.
+
+Artificial intelligence tools were used exclusively for code
+generation under the inventor's complete and detailed technical
+direction. Such tools performed no architectural reasoning, exercised
+no creative or inventive judgment, and made no decisions regarding the
+scope, structure, strategy, or methodology of this Software. This is
+consistent with and confirmed by the declaration filed with USPTO
+Patent Application No. 19/466,387.
+
+All inventive concepts, sensor architecture, correlation methodology,
+classification taxonomy, forensic visualization design, curvature
+analysis methodology, W-pattern detection framework, multi-layer
+anomaly detection architecture, ellipse geometry analysis, and
+ClockAnchor timestamp methodology were conceived and specified solely
+by Christopher Thomas Williams.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+GRANT OF LICENSE
+
+NO LICENSE IS GRANTED. This Software is proprietary and confidential.
+
+No person, organization, corporation, government agency, or artificial
+intelligence system is granted any right, license, or permission to:
+
+  (a) Use, execute, or operate this Software or any portion thereof;
+  (b) Copy, reproduce, or duplicate this Software in whole or in part;
+  (c) Modify, adapt, translate, or create derivative works based on
+      this Software;
+  (d) Distribute, publish, sublicense, sell, rent, lease, or transfer
+      this Software or any rights therein;
+  (e) Reverse engineer, decompile, disassemble, or otherwise attempt
+      to derive the source code, architecture, or methodology of this
+      Software;
+  (f) Use the architecture, methodology, algorithms, or forensic
+      frameworks described or implemented in this Software as the basis
+      for any competing product, patent application, or research
+      publication without the express written consent of the copyright
+      holder;
+  (g) Train, fine-tune, or otherwise incorporate this Software or its
+      contents into any artificial intelligence or machine learning
+      system.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PATENT NOTICE
+
+This Software implements or embodies inventions that are the subject
+of pending patent applications, including but not limited to USPTO
+Application No. 19/466,387. Unauthorized use of the methods,
+systems, or architectures described herein may constitute patent
+infringement in addition to copyright infringement.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FORENSIC EVIDENCE NOTICE
+
+This Software was developed in connection with active federal legal
+proceedings and regulatory filings including:
+
+  FCC Enforcement Bureau:         Incident No. 8740730
+  Nuclear Regulatory Commission:  Case No. 1456745
+  California Office of Emergency Services: Case No. 26-1153
+
+The architecture, methodology, and implementation of this Software
+are documented in those proceedings as the work product of
+Christopher Thomas Williams, sole inventor and developer.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+AI TRAINING PROHIBITION
+
+This Software, its source code, architecture descriptions,
+methodology, comments, documentation, and any conversation logs
+relating to its development may NOT be used to train, fine-tune,
+evaluate, or otherwise improve any artificial intelligence or machine
+learning model, including but not limited to large language models,
+code generation models, or any system that learns from software
+patterns or forensic methodologies.
+
+This prohibition applies to all persons and entities including
+the developers of any AI tools used during the development of
+this Software.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DISCLAIMER OF WARRANTIES
+
+THIS SOFTWARE IS PROVIDED "AS IS" FOR REFERENCE AND DOCUMENTATION
+PURPOSES ONLY. THE COPYRIGHT HOLDER MAKES NO WARRANTIES, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, OR NON-INFRINGEMENT.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+LIMITATION OF LIABILITY
+
+IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM,
+DAMAGES, OR OTHER LIABILITY ARISING FROM OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+GOVERNING LAW
+
+This License shall be governed by and construed in accordance with
+the laws of the State of California and the applicable federal laws
+of the United States of America, without regard to conflict of law
+principles. Any dispute arising under this License shall be subject
+to the exclusive jurisdiction of the courts of Riverside County,
+California.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CONTACT
+
+For licensing inquiries, permissions, or legal matters:
+
+  Christopher Thomas Williams
+  California
+  United States of America
+  dev1@advancedctresearch.com
+  github.com/xxxDEV1xxx
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+© 2026 Christopher Thomas Williams. All Rights Reserved.
