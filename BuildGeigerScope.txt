@@ -1,0 +1,35 @@
+Install sequence (one time):
+
+cmd
+# 1. Install .NET 8 SDK
+# Download from: https://dotnet.microsoft.com/download/dotnet/8.0
+# Get: .NET 8.0 SDK (Windows x64)
+
+# 2. Verify install
+dotnet --version
+# Should return 8.x.x
+
+Build sequence (every time after changes):
+
+cmd
+# 1. Create project (first time only — skip if folder exists)
+cd J:\True-Sentinel
+dotnet new wpf -n GeigerScope
+
+# 2. Add packages (first time only)
+cd J:\True-Sentinel\GeigerScope
+dotnet add package Newtonsoft.Json
+dotnet add package System.Net.WebSockets.Client
+
+# 3. Copy your 6 files into the folder
+# (overwrite the generated App.xaml, MainWindow.xaml, MainWindow.xaml.cs)
+
+# 4. Build
+dotnet build
+
+# 5. Run
+dotnet run
+
+# OR publish standalone exe
+dotnet publish -c Release -r win-x64 --self-contained true
+# Exe at: bin\Release\net8.0-windows\win-x64\publish\GeigerScope.exe
