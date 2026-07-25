@@ -15,6 +15,25 @@ using Newtonsoft.Json.Linq;
 
 namespace GeigerScope
 {
+// ── Peak log record ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
+    public class PeakRecord
+    {
+        public int    Seq     { get; }
+        public string TimeUtc { get; }
+        public double Dr      { get; }
+        public string Display =>
+            $"#{Seq:D4}  {TimeUtc}  {Dr:0.0000} µSv/h";
+
+        public PeakRecord(int seq, long wallNs, double dr)
+        {
+            Seq     = seq;
+            TimeUtc = DateTimeOffset
+                .FromUnixTimeMilliseconds(wallNs / 1_000_000)
+                .UtcDateTime.ToString("HH:mm:ss");
+            Dr      = dr;
+        }
+    }
+
     // ── CPM history record ────────────────────────────────────────────────
     public class CpmRecord
     {
@@ -56,6 +75,8 @@ namespace GeigerScope
                 catch { return System.Windows.Media.Colors.Gray; }
             }
         }
+        public System.Windows.Media.SolidColorBrush WpfColorBrush =>
+            new System.Windows.Media.SolidColorBrush(WpfColor);
         public EventRow(string t, string c) { Text = t; Color = c; }
         public override string ToString() => Text;
     }
@@ -117,6 +138,14 @@ namespace GeigerScope
         // ── Collections ───────────────────────────────────────────────────
         private readonly ObservableCollection<EventRow> _events  = new();
         private readonly ObservableCollection<string>   _rawData = new();
+        private readonly ObservableCollection<PeakRecord> _peakLog  = new();
+        private double _sessionPeakDr = 0.0;
+        private int    _peakLogSeq    = 0;
+        // Peak log state machine — driven by raw live dr
+        private double _pkHigh       = 0.0;   // highest dr seen since last confirmation
+        private double _pkValley     = 0.0;   // lowest dr seen since last confirmation
+        private bool   _pkConfirmed  = false; // peak has been logged, waiting for rearm
+        private double _pkRearmBase  = 0.0;   // dr value at start of rearm climb
 
         // ── WebSocket ─────────────────────────────────────────────────────
         private ClientWebSocket?         _ws;
@@ -134,6 +163,9 @@ namespace GeigerScope
         private TetheredBadge? _dragBadge;
         private Point          _dragStart;
         private Point          _dragOrigin;
+        private long _lastMSignatureNs = 0;   // TriggerNs of last confirmed M entity
+        private bool _debugSig = false;        // toggle signature debug overlay
+        private long _lastWSignatureNs = 0;   // TriggerNs of last confirmed W entity
 
         // ── Render timer ──────────────────────────────────────────────────
         private readonly DispatcherTimer _renderTimer;
@@ -145,6 +177,7 @@ namespace GeigerScope
             EventList.ItemsSource = _events;
             CpmList.ItemsSource   = _cpmHistory;
             RawList.ItemsSource   = _rawData;
+            PeakList.ItemsSource  = _peakLog;
 
             _renderTimer = new DispatcherTimer
                 { Interval = TimeSpan.FromMilliseconds(250) };
@@ -161,6 +194,17 @@ namespace GeigerScope
                 }
             };
             _renderTimer.Start();
+
+            // D key debug toggle — wired here so canvas focus doesn't block it
+            this.KeyDown += (_, e) =>
+            {
+                if (e.Key == System.Windows.Input.Key.D)
+                {
+                    _debugSig = !_debugSig;
+                    AddEvent($"[{Ts()}] SIG DEBUG {(_debugSig ? "ON" : "OFF")}",
+                        "#AAAAAA");
+                }
+            };
 
             _recTimer.Tick += (_, _) =>
             {
@@ -377,6 +421,67 @@ namespace GeigerScope
                     >= 0.10 => "LOW ELEVATED",
                     _       => "NORMAL / FLAT",
                 };
+
+                // ── Peak log state machine (pure live dr, three states)
+                //
+                // Every tick we receive the raw live dr value.
+                // _pkHigh   : max dr seen since last reset — only moves up
+                // _pkValley : min dr seen since confirmation — only moves down
+                // _pkConfirmed : true after a peak fires, until rearm completes
+                //
+                // GATE 1 — peak fires ONLY when:
+                //   current dr has dropped >= 0.02 below _pkHigh
+                //   AND _pkConfirmed is false (not already fired)
+                // GATE 2 — rearm ONLY when:
+                //   after confirmation, dr finds a new valley (_pkValley)
+                //   then rises >= 0.05 above that valley
+
+                if (!_pkConfirmed)
+                {
+                    // Tracking phase: silently update high water mark
+                    if (dr > _pkHigh)
+                        _pkHigh = dr;
+
+                    // Only fire when live dr has ALREADY dropped 0.02 from high
+                    // This means the peak is BEHIND us — it already happened
+                    if (_pkHigh > 0.001 && _pkHigh - dr >= 0.02)
+                    {
+                        // Confirmed — log it
+                        _pkConfirmed = true;
+                        _pkValley    = dr;   // start tracking valley from here
+                        _pkRearmBase = 0.0;
+                        _peakLogSeq++;
+                        var rec = new PeakRecord(_peakLogSeq, wallNs, _pkHigh);
+                        _peakLog.Insert(0, rec);
+                        if (_peakLog.Count > 1000)
+                            _peakLog.RemoveAt(_peakLog.Count - 1);
+                        TxtPeakRealtime.Text = _pkHigh.ToString("0.0000");
+                    }
+                }
+                else
+                {
+                    // Rearm phase: find valley then wait for +0.05 rise
+                    if (dr <= _pkValley)
+                    {
+                        // Still falling — update valley, reset rearm base
+                        _pkValley    = dr;
+                        _pkRearmBase = 0.0;
+                    }
+                    else
+                    {
+                        // Rising from valley
+                        if (_pkRearmBase == 0.0)
+                            _pkRearmBase = _pkValley;
+                        if (dr - _pkRearmBase >= 0.05)
+                        {
+                            // Rearm complete — reset everything
+                            _pkConfirmed = false;
+                            _pkHigh      = dr;
+                            _pkValley    = dr;
+                            _pkRearmBase = 0.0;
+                        }
+                    }
+                }
 
                 // Raw data — insert at top, cap at 200
                 _rawData.Insert(0, rawLine);
@@ -1103,8 +1208,152 @@ namespace GeigerScope
             OsciCanvas.Children.Add(drPoly);
 
             // ── Waveform geometry analysis ─────────────────────────────
+            // peak log handled in RenderScope (center-only)
+
             var analysis = WaveformAnalyzer.Analyze(
                 drArr, samples, xStep, h, _yMax);
+
+            // ── M-Signature detection ─────────────────────────────────────────────
+            {
+                // Diagnostic: log segment count once per 300 frames
+                if ((_wPatternCount++ % 300) == 0)
+                {
+                    var dbgSegs = MSignatureDetector.DebugSegments(drArr, samples);
+                    AddEvent($"[{Ts()}] DBG segs={dbgSegs}", "#334455");
+                }
+                var mMatch = MSignatureDetector.Detect(drArr, samples, windowTailSamples: 60);
+                if (mMatch != null && mMatch.TriggerNs != _lastMSignatureNs)
+                {
+                    _lastMSignatureNs = mMatch.TriggerNs;
+
+                    string startUtc   = NsToUtc(mMatch.StartNs);
+                    string triggerUtc = NsToUtc(mMatch.TriggerNs);
+
+                    AddEvent(
+                        $"[{triggerUtc}] ⚠ M-SIGNATURE ENTITY  " +
+                        $"span={mMatch.SpanSec:0.0}s  " +
+                        $"L↑{mMatch.LeftRiseAmp:0.0000}  " +
+                        $"L↓{mMatch.LeftFallAmp:0.0000}  " +
+                        $"R↑{mMatch.RightRiseAmp:0.0000}  " +
+                        $"R↓{mMatch.RightFallAmp:0.0000}  " +
+                        $"origin={startUtc}",
+                        "#FF00FF");
+
+                    // Draw M-signature overlay on canvas
+                    double lpy = Math.Clamp(
+                        h - (drArr[Math.Min(mMatch.LeftPeakIdx,  drArr.Length-1)] / _yMax) * h, 0, h);
+                    double rpy = Math.Clamp(
+                        h - (drArr[Math.Min(mMatch.RightPeakIdx, drArr.Length-1)] / _yMax) * h, 0, h);
+                    double lpx = mMatch.LeftPeakIdx  * xStep;
+                    double rpx = mMatch.RightPeakIdx * xStep;
+                    double rex = mMatch.RightFallEndIdx * xStep;
+
+                    // Vertical markers at left peak, right peak, right fall end
+                    foreach (var (vx, vc) in new[]{
+                        (lpx, Color.FromArgb(0xAA, 0xFF, 0x00, 0xFF)),
+                        (rpx, Color.FromArgb(0xCC, 0xFF, 0x00, 0xFF)),
+                        (rex, Color.FromArgb(0x88, 0xFF, 0x00, 0xFF)),
+                    })
+                    {
+                        OsciCanvas.Children.Add(new Line
+                        {
+                            X1 = vx, Y1 = 0, X2 = vx, Y2 = h,
+                            Stroke          = new SolidColorBrush(vc),
+                            StrokeThickness = 1.2,
+                            StrokeDashArray = new DoubleCollection { 4, 3 },
+                        });
+                    }
+
+                    // Horizontal span bracket
+                    double spanY = Math.Min(lpy, rpy) - 14;
+                    OsciCanvas.Children.Add(new Line
+                    {
+                        X1 = lpx, Y1 = spanY, X2 = rpx, Y2 = spanY,
+                        Stroke          = new SolidColorBrush(
+                            Color.FromArgb(0xCC, 0xFF, 0x00, 0xFF)),
+                        StrokeThickness = 1.5,
+                    });
+
+                    // Alert badge
+                    var mBadge = MakeBadge(
+                        $"⚠ M-SIG  {mMatch.SpanSec:0.0}s  " +
+                        $"R↑{mMatch.RightRiseAmp:0.0000}  R↓{mMatch.RightFallAmp:0.0000}",
+                        Color.FromArgb(0xFF, 0xFF, 0x00, 0xFF),
+                        Color.FromArgb(0xDD, 0x22, 0x00, 0x22), 12);
+                    Canvas.SetLeft(mBadge, Math.Max(0, (lpx + rpx) / 2 - 120));
+                    Canvas.SetTop(mBadge,  Math.Max(0, spanY - 22));
+                    OsciCanvas.Children.Add(mBadge);
+                }
+            }
+
+            // ── W-Signature detection ─────────────────────────────────────────────
+            {
+                var wMatch = MSignatureDetector.DetectW(drArr, samples, windowTailSamples: 60);
+                if (wMatch != null && wMatch.TriggerNs != _lastWSignatureNs)
+                {
+                    _lastWSignatureNs = wMatch.TriggerNs;
+
+                    string startUtc   = NsToUtc(wMatch.StartNs);
+                    string triggerUtc = NsToUtc(wMatch.TriggerNs);
+
+                    AddEvent(
+                        $"[{triggerUtc}] ⚠ W-SIGNATURE ENTITY  " +
+                        $"span={wMatch.SpanSec:0.0}s  " +
+                        $"L↓{wMatch.LeftFallAmp:0.0000}  " +
+                        $"R↑{wMatch.RightRiseAmp:0.0000}  " +
+                        $"LT={wMatch.LeftTroughVal:0.0000}  " +
+                        $"RT={wMatch.RightTroughVal:0.0000}  " +
+                        $"origin={startUtc}",
+                        "#00FFFF");
+
+                    // Canvas overlay
+                    double ltx = wMatch.LeftTroughIdx  * xStep;
+                    double rtx = wMatch.RightTroughIdx * xStep;
+                    double rex = wMatch.RightRiseEndIdx * xStep;
+
+                    double lty = Math.Clamp(
+                        h - (drArr[Math.Min(wMatch.LeftTroughIdx,  drArr.Length-1)] / _yMax) * h, 0, h);
+                    double rty = Math.Clamp(
+                        h - (drArr[Math.Min(wMatch.RightTroughIdx, drArr.Length-1)] / _yMax) * h, 0, h);
+
+
+                    // Vertical markers at left trough, right trough, rise end
+                    foreach (var (vx, vc) in new[]{
+                        (ltx, Color.FromArgb(0xAA, 0x00, 0xFF, 0xFF)),
+                        (rtx, Color.FromArgb(0xCC, 0x00, 0xFF, 0xFF)),
+                        (rex, Color.FromArgb(0x88, 0x00, 0xFF, 0xFF)),
+                    })
+                    {
+                        OsciCanvas.Children.Add(new Line
+                        {
+                            X1 = vx, Y1 = 0, X2 = vx, Y2 = h,
+                            Stroke          = new SolidColorBrush(vc),
+                            StrokeThickness = 1.2,
+                            StrokeDashArray = new DoubleCollection { 4, 3 },
+                        });
+                    }
+
+                    // Horizontal span bracket at trough level
+                    double spanY = Math.Max(lty, rty) + 14;
+                    OsciCanvas.Children.Add(new Line
+                    {
+                        X1 = ltx, Y1 = spanY, X2 = rtx, Y2 = spanY,
+                        Stroke          = new SolidColorBrush(
+                            Color.FromArgb(0xCC, 0x00, 0xFF, 0xFF)),
+                        StrokeThickness = 1.5,
+                    });
+
+                    // Alert badge
+                    var wBadge = MakeBadge(
+                        $"⚠ W-SIG  {wMatch.SpanSec:0.0}s  " +
+                        $"L↓{wMatch.LeftFallAmp:0.0000}  R↑{wMatch.RightRiseAmp:0.0000}",
+                        Color.FromArgb(0xFF, 0x00, 0xFF, 0xFF),
+                        Color.FromArgb(0xDD, 0x00, 0x22, 0x22), 12);
+                    Canvas.SetLeft(wBadge, Math.Max(0, (ltx + rtx) / 2 - 120));
+                    Canvas.SetTop(wBadge,  Math.Min(h - 30, spanY + 4));
+                    OsciCanvas.Children.Add(wBadge);
+                }
+            }
 
             // Peak/trough markers suppressed — horizontal bar system used instead
 
@@ -1619,6 +1868,72 @@ namespace GeigerScope
                 }
             }
 
+            // ── Signature debug overlay ───────────────────────────────────────────────
+            if (_debugSig)
+            {
+                var dbgSegs = MSignatureDetector.GetSegments(drArr, samples);
+                double panelX = 10;
+                double panelY = 10;
+                double rowH   = 14;
+
+                // Header
+                var hdr = MakeLabel(
+                    $"SIG DEBUG  [D]=off  segs={dbgSegs.Count}",
+                    Color.FromArgb(0xFF, 0xFF, 0xFF, 0x00), 10);
+                Canvas.SetLeft(hdr, panelX);
+                Canvas.SetTop(hdr,  panelY);
+                OsciCanvas.Children.Add(hdr);
+                panelY += rowH + 2;
+
+                // Segment list with color coding
+                // Green = rise, Red = fall, brighter = larger amplitude
+                for (int si = 0; si < dbgSegs.Count; si++)
+                {
+                    var seg = dbgSegs[si];
+                    // Draw vertical band on canvas for this segment
+                    double sx1 = seg.StartIdx * xStep;
+                    double sx2 = seg.EndIdx   * xStep;
+                    byte alpha = (byte)Math.Clamp((int)(seg.Amplitude * 800), 30, 120);
+                    var band = new System.Windows.Shapes.Rectangle
+                    {
+                        Width  = Math.Max(1, sx2 - sx1),
+                        Height = h,
+                        Fill   = new SolidColorBrush(
+                            seg.IsRise
+                            ? Color.FromArgb(alpha, 0x00, 0xFF, 0x44)
+                            : Color.FromArgb(alpha, 0xFF, 0x44, 0x00)),
+                    };
+                    Canvas.SetLeft(band, sx1);
+                    Canvas.SetTop(band,  0);
+                    OsciCanvas.Children.Add(band);
+
+                    // Segment label at top of band
+                    string dir = seg.IsRise ? "R" : "F";
+                    var lbl = MakeLabel(
+                        $"{dir}{si}\n{seg.Amplitude:0.000}",
+                        Color.FromArgb(0xDD,
+                            seg.IsRise ? (byte)0x00 : (byte)0xFF,
+                            seg.IsRise ? (byte)0xFF : (byte)0x44,
+                            (byte)0x00), 8);
+                    Canvas.SetLeft(lbl, sx1 + 2);
+                    Canvas.SetTop(lbl,  panelY + (si % 3) * rowH);
+                    OsciCanvas.Children.Add(lbl);
+                }
+
+                // W-pattern match status
+                panelY = h - 160;
+                var wDbg = MSignatureDetector.DebugW(drArr, samples);
+                foreach (var line in wDbg)
+                {
+                    var tbl = MakeLabel(line.text,
+                        Color.FromArgb(0xEE, line.r, line.g, line.b), 9);
+                    Canvas.SetLeft(tbl, panelX);
+                    Canvas.SetTop(tbl,  panelY);
+                    OsciCanvas.Children.Add(tbl);
+                    panelY += rowH;
+                }
+            }
+
         }
 
         // ── 3-point curvature + osculating ellipse ────────────────────────
@@ -1857,6 +2172,8 @@ namespace GeigerScope
         private void OsciCanvas_SizeChanged(
             object sender, SizeChangedEventArgs e) => RenderScope();
 
+
+
         private void Window_Closing(
             object sender,
             System.ComponentModel.CancelEventArgs e) => _cts.Cancel();
@@ -1954,4 +2271,422 @@ namespace GeigerScope
             Tether.Y2 = Anchor.Y;
         }
     }
+
+// ── M-Signature Detector ──────────────────────────────────────────────────────
+    // Pattern: Rise → SteepFall → Shallow(1-2 bumps) → BigRise → SteepFall
+    // Entity is declared the moment the closing right-leg fall is confirmed.
+    public static class MSignatureDetector
+    {
+        // Tuning constants
+        private const double MIN_PROMINENCE   = 0.015;  // min peak-to-trough swing to count
+        private const double STEEP_RATIO      = 1.3;    // fall must be >= N x shallow segments
+        private const double BIG_RISE_RATIO   = 0.7;    // right rise must be >= N x left fall (W is roughly symmetric)
+        private const double MAX_SHALLOW_RISE = 0.6;    // shallow bumps < N x left rise amplitude
+        private const int    MIN_SEGS         = 4;      // minimum slope segments to attempt match
+        private const int    MAX_SHALLOW      = 3;      // max shallow segments in middle
+
+        public record MSignatureMatch(
+            double LeftRiseAmp,
+            double LeftFallAmp,
+            double RightRiseAmp,
+            double RightFallAmp,
+            long   StartNs,
+            long   TriggerNs,        // moment closing right leg confirmed
+            double SpanSec,
+            int    LeftPeakIdx,
+            int    RightPeakIdx,
+            int    RightFallEndIdx);
+
+        // Run on every render cycle. Returns a match if the closing right leg
+        // just completed (i.e. rightFallEndIdx is near the rightmost sample).
+        public static MSignatureMatch? Detect(
+            double[]      dr,
+            SamplePoint[] samples,
+            int           windowTailSamples = 12)
+        {
+            if (dr.Length < 20 || samples.Length < 20) return null;
+
+            // ── Step 1: build normalized slope-sign sequence ──────────────────
+            var segs = BuildSegments(dr, samples);
+            if (segs.Count < MIN_SEGS) return null;
+
+            // ── Step 2: scan for M pattern from right edge ────────────────────
+            // We scan right-to-left so the trigger is always the rightmost fall.
+            // Pattern (right to left): F_steep, R_big, [shallow...], F_steep, R_any
+            // Reversed: R_any, F_steep, [shallow_reversed...], R_big, F_steep
+
+            for (int tail = segs.Count - 1; tail >= MIN_SEGS - 1; tail--)
+            {
+                // The closing right leg must END near the tail of the buffer
+                var closingFall = segs[tail];
+                if (closingFall.IsRise) continue;
+                bool isLastSegM = tail == segs.Count - 1;
+                bool nearTailM  = closingFall.EndIdx >= dr.Length - windowTailSamples;
+                if (!isLastSegM && !nearTailM) continue;
+                if (closingFall.StartIdx < dr.Length / 4) continue;
+                if (closingFall.Amplitude < MIN_PROMINENCE) continue;
+
+                // Right rise: segment immediately before closing fall
+                int ri = tail - 1;
+                if (ri < 0) continue;
+                var rightRise = segs[ri];
+                if (!rightRise.IsRise) continue;
+                if (rightRise.Amplitude < MIN_PROMINENCE) continue;
+
+                // Right rise must be significantly larger than closing fall
+                // (or at least comparable — we don't require it to be bigger)
+                // Closing fall steepness validated below against left fall.
+
+                // Scan backwards through shallow middle section
+                int shallowCount = 0;
+                int si = ri - 1;
+                while (si >= 1 && shallowCount <= MAX_SHALLOW)
+                {
+                    var seg = segs[si];
+                    // A shallow segment has amplitude < MAX_SHALLOW_RISE * rightRise
+                    if (seg.Amplitude < rightRise.Amplitude * MAX_SHALLOW_RISE)
+                    {
+                        shallowCount++;
+                        si--;
+                    }
+                    else break;
+                }
+                if (si < 1) continue;
+
+                // Left fall: first large fall before the shallow section
+                var leftFall = segs[si];
+                if (leftFall.IsRise) continue;
+                if (leftFall.Amplitude < MIN_PROMINENCE) continue;
+
+                // Left rise: segment before left fall
+                var leftRise = segs[si - 1];
+                if (!leftRise.IsRise) continue;
+                if (leftRise.Amplitude < MIN_PROMINENCE) continue;
+
+                // ── Validate proportions ──────────────────────────────────────
+
+                // Left fall must be steep relative to shallow middle segments
+                bool leftFallSteep = leftFall.Amplitude >= MIN_PROMINENCE;
+
+                // Right rise must be >= BIG_RISE_RATIO x left rise
+                bool rightBig = rightRise.Amplitude >= leftRise.Amplitude * BIG_RISE_RATIO
+                             || rightRise.Amplitude >= leftRise.Amplitude * 0.75; // or close
+
+                // Closing fall must be steep (>= STEEP_RATIO x avg shallow amplitude)
+                double avgShallow = shallowCount > 0
+                    ? Enumerable.Range(si + 1, shallowCount)
+                        .Where(x => x < segs.Count)
+                        .Select(x => segs[x].Amplitude)
+                        .DefaultIfEmpty(0.001)
+                        .Average()
+                    : 0.001;
+                bool closingFallSteep = closingFall.Amplitude >= avgShallow * STEEP_RATIO;
+
+                if (!leftFallSteep || !rightBig || !closingFallSteep) continue;
+
+                // ── Match confirmed ───────────────────────────────────────────
+                int startIdx       = leftRise.StartIdx;
+                int leftPeakIdx    = leftFall.StartIdx;
+                int rightPeakIdx   = closingFall.StartIdx;
+                int rightFallEndIdx= closingFall.EndIdx;
+
+                long startNs   = startIdx   < samples.Length ? samples[startIdx].WallNs   : 0;
+                long triggerNs = rightFallEndIdx < samples.Length
+                    ? samples[rightFallEndIdx].WallNs : 0;
+                double spanSec = startNs > 0 && triggerNs > 0
+                    ? (triggerNs - startNs) / 1e9 : 0;
+
+                return new MSignatureMatch(
+                    LeftRiseAmp:     leftRise.Amplitude,
+                    LeftFallAmp:     leftFall.Amplitude,
+                    RightRiseAmp:    rightRise.Amplitude,
+                    RightFallAmp:    closingFall.Amplitude,
+                    StartNs:         startNs,
+                    TriggerNs:       triggerNs,
+                    SpanSec:         spanSec,
+                    LeftPeakIdx:     leftPeakIdx,
+                    RightPeakIdx:    rightPeakIdx,
+                    RightFallEndIdx: rightFallEndIdx);
+            }
+            return null;
+        }
+
+        // ── Slope segment builder ─────────────────────────────────────────────
+        public  record Seg(bool IsRise, double Amplitude, int StartIdx, int EndIdx);
+
+        // Public segment accessor for debug overlay
+        public static List<Seg> GetSegments(double[] dr, SamplePoint[] samples)
+            => BuildSegments(dr, samples);
+
+        // Step-by-step W match diagnostics
+        public static List<(string text, byte r, byte g, byte b)> DebugW(
+            double[] dr, SamplePoint[] samples)
+        {
+            var out_ = new List<(string, byte, byte, byte)>();
+            void Row(string t, byte r, byte g, byte b) => out_.Add((t,r,g,b));
+
+            var segs = BuildSegments(dr, samples);
+            Row($"W-DBG: {segs.Count} segments", 0xFF, 0xFF, 0x00);
+            if (segs.Count < MIN_SEGS)
+            {
+                Row($"  FAIL: need {MIN_SEGS} segs, have {segs.Count}", 0xFF, 0x44, 0x00);
+                return out_;
+            }
+
+            // Find best closing rise candidate
+            int bestTail = -1;
+            for (int tail = segs.Count - 1; tail >= MIN_SEGS - 1; tail--)
+            {
+                var s = segs[tail];
+                if (!s.IsRise) { Row($"  [{tail}] skip: not rise amp={s.Amplitude:0.000}", 0x88,0x88,0x88); continue; }
+                bool isLast  = tail == segs.Count - 1;
+                bool nearEnd = s.EndIdx >= dr.Length - 60;
+                if (!isLast && !nearEnd) { Row($"  [{tail}] skip: not near tail endIdx={s.EndIdx} len={dr.Length}", 0x88,0x88,0x88); continue; }
+                if (s.StartIdx < dr.Length / 4) { Row($"  [{tail}] skip: starts too early idx={s.StartIdx}", 0x88,0x88,0x88); continue; }
+                if (s.Amplitude < MIN_PROMINENCE) { Row($"  [{tail}] skip: amp {s.Amplitude:0.000} < {MIN_PROMINENCE}", 0xFF,0x44,0x00); continue; }
+                bestTail = tail;
+                Row($"  [{tail}] CLOSING RISE amp={s.Amplitude:0.000} OK", 0x00,0xFF,0x44);
+                break;
+            }
+            if (bestTail < 0) { Row("  FAIL: no valid closing rise found", 0xFF,0x00,0x00); return out_; }
+
+            // Shallow middle scan
+            var closingRise = segs[bestTail];
+            int shallowCount = 0;
+            int si = bestTail - 1;
+            while (si >= 1 && shallowCount <= MAX_SHALLOW)
+            {
+                var seg = segs[si];
+                bool isShallow = seg.Amplitude < closingRise.Amplitude * MAX_SHALLOW_RISE;
+                Row($"  [{si}] {(seg.IsRise?"R":"F")} amp={seg.Amplitude:0.000} thresh={closingRise.Amplitude*MAX_SHALLOW_RISE:0.000} shallow={isShallow}",
+                    isShallow ? (byte)0x00 : (byte)0xFF,
+                    isShallow ? (byte)0xCC : (byte)0x88,
+                    (byte)0x00);
+                if (isShallow) { shallowCount++; si--; }
+                else break;
+            }
+            Row($"  shallow count={shallowCount} next si={si}", 0xAA,0xAA,0x00);
+
+            if (si < 1) { Row("  FAIL: ran out of segments for left fall", 0xFF,0x00,0x00); return out_; }
+
+            var leftFall = segs[si];
+            Row($"  LEFT FALL [{si}] isRise={leftFall.IsRise} amp={leftFall.Amplitude:0.000}",
+                leftFall.IsRise ? (byte)0xFF : (byte)0x00,
+                leftFall.IsRise ? (byte)0x44 : (byte)0xFF,
+                (byte)0x00);
+            if (leftFall.IsRise)  { Row("  FAIL: expected fall before shallow", 0xFF,0x00,0x00); return out_; }
+            if (leftFall.Amplitude < MIN_PROMINENCE) { Row($"  FAIL: left fall amp {leftFall.Amplitude:0.000} too small", 0xFF,0x00,0x00); return out_; }
+
+            bool rightBig = closingRise.Amplitude >= leftFall.Amplitude * BIG_RISE_RATIO;
+            double avgSh  = shallowCount > 0
+                ? Enumerable.Range(si+1, shallowCount).Where(x=>x<segs.Count).Select(x=>segs[x].Amplitude).DefaultIfEmpty(0.001).Average()
+                : 0.001;
+            bool leftSteep = leftFall.Amplitude >= avgSh * STEEP_RATIO;
+            Row($"  rightBig={rightBig} ({closingRise.Amplitude:0.000}>={leftFall.Amplitude*BIG_RISE_RATIO:0.000})",
+                rightBig?(byte)0x00:(byte)0xFF, rightBig?(byte)0xFF:(byte)0x44, (byte)0x00);
+            Row($"  leftSteep={leftSteep} ({leftFall.Amplitude:0.000}>={avgSh*STEEP_RATIO:0.000} avgSh={avgSh:0.000})",
+                leftSteep?(byte)0x00:(byte)0xFF, leftSteep?(byte)0xFF:(byte)0x44, (byte)0x00);
+
+            if (rightBig && leftSteep)
+                Row("  >>> W MATCH CONFIRMED <<<", 0x00, 0xFF, 0xFF);
+            else
+                Row("  FAIL: proportions not met", 0xFF, 0x00, 0x00);
+
+            return out_;
+        }
+
+        public static string DebugSegments(double[] dr, SamplePoint[] samples)
+        {
+            var s = BuildSegments(dr, samples);
+            if (s.Count == 0) return "0 segs";
+            var sb = new System.Text.StringBuilder();
+            sb.Append($"{s.Count} segs: ");
+            foreach (var seg in s)
+                sb.Append(seg.IsRise ? $"R{seg.Amplitude:0.00} " : $"F{seg.Amplitude:0.00} ");
+            return sb.ToString().Trim();
+        }
+
+        private static List<Seg> BuildSegments(double[] dr, SamplePoint[] samples)
+        {
+            // Use a small fixed window so W/M legs aren't merged
+            var extrema = new List<(int idx, double val, bool isPeak)>();
+            int w = Math.Max(3, dr.Length / 60);  // narrower: ~10 on 600 samples
+
+            for (int i = w; i < dr.Length - w; i++)
+            {
+                bool isPeak   = true;
+                bool isTrough = true;
+                for (int j = i - w; j <= i + w; j++)
+                {
+                    if (j == i) continue;
+                    if (dr[j] >= dr[i]) isPeak   = false;
+                    if (dr[j] <= dr[i]) isTrough = false;
+                }
+                if (!isPeak && !isTrough) continue;
+
+                // Prominence filter — applied to both peaks AND troughs
+                int span = Math.Min(w * 8, dr.Length);
+                if (isPeak)
+                {
+                    double leftMin  = dr[Math.Max(0, i-span)..i].Min();
+                    double rightMin = dr[i..Math.Min(dr.Length, i+span)].Min();
+                    if (dr[i] - Math.Max(leftMin, rightMin) < MIN_PROMINENCE * 0.4)
+                        continue;
+                }
+                else // trough
+                {
+                    double leftMax  = dr[Math.Max(0, i-span)..i].Max();
+                    double rightMax = dr[i..Math.Min(dr.Length, i+span)].Max();
+                    if (Math.Max(leftMax, rightMax) - dr[i] < MIN_PROMINENCE * 0.4)
+                        continue;
+                }
+                extrema.Add((i, dr[i], isPeak));
+            }
+
+            if (extrema.Count < 2) return new List<Seg>();
+
+            // Merge consecutive same-type extrema (keep most extreme)
+            var merged = new List<(int idx, double val, bool isPeak)> { extrema[0] };
+            for (int i = 1; i < extrema.Count; i++)
+            {
+                var last = merged[^1];
+                var cur  = extrema[i];
+                if (cur.isPeak == last.isPeak)
+                {
+                    // Keep the more extreme one
+                    if ((cur.isPeak  && cur.val > last.val) ||
+                        (!cur.isPeak && cur.val < last.val))
+                        merged[^1] = cur;
+                }
+                else merged.Add(cur);
+            }
+
+            // Build segments between consecutive extrema
+            var segs = new List<Seg>();
+            for (int i = 0; i < merged.Count - 1; i++)
+            {
+                var a   = merged[i];
+                var b   = merged[i + 1];
+                bool rise = b.val > a.val;
+                double amp = Math.Abs(b.val - a.val);
+                segs.Add(new Seg(rise, amp, a.idx, b.idx));
+            }
+            return segs;
+        }
+
+        // ── W-Signature Detection ─────────────────────────────────────────────
+        // Pattern: LargeFall → [shallow ridge(s)] → LargeRise (trigger)
+        // Entity declared the moment the closing right-leg rise is confirmed
+        // at the tail of the buffer.
+        public record WSignatureMatch(
+            double LeftFallAmp,
+            double RightRiseAmp,
+            double LeftTroughVal,
+            double RightTroughVal,
+            long   StartNs,
+            long   TriggerNs,
+            double SpanSec,
+            int    LeftTroughIdx,
+            int    RightTroughIdx,
+            int    RightRiseEndIdx);
+
+        public static WSignatureMatch? DetectW(
+            double[]      dr,
+            SamplePoint[] samples,
+            int           windowTailSamples = 12)
+        {
+            if (dr.Length < 20 || samples.Length < 20) return null;
+
+            var segs = BuildSegments(dr, samples);
+            if (segs.Count < MIN_SEGS) return null;
+
+            // Scan right-to-left. Trigger = rightmost large RISE at tail.
+            for (int tail = segs.Count - 1; tail >= MIN_SEGS - 1; tail--)
+            {
+                var closingRise = segs[tail];
+                if (!closingRise.IsRise) continue;
+                // Accept if: this is the last segment, OR EndIdx is near tail
+                bool isLastSeg  = tail == segs.Count - 1;
+                bool nearTail   = closingRise.EndIdx >= dr.Length - windowTailSamples;
+                if (!isLastSeg && !nearTail) continue;
+                // Must start in right half of buffer
+                if (closingRise.StartIdx < dr.Length / 4) continue;
+                if (closingRise.Amplitude < MIN_PROMINENCE) continue;
+
+                // Right trough: start of the closing rise
+                int rightTroughIdx = closingRise.StartIdx;
+
+                // Scan backwards through shallow middle section
+                int shallowCount = 0;
+                int si = tail - 1;
+                while (si >= 1 && shallowCount <= MAX_SHALLOW)
+                {
+                    var seg = segs[si];
+                    if (seg.Amplitude < closingRise.Amplitude * MAX_SHALLOW_RISE)
+                    {
+                        shallowCount++;
+                        si--;
+                    }
+                    else break;
+                }
+                if (si < 1) continue;
+
+                // Left fall: first large fall before the shallow section
+                var leftFall = segs[si];
+                if (leftFall.IsRise) continue;
+                if (leftFall.Amplitude < MIN_PROMINENCE) continue;
+
+                // Segment before left fall must be a rise (the approach)
+                if (si - 1 >= 0 && !segs[si - 1].IsRise) continue;
+
+                // Left trough is the end of the left fall
+                int leftTroughIdx = leftFall.EndIdx;
+
+                // Validate proportions
+                // Closing rise must be >= BIG_RISE_RATIO x left fall (symmetric W)
+                // or at least comparable
+                bool rightBig = closingRise.Amplitude >= leftFall.Amplitude * BIG_RISE_RATIO;
+
+                // Avg shallow amplitude
+                double avgShallow = shallowCount > 0
+                    ? Enumerable.Range(si + 1, shallowCount)
+                        .Where(x => x < segs.Count)
+                        .Select(x => segs[x].Amplitude)
+                        .DefaultIfEmpty(0.001)
+                        .Average()
+                    : 0.001;
+
+                // Left fall must be steep relative to shallow middle
+                bool leftFallSteep = leftFall.Amplitude >= avgShallow * STEEP_RATIO;
+
+                if (!rightBig || !leftFallSteep) continue;
+
+                // Trough values
+                double leftTroughVal  = leftTroughIdx  < dr.Length ? dr[leftTroughIdx]  : 0;
+                double rightTroughVal = rightTroughIdx < dr.Length ? dr[rightTroughIdx] : 0;
+
+                int startIdx      = leftFall.StartIdx;
+                int riseEndIdx    = closingRise.EndIdx;
+
+                long startNs   = startIdx   < samples.Length ? samples[startIdx].WallNs   : 0;
+                long triggerNs = riseEndIdx < samples.Length ? samples[riseEndIdx].WallNs  : 0;
+                double spanSec = startNs > 0 && triggerNs > 0
+                    ? (triggerNs - startNs) / 1e9 : 0;
+
+                return new WSignatureMatch(
+                    LeftFallAmp:    leftFall.Amplitude,
+                    RightRiseAmp:   closingRise.Amplitude,
+                    LeftTroughVal:  leftTroughVal,
+                    RightTroughVal: rightTroughVal,
+                    StartNs:        startNs,
+                    TriggerNs:      triggerNs,
+                    SpanSec:        spanSec,
+                    LeftTroughIdx:  leftTroughIdx,
+                    RightTroughIdx: rightTroughIdx,
+                    RightRiseEndIdx: riseEndIdx);
+            }
+            return null;
+        }
+    }
+
 }
