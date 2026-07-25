@@ -128,6 +128,13 @@ namespace GeigerScope
         private readonly DispatcherTimer _recTimer   = new()
             { Interval = TimeSpan.FromSeconds(1) };
 
+        // ── Draggable tethered badge state ────────────────────────────────────────
+        private readonly Dictionary<string, TetheredBadge> _badges          = new();
+        private readonly Dictionary<string, Point>         _badgeDefaultPos = new();
+        private TetheredBadge? _dragBadge;
+        private Point          _dragStart;
+        private Point          _dragOrigin;
+
         // ── Render timer ──────────────────────────────────────────────────
         private readonly DispatcherTimer _renderTimer;
 
@@ -1037,13 +1044,15 @@ namespace GeigerScope
                         StrokeThickness = 1.0,
                         StrokeDashArray = new DoubleCollection { 4, 4 },
                     });
-                    var pkB = MakeBadge(
-                        $"SDR▲ {sdrPeak:0.0}dBm",
-                        Color.FromArgb(0xEE, 0xFF, 0x00, 0xFF),
-                        Color.FromArgb(0xCC, 0x1A, 0x00, 0x1A), 11);
-                    Canvas.SetRight(pkB, 36);
-                    Canvas.SetTop(pkB, peakY - 16);
-                    OsciCanvas.Children.Add(pkB);
+                                        var pkB = GetOrCreateBadge("sdr_peak",
+                                                $"SDR▲ {sdrPeak:0.0}dBm",
+                                                Color.FromArgb(0xEE, 0xFF, 0x00, 0xFF),
+                                                Color.FromArgb(0xCC, 0x1A, 0x00, 0x1A), 11);
+                    pkB.Anchor = new Point(w, peakY);
+                    _badgeDefaultPos["sdr_peak"] = new Point(w - 156, peakY - 16);
+                    pkB.Place(ComputeDefaultPos("sdr_peak"), OsciCanvas);
+                    OsciCanvas.Children.Add(pkB.Tether);
+                    OsciCanvas.Children.Add(pkB.Badge);
                 }
 
                 // SDR floor bar (dark magenta)
@@ -1059,13 +1068,15 @@ namespace GeigerScope
                         StrokeThickness = 1.0,
                         StrokeDashArray = new DoubleCollection { 4, 6 },
                     });
-                    var flB = MakeBadge(
-                        $"SDR▼ {sdrFloor:0.0}dBm",
-                        Color.FromArgb(0xCC, 0xAA, 0x00, 0xAA),
-                        Color.FromArgb(0xCC, 0x10, 0x00, 0x10), 11);
-                    Canvas.SetRight(flB, 36);
-                    Canvas.SetTop(flB, floorY + 2);
-                    OsciCanvas.Children.Add(flB);
+                                        var flB = GetOrCreateBadge("sdr_floor",
+                                                $"SDR▼ {sdrFloor:0.0}dBm",
+                                                Color.FromArgb(0xCC, 0xAA, 0x00, 0xAA),
+                                                Color.FromArgb(0xCC, 0x10, 0x00, 0x10), 11);
+                    flB.Anchor = new Point(w, floorY);
+                    _badgeDefaultPos["sdr_floor"] = new Point(w - 156, floorY + 2);
+                    flB.Place(ComputeDefaultPos("sdr_floor"), OsciCanvas);
+                    OsciCanvas.Children.Add(flB.Tether);
+                    OsciCanvas.Children.Add(flB.Badge);
                 }
 
                 // SDR instrument label (top right)
@@ -1130,13 +1141,15 @@ namespace GeigerScope
                     StrokeThickness = 1.5,
                     StrokeDashArray = new DoubleCollection { 8, 4 },
                 });
-                var blL = MakeBadge(
-                    $"▲ PEAK  {peakDr:0.0000} µSv/h",
-                    Color.FromArgb(0xEE, 0xFF, 0xFF, 0x00),
-                    Color.FromArgb(0xCC, 0x1A, 0x1A, 0x00), 13);
-                Canvas.SetLeft(blL, 36);
-                Canvas.SetTop(blL, py - 17);
-                OsciCanvas.Children.Add(blL);
+                                var blL = GetOrCreateBadge("peak1",
+                                        $"▲ PEAK  {peakDr:0.0000} µSv/h",
+                                        Color.FromArgb(0xEE, 0xFF, 0xFF, 0x00),
+                                        Color.FromArgb(0xCC, 0x1A, 0x1A, 0x00), 13);
+                blL.Anchor = new Point(0, py);
+                _badgeDefaultPos["peak1"] = new Point(36, py - 17);
+                blL.Place(ComputeDefaultPos("peak1"), OsciCanvas);
+                OsciCanvas.Children.Add(blL.Tether);
+                OsciCanvas.Children.Add(blL.Badge);
 
                 // Curvature at peak 1 — 3-point + ellipse
                 {
@@ -1164,13 +1177,15 @@ namespace GeigerScope
                     }
                 }
 
-                var blR = MakeBadge(
-                    $"{peakDr:0.0000} ▲",
-                    Color.FromArgb(0xEE, 0xFF, 0xFF, 0x00),
-                    Color.FromArgb(0xCC, 0x1A, 0x1A, 0x00), 13);
-                Canvas.SetRight(blR, 36);
-                Canvas.SetTop(blR, py - 17);
-                OsciCanvas.Children.Add(blR);
+                                var blR = GetOrCreateBadge("peak1r",
+                                        $"{peakDr:0.0000} ▲",
+                                        Color.FromArgb(0xEE, 0xFF, 0xFF, 0x00),
+                                        Color.FromArgb(0xCC, 0x1A, 0x1A, 0x00), 13);
+                blR.Anchor = new Point(w, py);
+                _badgeDefaultPos["peak1r"] = new Point(w - 156, py - 17);
+                blR.Place(ComputeDefaultPos("peak1r"), OsciCanvas);
+                OsciCanvas.Children.Add(blR.Tether);
+                OsciCanvas.Children.Add(blR.Badge);
             }
 
             // ── Peak 2 tracker bar (amber) ──────────────────────────────
@@ -1185,13 +1200,15 @@ namespace GeigerScope
                     StrokeThickness = 1.2,
                     StrokeDashArray = new DoubleCollection { 6, 4 },
                 });
-                var p2L = MakeBadge(
-                    $"▲2  {peak2Dr:0.0000} µSv/h",
-                    Color.FromArgb(0xEE, 0xFF, 0xAA, 0x00),
-                    Color.FromArgb(0xCC, 0x1A, 0x0A, 0x00), 12);
-                Canvas.SetLeft(p2L, 216);
-                Canvas.SetTop(p2L, p2y - 17);
-                OsciCanvas.Children.Add(p2L);
+                                var p2L = GetOrCreateBadge("peak2",
+                                        $"▲2  {peak2Dr:0.0000} µSv/h",
+                                        Color.FromArgb(0xEE, 0xFF, 0xAA, 0x00),
+                                        Color.FromArgb(0xCC, 0x1A, 0x0A, 0x00), 12);
+                p2L.Anchor = new Point(0, p2y);
+                _badgeDefaultPos["peak2"] = new Point(216, p2y - 17);
+                p2L.Place(ComputeDefaultPos("peak2"), OsciCanvas);
+                OsciCanvas.Children.Add(p2L.Tether);
+                OsciCanvas.Children.Add(p2L.Badge);
 
                 // Curvature at peak 2 — 3-point + ellipse
                 {
@@ -1234,13 +1251,15 @@ namespace GeigerScope
                     StrokeThickness = 1.0,
                     StrokeDashArray = new DoubleCollection { 5, 5 },
                 });
-                var p3L = MakeBadge(
-                    $"▲3  {peak3Dr:0.0000} µSv/h",
-                    Color.FromArgb(0xEE, 0xFF, 0x66, 0x00),
-                    Color.FromArgb(0xCC, 0x1A, 0x05, 0x00), 12);
-                Canvas.SetLeft(p3L, 396);
-                Canvas.SetTop(p3L, p3y - 17);
-                OsciCanvas.Children.Add(p3L);
+                                var p3L = GetOrCreateBadge("peak3",
+                                        $"▲3  {peak3Dr:0.0000} µSv/h",
+                                        Color.FromArgb(0xEE, 0xFF, 0x66, 0x00),
+                                        Color.FromArgb(0xCC, 0x1A, 0x05, 0x00), 12);
+                p3L.Anchor = new Point(0, p3y);
+                _badgeDefaultPos["peak3"] = new Point(396, p3y - 17);
+                p3L.Place(ComputeDefaultPos("peak3"), OsciCanvas);
+                OsciCanvas.Children.Add(p3L.Tether);
+                OsciCanvas.Children.Add(p3L.Badge);
 
                 // Curvature at peak 3 — 3-point + ellipse
                 {
@@ -1282,13 +1301,15 @@ namespace GeigerScope
                     StrokeThickness = 1.5,
                     StrokeDashArray = new DoubleCollection { 8, 4 },
                 });
-                var flR = MakeBadge(
-                    $"{minDr:0.0000} ▼",
-                    Color.FromArgb(0xEE, 0x00, 0xFF, 0xFF),
-                    Color.FromArgb(0xCC, 0x00, 0x1A, 0x1A), 13);
-                Canvas.SetRight(flR, 576);
-                Canvas.SetTop(flR, fy + 2);
-                OsciCanvas.Children.Add(flR);
+                                var flR = GetOrCreateBadge("floor1",
+                                        $"{minDr:0.0000} ▼",
+                                        Color.FromArgb(0xEE, 0x00, 0xFF, 0xFF),
+                                        Color.FromArgb(0xCC, 0x00, 0x1A, 0x1A), 13);
+                flR.Anchor = new Point(w, fy);
+                _badgeDefaultPos["floor1"] = new Point(w - 696, fy + 2);
+                flR.Place(ComputeDefaultPos("floor1"), OsciCanvas);
+                OsciCanvas.Children.Add(flR.Tether);
+                OsciCanvas.Children.Add(flR.Badge);
 
                 // Curvature at floor — 3-point + ellipse
                 {
@@ -1331,13 +1352,15 @@ namespace GeigerScope
                         StrokeThickness = 1.2,
                         StrokeDashArray = new DoubleCollection { 6, 4 },
                     });
-                    var f2R = MakeBadge(
-                        $"{floor2Dr:0.0000} ▼2",
-                        Color.FromArgb(0xEE, 0x00, 0xDD, 0x44),
-                        Color.FromArgb(0xCC, 0x00, 0x16, 0x06), 12);
-                    Canvas.SetRight(f2R, 396);
-                    Canvas.SetTop(f2R, f2y + 2);
-                    OsciCanvas.Children.Add(f2R);
+                                        var f2R = GetOrCreateBadge("floor2",
+                                                $"{floor2Dr:0.0000} ▼2",
+                                                Color.FromArgb(0xEE, 0x00, 0xDD, 0x44),
+                                                Color.FromArgb(0xCC, 0x00, 0x16, 0x06), 12);
+                    f2R.Anchor = new Point(w, f2y);
+                    _badgeDefaultPos["floor2"] = new Point(w - 516, f2y + 2);
+                    f2R.Place(ComputeDefaultPos("floor2"), OsciCanvas);
+                    OsciCanvas.Children.Add(f2R.Tether);
+                    OsciCanvas.Children.Add(f2R.Badge);
 
                     int f2i = FindIndexByDr(drArr, floor2Dr);
                     int b2  = FindIndexByNs(samples,
@@ -1380,13 +1403,15 @@ namespace GeigerScope
                         StrokeThickness = 1.0,
                         StrokeDashArray = new DoubleCollection { 5, 5 },
                     });
-                    var f3R = MakeBadge(
-                        $"{floor3Dr:0.0000} ▼3",
-                        Color.FromArgb(0xEE, 0x00, 0xBB, 0x22),
-                        Color.FromArgb(0xCC, 0x00, 0x12, 0x04), 12);
-                    Canvas.SetRight(f3R, 216);
-                    Canvas.SetTop(f3R, f3y + 2);
-                    OsciCanvas.Children.Add(f3R);
+                                        var f3R = GetOrCreateBadge("floor3",
+                                                $"{floor3Dr:0.0000} ▼3",
+                                                Color.FromArgb(0xEE, 0x00, 0xBB, 0x22),
+                                                Color.FromArgb(0xCC, 0x00, 0x12, 0x04), 12);
+                    f3R.Anchor = new Point(w, f3y);
+                    _badgeDefaultPos["floor3"] = new Point(w - 336, f3y + 2);
+                    f3R.Place(ComputeDefaultPos("floor3"), OsciCanvas);
+                    OsciCanvas.Children.Add(f3R.Tether);
+                    OsciCanvas.Children.Add(f3R.Badge);
 
                     int f3i = FindIndexByDr(drArr, floor3Dr);
                     int b3  = FindIndexByNs(samples,
@@ -1835,5 +1860,98 @@ namespace GeigerScope
         private void Window_Closing(
             object sender,
             System.ComponentModel.CancelEventArgs e) => _cts.Cancel();
+
+        // ── Tethered badge helpers ────────────────────────────────────────────────
+        private Point ComputeDefaultPos(string key) =>
+            _badgeDefaultPos.TryGetValue(key, out var p) ? p : new Point(0, 0);
+
+        private TetheredBadge GetOrCreateBadge(
+            string key, string text, Color fg, Color bg, int fontSize = 12)
+        {
+            if (_badges.TryGetValue(key, out var existing))
+            {
+                ((TextBlock)existing.Badge.Child).Text = text;
+                return existing;
+            }
+
+            var tether = new Line
+            {
+                Stroke           = new SolidColorBrush(
+                    Color.FromArgb(0x88, fg.R, fg.G, fg.B)),
+                StrokeThickness  = 1.0,
+                StrokeDashArray  = new DoubleCollection { 3, 3 },
+                IsHitTestVisible = false,
+            };
+
+            var badge = MakeBadge(text, fg, bg, fontSize);
+            badge.Cursor = System.Windows.Input.Cursors.SizeAll;
+
+            badge.MouseLeftButtonDown += (s, e) =>
+            {
+                if (!_badges.TryGetValue(key, out var tb)) return;
+                _dragBadge  = tb;
+                _dragStart  = e.GetPosition(OsciCanvas);
+                _dragOrigin = tb.Offset;
+                badge.CaptureMouse();
+                e.Handled = true;
+            };
+            badge.MouseMove += (s, e) =>
+            {
+                if (_dragBadge?.Key != key) return;
+                var pos = e.GetPosition(OsciCanvas);
+                var tb  = _badges[key];
+                tb.Offset = new Point(
+                    _dragOrigin.X + pos.X - _dragStart.X,
+                    _dragOrigin.Y + pos.Y - _dragStart.Y);
+                tb.Place(ComputeDefaultPos(key), OsciCanvas);
+            };
+            badge.MouseLeftButtonUp += (s, e) =>
+            {
+                _dragBadge = null;
+                badge.ReleaseMouseCapture();
+                e.Handled = true;
+            };
+
+            var entry = new TetheredBadge(key, badge, tether);
+            _badges[key] = entry;
+            return entry;
+        }
+    }
+
+    // ── TetheredBadge ─────────────────────────────────────────────────────────────
+    public class TetheredBadge
+    {
+        public string Key    { get; }
+        public Border Badge  { get; }
+        public Line   Tether { get; }
+        public Point  Anchor { get; set; }
+        public Point  Offset { get; set; } = new Point(0, 0);
+
+        public TetheredBadge(string key, Border badge, Line tether)
+        {
+            Key    = key;
+            Badge  = badge;
+            Tether = tether;
+        }
+
+        public void Place(Point defaultPos, Canvas canvas)
+        {
+            double left = defaultPos.X + Offset.X;
+            double top  = defaultPos.Y + Offset.Y;
+
+            double bw = Badge.ActualWidth  > 0 ? Badge.ActualWidth  : 120;
+            double bh = Badge.ActualHeight > 0 ? Badge.ActualHeight : 20;
+
+            left = Math.Clamp(left, 0, Math.Max(0, canvas.ActualWidth  - bw));
+            top  = Math.Clamp(top,  0, Math.Max(0, canvas.ActualHeight - bh));
+
+            Canvas.SetLeft(Badge, left);
+            Canvas.SetTop(Badge,  top);
+
+            Tether.X1 = left + bw / 2;
+            Tether.Y1 = top  + bh / 2;
+            Tether.X2 = Anchor.X;
+            Tether.Y2 = Anchor.Y;
+        }
     }
 }
