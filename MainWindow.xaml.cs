@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -93,6 +93,10 @@ namespace GeigerScope
         private double _lastPeak2      = 0.0;
         private double _lastPeakEvent  = 0.0;
         private double _lastPeak3      = 0.0;
+        private double _floor2Dr       = double.MaxValue;
+        private double _floor3Dr       = double.MaxValue;
+        private double _lastFloor2     = 0.0;
+        private double _lastFloor3     = 0.0;
         private bool   _spikeActive    = false;
         private double _lastDr         = 0.0;
         private int    _sustainedCount = 0;
@@ -791,39 +795,53 @@ namespace GeigerScope
             {
                 const long MIN_GAP_NS = 25_000_000_000L; // 25 seconds
 
-                // Build list of all (index, value, wallNs) from smoothed data
                 var allPts = new List<(int idx, double val, long ns)>();
                 for (int i = 0; i < drArr.Length && i < samples.Length; i++)
                     allPts.Add((i, drArr[i], samples[i].WallNs));
 
-                // Sort by value descending
-                allPts = allPts.OrderByDescending(p => p.val).ToList();
-
-                // Greedily pick top 3 where each is >= 5s from all chosen
-                var chosen = new List<(int idx, double val, long ns)>();
-                foreach (var p in allPts)
+                // ── Top 3 peaks ───────────────────────────────────────────
+                var byDesc = allPts.OrderByDescending(p => p.val).ToList();
+                var chosenPeaks = new List<(int idx, double val, long ns)>();
+                foreach (var p in byDesc)
                 {
-                    bool tooClose = chosen.Any(
+                    bool tooClose = chosenPeaks.Any(
                         c => Math.Abs(c.ns - p.ns) < MIN_GAP_NS);
                     if (!tooClose)
                     {
-                        chosen.Add(p);
-                        if (chosen.Count == 3) break;
+                        chosenPeaks.Add(p);
+                        if (chosenPeaks.Count == 3) break;
                     }
                 }
+                chosenPeaks = chosenPeaks.OrderByDescending(p => p.val).ToList();
 
-                // Sort chosen by value descending for bar assignment
-                chosen = chosen.OrderByDescending(p => p.val).ToList();
+                // ── Bottom 3 floors ───────────────────────────────────────
+                var byAsc = allPts.OrderBy(p => p.val).ToList();
+                var chosenFloors = new List<(int idx, double val, long ns)>();
+                foreach (var p in byAsc)
+                {
+                    bool tooClose = chosenFloors.Any(
+                        c => Math.Abs(c.ns - p.ns) < MIN_GAP_NS);
+                    if (!tooClose)
+                    {
+                        chosenFloors.Add(p);
+                        if (chosenFloors.Count == 3) break;
+                    }
+                }
+                chosenFloors = chosenFloors.OrderBy(p => p.val).ToList();
 
                 lock (_buffer)
                 {
-                    _peak2Dr = chosen.Count > 1 ? chosen[1].val : 0.0;
-                    _peak3Dr = chosen.Count > 2 ? chosen[2].val : 0.0;
+                    _peak2Dr  = chosenPeaks.Count  > 1 ? chosenPeaks[1].val  : 0.0;
+                    _peak3Dr  = chosenPeaks.Count  > 2 ? chosenPeaks[2].val  : 0.0;
+                    _floor2Dr = chosenFloors.Count > 1 ? chosenFloors[1].val : double.MaxValue;
+                    _floor3Dr = chosenFloors.Count > 2 ? chosenFloors[2].val : double.MaxValue;
                 }
                 peak2Dr = _peak2Dr;
                 peak3Dr = _peak3Dr;
+                double floor2Dr = _floor2Dr < double.MaxValue ? _floor2Dr : -1;
+                double floor3Dr = _floor3Dr < double.MaxValue ? _floor3Dr : -1;
 
-                // Fire events when peak2/peak3 change by > 0.01
+                // Peak shift events
                 if (Math.Abs(peak2Dr - _lastPeak2) > 0.01 && peak2Dr > 0.001)
                 {
                     _lastPeak2 = peak2Dr;
@@ -832,11 +850,9 @@ namespace GeigerScope
                     if (p2i >= 5 && p2i < drArr.Length-5)
                     {
                         int b2 = FindIndexByNs(samples,
-                            p2i < samples.Length
-                            ? samples[p2i].WallNs - 5_000_000_000L : 0);
+                            p2i < samples.Length ? samples[p2i].WallNs - 5_000_000_000L : 0);
                         int f2 = FindIndexByNs(samples,
-                            p2i < samples.Length
-                            ? samples[p2i].WallNs + 5_000_000_000L : 0);
+                            p2i < samples.Length ? samples[p2i].WallNs + 5_000_000_000L : 0);
                         if (b2 < drArr.Length && f2 < drArr.Length && b2!=p2i && f2!=p2i)
                         {
                             double c1x=b2*xStep,c1y=h-(drArr[b2]/_yMax)*h;
@@ -862,11 +878,9 @@ namespace GeigerScope
                     if (p3i >= 5 && p3i < drArr.Length-5)
                     {
                         int b3 = FindIndexByNs(samples,
-                            p3i < samples.Length
-                            ? samples[p3i].WallNs - 5_000_000_000L : 0);
+                            p3i < samples.Length ? samples[p3i].WallNs - 5_000_000_000L : 0);
                         int f3 = FindIndexByNs(samples,
-                            p3i < samples.Length
-                            ? samples[p3i].WallNs + 5_000_000_000L : 0);
+                            p3i < samples.Length ? samples[p3i].WallNs + 5_000_000_000L : 0);
                         if (b3 < drArr.Length && f3 < drArr.Length && b3!=p3i && f3!=p3i)
                         {
                             double c1x=b3*xStep,c1y=h-(drArr[b3]/_yMax)*h;
@@ -883,6 +897,62 @@ namespace GeigerScope
                         $"[{Ts()}] ▲3 PEAK3  {peak3Dr:0.0000} µSv/h  " +
                         $"∠{a3:0.0}°  {r3s}  e={e3:0.00}  {ra3s}",
                         "#FF6600");
+                }
+
+                // Floor shift events
+                if (floor2Dr >= 0 && Math.Abs(floor2Dr - _lastFloor2) > 0.005 && floor2Dr > 0)
+                {
+                    _lastFloor2 = floor2Dr;
+                    int f2i = FindIndexByDr(drArr, floor2Dr);
+                    var (af2,rf2,ef2,raf2) = (0.0,0.0,0.0,0.0);
+                    if (f2i >= 5 && f2i < drArr.Length-5)
+                    {
+                        int b2 = FindIndexByNs(samples,
+                            f2i < samples.Length ? samples[f2i].WallNs - 5_000_000_000L : 0);
+                        int fw2 = FindIndexByNs(samples,
+                            f2i < samples.Length ? samples[f2i].WallNs + 5_000_000_000L : 0);
+                        if (b2 < drArr.Length && fw2 < drArr.Length && b2!=f2i && fw2!=f2i)
+                        {
+                            double c1x=b2*xStep, c1y=h-(drArr[b2]/_yMax)*h;
+                            double c2x=f2i*xStep,c2y=h-(drArr[f2i]/_yMax)*h;
+                            double c3x=fw2*xStep,c3y=h-(drArr[fw2]/_yMax)*h;
+                            var (ang,rad,sA,sB,ec,rA)=CalcCurvature(c1x,c1y,c2x,c2y,c3x,c3y);
+                            af2=ang;rf2=rad;ef2=ec;raf2=rA;
+                        }
+                    }
+                    string rf2s  = rf2  < 9999 ? $"R={rf2:0.0}px"  : "R=∞";
+                    string raf2s = raf2 < 9999 ? $"Re={raf2:0.0}px" : "Re=∞";
+                    AddEvent(
+                        $"[{Ts()}] ▼2 FLOOR2  {floor2Dr:0.0000} µSv/h  " +
+                        $"∠{af2:0.0}°  {rf2s}  e={ef2:0.00}  {raf2s}",
+                        "#00CCCC");
+                }
+                if (floor3Dr >= 0 && Math.Abs(floor3Dr - _lastFloor3) > 0.005 && floor3Dr > 0)
+                {
+                    _lastFloor3 = floor3Dr;
+                    int f3i = FindIndexByDr(drArr, floor3Dr);
+                    var (af3,rf3,ef3,raf3) = (0.0,0.0,0.0,0.0);
+                    if (f3i >= 5 && f3i < drArr.Length-5)
+                    {
+                        int b3 = FindIndexByNs(samples,
+                            f3i < samples.Length ? samples[f3i].WallNs - 5_000_000_000L : 0);
+                        int fw3 = FindIndexByNs(samples,
+                            f3i < samples.Length ? samples[f3i].WallNs + 5_000_000_000L : 0);
+                        if (b3 < drArr.Length && fw3 < drArr.Length && b3!=f3i && fw3!=f3i)
+                        {
+                            double c1x=b3*xStep, c1y=h-(drArr[b3]/_yMax)*h;
+                            double c2x=f3i*xStep,c2y=h-(drArr[f3i]/_yMax)*h;
+                            double c3x=fw3*xStep,c3y=h-(drArr[fw3]/_yMax)*h;
+                            var (ang,rad,sA,sB,ec,rA)=CalcCurvature(c1x,c1y,c2x,c2y,c3x,c3y);
+                            af3=ang;rf3=rad;ef3=ec;raf3=rA;
+                        }
+                    }
+                    string rf3s  = rf3  < 9999 ? $"R={rf3:0.0}px"  : "R=∞";
+                    string raf3s = raf3 < 9999 ? $"Re={raf3:0.0}px" : "Re=∞";
+                    AddEvent(
+                        $"[{Ts()}] ▼3 FLOOR3  {floor3Dr:0.0000} µSv/h  " +
+                        $"∠{af3:0.0}°  {rf3s}  e={ef3:0.00}  {raf3s}",
+                        "#007777");
                 }
             }
 
@@ -1246,6 +1316,223 @@ namespace GeigerScope
                     }
                 }
             }
+
+            // ── Floor 2 tracker bar (matrix green mid) ───────────────────
+            {
+                double floor2Dr = _floor2Dr < double.MaxValue ? _floor2Dr : -1;
+                if (floor2Dr >= 0 && floor2Dr <= _yMax && floor2Dr != minDr)
+                {
+                    double f2y = Math.Clamp(h - (floor2Dr / _yMax) * h, 0, h);
+                    OsciCanvas.Children.Add(new Line
+                    {
+                        X1 = 0, Y1 = f2y, X2 = w, Y2 = f2y,
+                        Stroke = new SolidColorBrush(
+                            Color.FromArgb(0xBB, 0x00, 0xDD, 0x44)),
+                        StrokeThickness = 1.2,
+                        StrokeDashArray = new DoubleCollection { 6, 4 },
+                    });
+                    var f2R = MakeBadge(
+                        $"{floor2Dr:0.0000} ▼2",
+                        Color.FromArgb(0xEE, 0x00, 0xDD, 0x44),
+                        Color.FromArgb(0xCC, 0x00, 0x16, 0x06), 12);
+                    Canvas.SetRight(f2R, 396);
+                    Canvas.SetTop(f2R, f2y + 2);
+                    OsciCanvas.Children.Add(f2R);
+
+                    int f2i = FindIndexByDr(drArr, floor2Dr);
+                    int b2  = FindIndexByNs(samples,
+                        f2i < samples.Length ? samples[f2i].WallNs - 5_000_000_000L : 0);
+                    int fw2 = FindIndexByNs(samples,
+                        f2i < samples.Length ? samples[f2i].WallNs + 5_000_000_000L : 0);
+                    if (f2i >= 0 && b2 < drArr.Length && fw2 < drArr.Length
+                        && b2 != f2i && fw2 != f2i)
+                    {
+                        double cx1=b2*xStep,  cy1=h-(drArr[b2]/_yMax)*h;
+                        double cx2=f2i*xStep, cy2=h-(drArr[f2i]/_yMax)*h;
+                        double cx3=fw2*xStep, cy3=h-(drArr[fw2]/_yMax)*h;
+                        var (ang,rad,sA,sB,ecc,rAp) =
+                            CalcCurvature(cx1,cy1,cx2,cy2,cx3,cy3);
+                        string rStr = rad < 9999 ? $"R={rad:0.0}" : "R=∞";
+                        string eStr = rAp < 9999 ? $"Re={rAp:0.0}" : "Re=∞";
+                        var cl = MakeLabel(
+                            $"∠{ang:0.0}°  {rStr}  e={ecc:0.00}  {eStr}",
+                            Color.FromArgb(0xCC, 0x00, 0xDD, 0x44), 9);
+                        Canvas.SetRight(cl, 396);
+                        Canvas.SetTop(cl, f2y + 18);
+                        OsciCanvas.Children.Add(cl);
+                    }
+                }
+            }
+
+            // ── Floor 3 tracker bar (matrix green dark) ──────────────────
+            {
+                double floor2Dr = _floor2Dr < double.MaxValue ? _floor2Dr : -1;
+                double floor3Dr = _floor3Dr < double.MaxValue ? _floor3Dr : -1;
+                if (floor3Dr >= 0 && floor3Dr <= _yMax
+                    && floor3Dr != minDr && floor3Dr != floor2Dr)
+                {
+                    double f3y = Math.Clamp(h - (floor3Dr / _yMax) * h, 0, h);
+                    OsciCanvas.Children.Add(new Line
+                    {
+                        X1 = 0, Y1 = f3y, X2 = w, Y2 = f3y,
+                        Stroke = new SolidColorBrush(
+                            Color.FromArgb(0xAA, 0x00, 0xBB, 0x22)),
+                        StrokeThickness = 1.0,
+                        StrokeDashArray = new DoubleCollection { 5, 5 },
+                    });
+                    var f3R = MakeBadge(
+                        $"{floor3Dr:0.0000} ▼3",
+                        Color.FromArgb(0xEE, 0x00, 0xBB, 0x22),
+                        Color.FromArgb(0xCC, 0x00, 0x12, 0x04), 12);
+                    Canvas.SetRight(f3R, 216);
+                    Canvas.SetTop(f3R, f3y + 2);
+                    OsciCanvas.Children.Add(f3R);
+
+                    int f3i = FindIndexByDr(drArr, floor3Dr);
+                    int b3  = FindIndexByNs(samples,
+                        f3i < samples.Length ? samples[f3i].WallNs - 5_000_000_000L : 0);
+                    int fw3 = FindIndexByNs(samples,
+                        f3i < samples.Length ? samples[f3i].WallNs + 5_000_000_000L : 0);
+                    if (f3i >= 0 && b3 < drArr.Length && fw3 < drArr.Length
+                        && b3 != f3i && fw3 != f3i)
+                    {
+                        double cx1=b3*xStep,  cy1=h-(drArr[b3]/_yMax)*h;
+                        double cx2=f3i*xStep, cy2=h-(drArr[f3i]/_yMax)*h;
+                        double cx3=fw3*xStep, cy3=h-(drArr[fw3]/_yMax)*h;
+                        var (ang,rad,sA,sB,ecc,rAp) =
+                            CalcCurvature(cx1,cy1,cx2,cy2,cx3,cy3);
+                        string rStr = rad < 9999 ? $"R={rad:0.0}" : "R=∞";
+                        string eStr = rAp < 9999 ? $"Re={rAp:0.0}" : "Re=∞";
+                        var cl = MakeLabel(
+                            $"∠{ang:0.0}°  {rStr}  e={ecc:0.00}  {eStr}",
+                            Color.FromArgb(0xCC, 0x00, 0xBB, 0x22), 9);
+                        Canvas.SetRight(cl, 216);
+                        Canvas.SetTop(cl, f3y + 18);
+                        OsciCanvas.Children.Add(cl);
+                    }
+                }
+            }
+            // ── Incline span labels (floor → peak pairs) ─────────────────
+            {
+                // Recover wall timestamps for all 6 markers via index lookup.
+                // Returns -1 if the marker is unset / not yet in buffer.
+                static long MarkerNs(double[] dr, SamplePoint[] smp, double val)
+                {
+                    if (val <= 0 || val == double.MaxValue) return -1L;
+                    int idx = 0;
+                    double best = double.MaxValue;
+                    for (int i = 0; i < dr.Length && i < smp.Length; i++)
+                    {
+                        double d = Math.Abs(dr[i] - val);
+                        if (d < best) { best = d; idx = i; }
+                    }
+                    return idx < smp.Length ? smp[idx].WallNs : -1L;
+                }
+
+                double p1 = peakDr;
+                double p2 = peak2Dr;
+                double p3 = peak3Dr;
+                double f1 = minDr;
+                double f2 = _floor2Dr < double.MaxValue ? _floor2Dr : -1;
+                double f3 = _floor3Dr < double.MaxValue ? _floor3Dr : -1;
+
+                long p1ns = MarkerNs(drArr, samples, p1);
+                long p2ns = MarkerNs(drArr, samples, p2);
+                long p3ns = MarkerNs(drArr, samples, p3);
+                long f1ns = MarkerNs(drArr, samples, f1);
+                long f2ns = MarkerNs(drArr, samples, f2);
+                long f3ns = MarkerNs(drArr, samples, f3);
+
+                // Build candidate (floor, peak) pairs where floor precedes
+                // peak in time, then pick the 3 closest pairs by |Δt|.
+                var candidates = new List<(double fVal, long fNs,
+                                           double pVal, long pNs, double dtSec)>();
+
+                void TryPair(double fv, long fn, double pv, long pn)
+                {
+                    if (fn < 0 || pn < 0) return;
+                    if (fn >= pn) return;           // floor must precede peak
+                    double dt = (pn - fn) / 1e9;
+                    if (dt > 600) return;           // ignore pairs > 10 min apart
+                    candidates.Add((fv, fn, pv, pn, dt));
+                }
+
+                TryPair(f1, f1ns, p1, p1ns);
+                TryPair(f1, f1ns, p2, p2ns);
+                TryPair(f1, f1ns, p3, p3ns);
+                TryPair(f2, f2ns, p1, p1ns);
+                TryPair(f2, f2ns, p2, p2ns);
+                TryPair(f2, f2ns, p3, p3ns);
+                TryPair(f3, f3ns, p1, p1ns);
+                TryPair(f3, f3ns, p2, p2ns);
+                TryPair(f3, f3ns, p3, p3ns);
+
+                // Sort by ascending dt and take up to 3 non-overlapping pairs
+                // (each floor and each peak used at most once).
+                candidates.Sort((a, b) => a.dtSec.CompareTo(b.dtSec));
+                var usedFloors = new HashSet<double>();
+                var usedPeaks  = new HashSet<double>();
+                var pairs      = new List<(double fVal, long fNs,
+                                           double pVal, long pNs, double dtSec)>();
+                foreach (var c in candidates)
+                {
+                    if (usedFloors.Contains(c.fVal)) continue;
+                    if (usedPeaks.Contains(c.pVal))  continue;
+                    pairs.Add(c);
+                    usedFloors.Add(c.fVal);
+                    usedPeaks.Add(c.pVal);
+                    if (pairs.Count == 3) break;
+                }
+
+                // Render a span label for each confirmed pair.
+                // The label sits vertically centred between the two bars,
+                // horizontally at the midpoint x between their timestamps.
+                foreach (var (fVal, fNs, pVal, pNs, dtSec) in pairs)
+                {
+                    // Screen Y of each bar
+                    double yFloor = Math.Clamp(h - (fVal / _yMax) * h, 0, h);
+                    double yPeak  = Math.Clamp(h - (pVal / _yMax) * h, 0, h);
+                    double yMid   = (yFloor + yPeak) / 2.0;
+
+                    // Screen X: find sample indices for the two timestamps
+                    int iF = 0, iP = 0;
+                    long bestF = long.MaxValue, bestP = long.MaxValue;
+                    for (int i = 0; i < samples.Length; i++)
+                    {
+                        long dF = Math.Abs(samples[i].WallNs - fNs);
+                        long dP = Math.Abs(samples[i].WallNs - pNs);
+                        if (dF < bestF) { bestF = dF; iF = i; }
+                        if (dP < bestP) { bestP = dP; iP = i; }
+                    }
+                    double xF   = iF * xStep;
+                    double xP   = iP * xStep;
+                    double xMid = (xF + xP) / 2.0;
+
+                    // Vertical connector line between the two bars
+                    OsciCanvas.Children.Add(new Line
+                    {
+                        X1 = xMid, Y1 = yPeak,
+                        X2 = xMid, Y2 = yFloor,
+                        Stroke = new SolidColorBrush(
+                            Color.FromArgb(0x55, 0x00, 0xFF, 0x88)),
+                        StrokeThickness = 1.0,
+                        StrokeDashArray = new DoubleCollection { 2, 3 },
+                    });
+
+                    // Span badge
+                    string spanTxt =
+                        $"↑ {fVal:0.0000}→{pVal:0.0000} µSv/h  " +
+                        $"Δt={dtSec:0.0}s";
+                    var badge = MakeBadge(
+                        spanTxt,
+                        Color.FromArgb(0xEE, 0x00, 0xFF, 0x88),
+                        Color.FromArgb(0xCC, 0x00, 0x1A, 0x0A), 10);
+                    Canvas.SetLeft(badge, Math.Max(0, xMid - 10));
+                    Canvas.SetTop(badge, yMid - 10);
+                    OsciCanvas.Children.Add(badge);
+                }
+            }
+
             // ── EMF Pattern overlay (top-right) ───────────────────────
             if (analysis.Slopes.Count > 0)
             {
