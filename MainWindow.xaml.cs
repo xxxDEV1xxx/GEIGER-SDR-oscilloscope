@@ -177,7 +177,6 @@ namespace GeigerScope
             EventList.ItemsSource = _events;
             CpmList.ItemsSource   = _cpmHistory;
             RawList.ItemsSource   = _rawData;
-            PeakList.ItemsSource  = _peakLog;
 
             _renderTimer = new DispatcherTimer
                 { Interval = TimeSpan.FromMilliseconds(250) };
@@ -455,6 +454,7 @@ namespace GeigerScope
                         _peakLog.Insert(0, rec);
                         if (_peakLog.Count > 1000)
                             _peakLog.RemoveAt(_peakLog.Count - 1);
+                        RefreshPeakPanel();
                         TxtPeakRealtime.Text = _pkHigh.ToString("0.0000");
                     }
                 }
@@ -2179,6 +2179,35 @@ namespace GeigerScope
             System.ComponentModel.CancelEventArgs e) => _cts.Cancel();
 
         // ── Tethered badge helpers ────────────────────────────────────────────────
+        // Re-rank all peak log entries: top Dr = rank 1, second = 2, third = 3
+
+
+        private void RefreshPeakPanel()
+        {
+            var top3 = _peakLog.Select(r => r.Dr).Distinct()
+                               .OrderByDescending(v => v).Take(3).ToList();
+            PeakPanel.Children.Clear();
+            foreach (var rec in _peakLog)
+            {
+                int pos = top3.IndexOf(rec.Dr);
+                var fg = pos switch
+                {
+                    0 => System.Windows.Media.Colors.White,
+                    1 => System.Windows.Media.Color.FromRgb(0x44, 0xAA, 0xFF),
+                    2 => System.Windows.Media.Color.FromRgb(0x00, 0xFF, 0x88),
+                    _ => System.Windows.Media.Color.FromRgb(0xFF, 0x44, 0x44),
+                };
+                PeakPanel.Children.Add(new TextBlock
+                {
+                    Text       = rec.Display,
+                    FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+                    FontSize   = 10,
+                    Foreground = new System.Windows.Media.SolidColorBrush(fg),
+                    Margin     = new Thickness(4, 1, 4, 1),
+                });
+            }
+        }
+
         private Point ComputeDefaultPos(string key) =>
             _badgeDefaultPos.TryGetValue(key, out var p) ? p : new Point(0, 0);
 
