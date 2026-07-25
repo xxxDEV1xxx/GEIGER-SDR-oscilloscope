@@ -11,11 +11,12 @@
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="220"/>
+            <ColumnDefinition Width="200"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
         <!-- ── Header ───────────────────────────────────────────────── -->
-        <Border Grid.Row="0" Grid.ColumnSpan="2"
+        <Border Grid.Row="0" Grid.ColumnSpan="3"
                 Background="#111" BorderBrush="#00FF88"
                 BorderThickness="0,0,0,1" Padding="10,6">
             <DockPanel>
@@ -215,14 +216,64 @@
             </ScrollViewer>
         </Border>
 
+
+        <!-- Peak log panel -->
+        <Border Grid.Row="1" Grid.Column="1"
+                Background="#0A0A0A" BorderBrush="#222"
+                BorderThickness="0,0,1,0">
+            <DockPanel>
+                <Border DockPanel.Dock="Top"
+                        Background="#110000" BorderBrush="#FF2222"
+                        BorderThickness="0,0,0,1" Padding="8,6">
+                    <StackPanel>
+                        <TextBlock Text="REALTIME" Foreground="#663333"
+                                   FontSize="9" FontFamily="Consolas"
+                                   FontWeight="Bold"/>
+                        <TextBlock x:Name="TxtPeakRealtime" Text="-.----"
+                                   FontSize="32" FontWeight="Bold"
+                                   Foreground="#FF2222" FontFamily="Consolas"
+                                   Margin="0,2,0,0"/>
+                        <TextBlock Text="µSv/h" Foreground="#882222"
+                                   FontSize="9" FontFamily="Consolas"/>
+                    </StackPanel>
+                </Border>
+                <TextBlock DockPanel.Dock="Top"
+                           Text="PEAK LOG" Foreground="#444"
+                           FontSize="10" FontFamily="Consolas"
+                           Margin="8,6,0,3"/>
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <ListView x:Name="PeakList"
+                              Background="#080808"
+                              BorderThickness="0"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Display}"
+                                           FontFamily="Consolas"
+                                           FontSize="10"
+                                           Foreground="#FF4444"/>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="Padding" Value="4,1"/>
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                    </ListView>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
         <!-- ── Oscilloscope canvas ───────────────────────────────────── -->
-        <Border Grid.Row="1" Grid.Column="1" Background="#080808">
+        <Border Grid.Row="1" Grid.Column="2" Background="#080808">
             <Canvas x:Name="OsciCanvas" ClipToBounds="True"
                     SizeChanged="OsciCanvas_SizeChanged"/>
         </Border>
 
         <!-- ── Split event log ──────────────────────────────────────── -->
-        <Border Grid.Row="2" Grid.ColumnSpan="2"
+        <Border Grid.Row="2" Grid.ColumnSpan="3"
                 Background="#0D0D0D" BorderBrush="#222"
                 BorderThickness="0,1,0,0">
             <Grid>
