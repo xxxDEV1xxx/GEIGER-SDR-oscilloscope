@@ -1,4 +1,4 @@
-﻿<Window x:Class="GeigerScope.MainWindow"
+<Window x:Class="GeigerScope.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="CTW GEIGER SCOPE" Height="820" Width="1340"
