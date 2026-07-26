@@ -41,6 +41,8 @@
                             FontFamily="Consolas" FontWeight="Bold"
                             FontSize="11"
                             Click="BtnRecord_Click" Margin="0,0,8,0"/>
+                    <Button x:Name="BtnCalibrate" Content=" CALIBRATE" Click="BtnCalibrate_Click" Width="140" Height="35" Margin="5"/>
+
 
                     <!-- Connect -->
                     <TextBox x:Name="TxtServer" Width="190"
@@ -242,27 +244,9 @@
                            FontSize="10" FontFamily="Consolas"
                            Margin="8,6,0,3"/>
                 <ScrollViewer VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Disabled">
-                    <ListView x:Name="PeakList"
-                              Background="#080808"
-                              BorderThickness="0"
-                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                        <ListView.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding Display}"
-                                           FontFamily="Consolas"
-                                           FontSize="10"
-                                           Foreground="#FF4444"/>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                        <ListView.ItemContainerStyle>
-                            <Style TargetType="ListViewItem">
-                                <Setter Property="Padding" Value="4,1"/>
-                                <Setter Property="Background" Value="Transparent"/>
-                                <Setter Property="BorderThickness" Value="0"/>
-                            </Style>
-                        </ListView.ItemContainerStyle>
-                    </ListView>
+                              HorizontalScrollBarVisibility="Disabled"
+                              Background="#080808">
+                    <StackPanel x:Name="PeakPanel" Background="#080808"/>
                 </ScrollViewer>
             </DockPanel>
         </Border>
