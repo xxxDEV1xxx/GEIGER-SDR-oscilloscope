@@ -141,6 +141,16 @@ namespace GeigerScope
         private readonly ObservableCollection<PeakRecord> _peakLog  = new();
         private double _sessionPeakDr = 0.0;
         private int    _peakLogSeq    = 0;
+        // Peak log rank variables — updated every second
+        private double _rank1a = 0.0;  // highest unique peak value
+        private double _rank1b = 0.0;  // second highest
+        private double _rank1c = 0.0;  // third highest
+        private readonly string _peakRankFile =
+            System.IO.Path.Combine(
+                System.IO.Path.GetDirectoryName(
+                    System.Reflection.Assembly.GetExecutingAssembly().Location)!
+                , "peak_ranks.txt");
+
         // Peak log state machine — driven by raw live dr
         private double _pkHigh       = 0.0;   // highest dr seen since last confirmation
         private double _pkValley     = 0.0;   // lowest dr seen since last confirmation
@@ -156,6 +166,11 @@ namespace GeigerScope
         private readonly VideoRecorder  _recorder    = new();
         private readonly DispatcherTimer _recTimer   = new()
             { Interval = TimeSpan.FromSeconds(1) };
+
+        // ── 60GHz mmWave
+        private readonly MmWaveReader _mmReader = new(MAX_SAMPLES);
+        private bool _mmOnline  = false;
+        private int  _mmWindow  = 100; // 60GHz samples to show (10Hz = 10s)
 
         // ── Draggable tethered badge state ────────────────────────────────────────
         private readonly Dictionary<string, TetheredBadge> _badges          = new();
@@ -210,7 +225,11 @@ namespace GeigerScope
                 if (_recorder.IsRecording)
                     TxtRecTime.Text =
                         _recorder.Elapsed.ToString(@"mm\:ss");
+                // Update peak ranks + file every second
+                UpdatePeakRanks();
             };
+            _recTimer.Start(); // always running for rank updates
+            _mmReader.Start();
         }
 
         // ── Connect ───────────────────────────────────────────────────────
@@ -454,7 +473,7 @@ namespace GeigerScope
                         _peakLog.Insert(0, rec);
                         if (_peakLog.Count > 1000)
                             _peakLog.RemoveAt(_peakLog.Count - 1);
-                        RefreshPeakPanel();
+                        UpdatePeakRanks();
                         TxtPeakRealtime.Text = _pkHigh.ToString("0.0000");
                     }
                 }
@@ -1086,6 +1105,101 @@ namespace GeigerScope
                     i * xStep,
                     Math.Clamp(h - (cpsArr[i] / cpsMax) * h * 0.32, 0, h)));
             OsciCanvas.Children.Add(cpsPoly);
+
+            // ── 60GHz mmWave overlay (sliding window, full resolution)
+            {
+                // Take last _mmWindow samples at native 10Hz — no downsampling
+                // This shows a 10-second window at full detail, right-edge locked
+                var (mmBreath, mmHeart) = _mmReader.WindowSnapshot(_mmWindow);
+                _mmOnline = mmBreath.Length >= 4;
+
+                if (_mmOnline)
+                {
+                    const double MM_TOP = 0.02;
+                    const double MM_H   = 0.43;
+                    double mmTop = h * MM_TOP;
+                    double mmHH  = h * MM_H;
+
+                    // Breath — cyan dashed
+                    if (mmBreath.Length >= 2)
+                    {
+                        var bPoly = new Polyline
+                        {
+                            Stroke          = new SolidColorBrush(
+                                Color.FromArgb(0xCC, 0x00, 0xFF, 0xFF)),
+                            StrokeThickness = 1.8,
+                            StrokeLineJoin  = PenLineJoin.Round,
+                            StrokeDashArray = new DoubleCollection { 6, 2 },
+                        };
+                        double bXStep = w / Math.Max(mmBreath.Length - 1, 1);
+                        for (int bi = 0; bi < mmBreath.Length; bi++)
+                        {
+                            double norm = (mmBreath[bi] + 128.0) / 255.0;
+                            double bx   = bi * bXStep;
+                            double by   = mmTop + mmHH * (1.0 - norm);
+                            bPoly.Points.Add(new Point(bx, Math.Clamp(by, 0, h)));
+                        }
+                        OsciCanvas.Children.Add(bPoly);
+                    }
+
+                    // Heart — magenta dashed
+                    if (mmHeart.Length >= 2)
+                    {
+                        var hPoly = new Polyline
+                        {
+                            Stroke          = new SolidColorBrush(
+                                Color.FromArgb(0xAA, 0xFF, 0x44, 0xFF)),
+                            StrokeThickness = 1.4,
+                            StrokeLineJoin  = PenLineJoin.Round,
+                            StrokeDashArray = new DoubleCollection { 3, 3 },
+                        };
+                        double hXStep = w / Math.Max(mmHeart.Length - 1, 1);
+                        for (int hi2 = 0; hi2 < mmHeart.Length; hi2++)
+                        {
+                            double norm = (mmHeart[hi2] + 128.0) / 255.0;
+                            double hx   = hi2 * hXStep;
+                            double hy   = mmTop + mmHH * (1.0 - norm);
+                            hPoly.Points.Add(new Point(hx, Math.Clamp(hy, 0, h)));
+                        }
+                        OsciCanvas.Children.Add(hPoly);
+                    }
+
+                    // Window size label + rates badge
+                    double winSec  = _mmWindow / (double)MmWaveReader.SAMPLE_HZ;
+                    double brRate  = _mmReader.BreathRate;
+                    double hrRate  = _mmReader.HeartRate;
+                    string brStr   = brRate > 0 ? $"{brRate:0.0} br/min" : "--";
+                    string hrStr   = hrRate > 0 ? $"{hrRate:0.0} bpm"    : "--";
+                    var mmBadge = MakeBadge(
+                        $"60GHz [{winSec:0}s]  BR:{brStr}  HR:{hrStr}",
+                        Color.FromArgb(0xEE, 0x00, 0xFF, 0xFF),
+                        Color.FromArgb(0xCC, 0x00, 0x1A, 0x1A), 11);
+                    Canvas.SetLeft(mmBadge, 8);
+                    Canvas.SetTop(mmBadge,  4);
+                    OsciCanvas.Children.Add(mmBadge);
+
+                    // [ - ] and [ + ] window controls rendered as badges
+                    var btnMinus = MakeBadge(" - ",
+                        Color.FromArgb(0xCC, 0x00, 0xFF, 0xFF),
+                        Color.FromArgb(0xCC, 0x00, 0x18, 0x18), 11);
+                    btnMinus.Cursor = System.Windows.Input.Cursors.Hand;
+                    btnMinus.MouseLeftButtonDown += (_, _) =>
+                        _mmWindow = Math.Max(20, _mmWindow - 50);
+                    Canvas.SetLeft(btnMinus, 8);
+                    Canvas.SetTop(btnMinus,  22);
+                    OsciCanvas.Children.Add(btnMinus);
+
+                    var btnPlus = MakeBadge(" + ",
+                        Color.FromArgb(0xCC, 0x00, 0xFF, 0xFF),
+                        Color.FromArgb(0xCC, 0x00, 0x18, 0x18), 11);
+                    btnPlus.Cursor = System.Windows.Input.Cursors.Hand;
+                    btnPlus.MouseLeftButtonDown += (_, _) =>
+                        _mmWindow = Math.Min(6000, _mmWindow + 50);
+                    Canvas.SetLeft(btnPlus, 36);
+                    Canvas.SetTop(btnPlus,  22);
+                    OsciCanvas.Children.Add(btnPlus);
+                }
+            }
 
             // ── SDR waveform overlay (magenta, second Y-axis) ────────────
             (double PowerDbm, double FreqMhz, long WallNs)[] sdrSamples;
@@ -2176,27 +2290,71 @@ namespace GeigerScope
 
         private void Window_Closing(
             object sender,
-            System.ComponentModel.CancelEventArgs e) => _cts.Cancel();
+            System.ComponentModel.CancelEventArgs e)
+        {
+            _cts.Cancel();
+            _mmReader.Stop();
+        }
 
         // ── Tethered badge helpers ────────────────────────────────────────────────
         // Re-rank all peak log entries: top Dr = rank 1, second = 2, third = 3
 
 
+        // Called every second by render timer
+        private void UpdatePeakRanks()
+        {
+            if (_peakLog.Count == 0) return;
+
+            // Step 1: grab all Dr values from peak log
+            // Step 2: remove duplicates
+            // Step 3: sort highest to lowest
+            var sorted = _peakLog
+                .Select(r => r.Dr)
+                .Distinct()
+                .OrderByDescending(v => v)
+                .ToList();
+
+            // Assign rank variables
+            _rank1a = sorted.Count > 0 ? sorted[0] : 0.0;
+            _rank1b = sorted.Count > 1 ? sorted[1] : 0.0;
+            _rank1c = sorted.Count > 2 ? sorted[2] : 0.0;
+
+            // Write rank file
+            try
+            {
+                var lines = new System.Text.StringBuilder();
+                lines.AppendLine($"# Peak ranks — {DateTime.UtcNow:HH:mm:ss} UTC");
+                lines.AppendLine($"1a (highest) : {_rank1a:0.0000} µSv/h");
+                lines.AppendLine($"1b (second)  : {_rank1b:0.0000} µSv/h");
+                lines.AppendLine($"1c (third)   : {_rank1c:0.0000} µSv/h");
+                lines.AppendLine();
+                lines.AppendLine("--- all unique values (desc) ---");
+                foreach (var v in sorted)
+                    lines.AppendLine($"{v:0.0000}");
+                System.IO.File.WriteAllText(_peakRankFile, lines.ToString());
+            }
+            catch { }
+
+            // Rebuild panel with current rank colors
+            RefreshPeakPanel();
+        }
+
         private void RefreshPeakPanel()
         {
-            var top3 = _peakLog.Select(r => r.Dr).Distinct()
-                               .OrderByDescending(v => v).Take(3).ToList();
             PeakPanel.Children.Clear();
             foreach (var rec in _peakLog)
             {
-                int pos = top3.IndexOf(rec.Dr);
-                var fg = pos switch
-                {
-                    0 => System.Windows.Media.Colors.White,
-                    1 => System.Windows.Media.Color.FromRgb(0x44, 0xAA, 0xFF),
-                    2 => System.Windows.Media.Color.FromRgb(0x00, 0xFF, 0x88),
-                    _ => System.Windows.Media.Color.FromRgb(0xFF, 0x44, 0x44),
-                };
+                // Match against rank variables 1a/1b/1c
+                System.Windows.Media.Color fg;
+                if (rec.Dr == _rank1a)
+                    fg = System.Windows.Media.Colors.White;
+                else if (_rank1b > 0.0 && rec.Dr == _rank1b)
+                    fg = System.Windows.Media.Color.FromRgb(0x44, 0xAA, 0xFF);
+                else if (_rank1c > 0.0 && rec.Dr == _rank1c)
+                    fg = System.Windows.Media.Color.FromRgb(0x00, 0xFF, 0x88);
+                else
+                    fg = System.Windows.Media.Color.FromRgb(0xFF, 0x44, 0x44);
+
                 PeakPanel.Children.Add(new TextBlock
                 {
                     Text       = rec.Display,
@@ -2715,6 +2873,168 @@ namespace GeigerScope
                     RightRiseEndIdx: riseEndIdx);
             }
             return null;
+        }
+    }
+
+
+    // ── HLK-LD6002B 60GHz frame reader ───────────────────────────────────────────
+    public class MmWaveReader : IDisposable
+    {
+        public const int    SAMPLE_HZ   = 10;
+        public const string DEFAULT_LOG =
+            @"J:\True-Sentinel\mmwave\1\log.log";
+
+        private readonly Queue<sbyte> _breath = new();
+        private readonly Queue<sbyte> _heart  = new();
+        private readonly int          _maxSamples;
+        private readonly string       _logPath;
+        private          Thread?      _thread;
+        private volatile bool         _running;
+
+        public double BreathRate { get; private set; }
+        public double HeartRate  { get; private set; }
+        public bool   IsRunning  => _running;
+
+        public MmWaveReader(int maxSamples = 600, string? logPath = null)
+        {
+            _maxSamples = maxSamples * SAMPLE_HZ;
+            _logPath    = logPath ?? DEFAULT_LOG;
+        }
+
+        public void Start()
+        {
+            _running = true;
+            _thread  = new Thread(TailLoop)
+                { IsBackground = true, Name = "MmWaveReader" };
+            _thread.Start();
+        }
+
+        public void Stop() => _running = false;
+        public void Dispose() => Stop();
+
+        // Original downsampled snapshot (kept for compatibility)
+        public (sbyte[] breath, sbyte[] heart) Snapshot(int targetCount)
+        {
+            lock (_breath)
+            {
+                sbyte[] b = Downsample(_breath.ToArray(), targetCount);
+                sbyte[] h = Downsample(_heart.ToArray(),  targetCount);
+                return (b, h);
+            }
+        }
+
+        // Sliding window: return last windowSamples at FULL 10Hz resolution
+        // No downsampling — caller stretches these across the full canvas width
+        public (sbyte[] breath, sbyte[] heart) WindowSnapshot(int windowSamples)
+        {
+            lock (_breath)
+            {
+                var ba = _breath.ToArray();
+                var ha = _heart.ToArray();
+                int bStart = Math.Max(0, ba.Length - windowSamples);
+                int hStart = Math.Max(0, ha.Length - windowSamples);
+                return (ba[bStart..], ha[hStart..]);
+            }
+        }
+
+        private static sbyte[] Downsample(sbyte[] src, int target)
+        {
+            if (src.Length == 0) return Array.Empty<sbyte>();
+            if (src.Length <= target) return src;
+            var result = new sbyte[target];
+            double step = (double)src.Length / target;
+            for (int i = 0; i < target; i++)
+                result[i] = src[(int)(i * step)];
+            return result;
+        }
+
+        private void TailLoop()
+        {
+            long filePos = 0;
+            while (_running)
+            {
+                try
+                {
+                    if (!System.IO.File.Exists(_logPath))
+                        { Thread.Sleep(500); continue; }
+
+                    using var fs = new System.IO.FileStream(
+                        _logPath, System.IO.FileMode.Open,
+                        System.IO.FileAccess.Read, System.IO.FileShare.ReadWrite);
+                    fs.Seek(filePos, System.IO.SeekOrigin.Begin);
+                    using var sr = new System.IO.StreamReader(fs);
+
+                    while (_running)
+                    {
+                        var line = sr.ReadLine();
+                        if (line == null) { Thread.Sleep(50); break; }
+                        string hex = System.Text.RegularExpressions
+                            .Regex.Replace(line.Trim(), @"[^0-9a-fA-F]", "");
+                        if (hex.Length < 2) continue;
+                        byte[] raw;
+                        try   { raw = Convert.FromHexString(hex); }
+                        catch { continue; }
+                        DecodeFrames(raw);
+                    }
+                    filePos = fs.Position;
+                }
+                catch { Thread.Sleep(200); }
+            }
+        }
+
+        private void DecodeFrames(byte[] data)
+        {
+            int i = 0;
+            while (i < data.Length - 4)
+            {
+                if (data[i] != 0x01) { i++; continue; }
+                byte ftype = i + 4 < data.Length ? data[i + 4] : (byte)0;
+                int  flen  = ftype == 0x10 ? 25 : ftype == 0x04 ? 12 : 0;
+                if (flen == 0) { i++; continue; }
+                if (i + flen > data.Length) break;
+                if (data[i + 5] != 0x0A) { i++; continue; }
+                if (ftype == 0x10 && data[i + flen - 1] != 0xFF)
+                    { i++; continue; }
+
+                sbyte sample = (sbyte)data[i + 7];
+                lock (_breath)
+                {
+                    if (ftype == 0x10)
+                    {
+                        _breath.Enqueue(sample);
+                        while (_breath.Count > _maxSamples) _breath.Dequeue();
+                    }
+                    else
+                    {
+                        _heart.Enqueue(sample);
+                        while (_heart.Count > _maxSamples) _heart.Dequeue();
+                    }
+                }
+                i += flen;
+            }
+            lock (_breath)
+            {
+                BreathRate = EstimateRate(_breath.ToArray());
+                HeartRate  = EstimateRate(_heart.ToArray());
+            }
+        }
+
+        private static double EstimateRate(sbyte[] samples)
+        {
+            if (samples.Length < 16) return 0;
+            double mean = samples.Average(v => (double)v);
+            var centered = samples.Select(v => v - mean).ToArray();
+            var crossings = new List<int>();
+            for (int i = 1; i < centered.Length; i++)
+                if ((centered[i-1] < 0 && centered[i] >= 0) ||
+                    (centered[i-1] >= 0 && centered[i] < 0))
+                    crossings.Add(i);
+            if (crossings.Count < 4) return 0;
+            var gaps = new List<double>();
+            for (int k = 0; k < crossings.Count - 2; k++)
+                gaps.Add(crossings[k + 2] - crossings[k]);
+            double avgSamples = gaps.Average();
+            return Math.Round((SAMPLE_HZ / avgSamples) * 60.0, 1);
         }
     }
 
