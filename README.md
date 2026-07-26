@@ -1,5 +1,5 @@
 # GEIGER-SDR-oscilloscope
-This is largely a humanitarian poject. I hope you all find peace.
+This is largely a humanitarian project. I hope you all find peace.
 
 j:
 
