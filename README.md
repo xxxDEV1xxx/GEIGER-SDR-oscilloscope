@@ -1,4 +1,6 @@
 # GEIGER-SDR-oscilloscope
+This is largely a humanitarian poject. I hope you all find peace.
+
 j:
 
 j:\True-Sentinel\
