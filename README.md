@@ -1,4 +1,19 @@
 # GEIGER-SDR-oscilloscope
+j:
+
+j:\True-Sentinel\
+python fs5000_serial.py
+python geiger_live_server.py
+
+j:\True-Sentinel\GeigerScope\
+ dotnet build
+ dotnet run
+
+#click calibrate after putting sample under tube fore 10 seconds, let run for 60 seconds or as long as desired then click again to stop calibration
+
+
+
+
 J:\True-Sentinel\
 │
 ├── fs5000_serial.py          — FS-5000 Geiger serial logger (Linux port)
