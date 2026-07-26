@@ -172,6 +172,29 @@ namespace GeigerScope
         private bool _mmOnline  = false;
         private int  _mmWindow  = 100; // 60GHz samples to show (10Hz = 10s)
 
+        // ── CPS forensic monitor fields
+        private readonly Queue<(int Cps, long WallNs)> _cpsLog = new();
+        private const int  CPS_LOG_MAX       = 120;
+        private const int  CLUSTER_WINDOW_S  = 10;
+        private const int  CLUSTER_MIN       = 5;
+        private const int  LOCK_MIN           = 4;
+        private int  _cpsLockCount            = 0;
+        private int  _cpsLastVal              = -1;
+        private long _cpsLockStartNs          = 0;
+        private long _lastClusterAlertNs      = 0;
+        private const long CPS_ALERT_COOLDOWN = 15_000_000_000L;
+
+        // ── Curvature fingerprint logger
+        private record CurvatureRecord(
+            double R, double E, double Re,
+            double DrVal, long WallNs, bool IsPeak);
+        private readonly List<CurvatureRecord> _curvLog       = new();
+        private long   _lastFingerprintNs  = 0;
+        private long   _lastCurvPeakNs     = 0; // dedupe: only log new peaks
+        private long   _lastCurvFloorNs    = 0; // dedupe: only log new floors
+        private const  int  CURV_WINDOW    = 16;
+        private const  long FP_COOLDOWN_NS = 30_000_000_000L;
+
         // ── Draggable tethered badge state ────────────────────────────────────────
         private readonly Dictionary<string, TetheredBadge> _badges          = new();
         private readonly Dictionary<string, Point>         _badgeDefaultPos = new();
@@ -179,8 +202,24 @@ namespace GeigerScope
         private Point          _dragStart;
         private Point          _dragOrigin;
         private long _lastMSignatureNs = 0;   // TriggerNs of last confirmed M entity
-        private bool _debugSig = false;        // toggle signature debug overlay
+        private bool _debugSig    = false; // toggle signature debug overlay
+        private bool   _panoramaMode  = false; // P=full session, scroll=last 120s
+        private int    _panOffset      = 0;     // samples back from tail
+        private bool   _isPanning      = false;
+        private double _panStartX      = 0;
+        private int    _panStartOffset = 0;
+        private long   _lastPanNs      = 0;     // last pan interaction time
+        private const  long PAN_LIVE_TIMEOUT = 3_000_000_000L; // 3s to return live
         private long _lastWSignatureNs = 0;   // TriggerNs of last confirmed W entity
+
+        // ── Calibration System ─────────────────────────────────────────────
+        private bool   _isCalibrating = false;
+        private bool   _calibrated    = false;
+        private string _calName       = "";
+        private double _calPeakDr     = 0.0;
+        private double _calFloorDr    = double.MaxValue;
+        private long   _calStartNs    = 0;
+        private long   _calEndNs      = 0;
 
         // ── Render timer ──────────────────────────────────────────────────
         private readonly DispatcherTimer _renderTimer;
@@ -218,6 +257,12 @@ namespace GeigerScope
                     AddEvent($"[{Ts()}] SIG DEBUG {(_debugSig ? "ON" : "OFF")}",
                         "#AAAAAA");
                 }
+                if (e.Key == System.Windows.Input.Key.P)
+                {
+                    _panoramaMode = !_panoramaMode;
+                    AddEvent($"[{Ts()}] VIEW {(_panoramaMode ? "PANORAMA" : "SCROLL")}",
+                        "#AAAAAA");
+                }
             };
 
             _recTimer.Tick += (_, _) =>
@@ -229,6 +274,57 @@ namespace GeigerScope
                 UpdatePeakRanks();
             };
             _recTimer.Start(); // always running for rank updates
+
+            // Pan/drag on canvas
+            OsciCanvas.MouseLeftButtonDown += (s, e) =>
+            {
+                // Only pan if not clicking a badge
+                if (e.OriginalSource is System.Windows.Shapes.Rectangle ||
+                    e.OriginalSource is System.Windows.Controls.Border ||
+                    e.OriginalSource is System.Windows.Controls.TextBlock)
+                    return;
+                _isPanning      = true;
+                _panStartX      = e.GetPosition(OsciCanvas).X;
+                _panStartOffset = _panOffset;
+                _lastPanNs      = DateTimeOffset.UtcNow
+                    .ToUnixTimeMilliseconds() * 1_000_000L;
+                OsciCanvas.CaptureMouse();
+            };
+            OsciCanvas.MouseMove += (s, e) =>
+            {
+                if (!_isPanning) return;
+                double dx   = e.GetPosition(OsciCanvas).X - _panStartX;
+                double w2   = OsciCanvas.ActualWidth;
+                int    winSz = _panoramaMode ? MAX_SAMPLES : 120;
+                // pixels per sample
+                double pps  = w2 / Math.Max(winSz - 1, 1);
+                int delta   = (int)(-dx / pps);
+                lock (_buffer)
+                {
+                    int maxOff = Math.Max(0, _buffer.Count - winSz);
+                    _panOffset = Math.Clamp(_panStartOffset + delta, 0, maxOff);
+                }
+                _lastPanNs = DateTimeOffset.UtcNow
+                    .ToUnixTimeMilliseconds() * 1_000_000L;
+            };
+            OsciCanvas.MouseLeftButtonUp += (s, e) =>
+            {
+                _isPanning = false;
+                OsciCanvas.ReleaseMouseCapture();
+            };
+            OsciCanvas.MouseWheel += (s, e) =>
+            {
+                // Scroll wheel also pans
+                int step = e.Delta > 0 ? -10 : 10;
+                lock (_buffer)
+                {
+                    int winSz  = _panoramaMode ? MAX_SAMPLES : 120;
+                    int maxOff = Math.Max(0, _buffer.Count - winSz);
+                    _panOffset = Math.Clamp(_panOffset + step, 0, maxOff);
+                }
+                _lastPanNs = DateTimeOffset.UtcNow
+                    .ToUnixTimeMilliseconds() * 1_000_000L;
+            };
             _mmReader.Start();
         }
 
@@ -377,9 +473,95 @@ namespace GeigerScope
                 _lastCpmElapsedSec = elapsedS;
                 if (cps > 0)
                     _currentMinuteCps += cps;
+            // ── CPS forensic monitor
+            if (cps > 0)
+            {
+                _cpsLog.Enqueue((cps, wallNs));
+                while (_cpsLog.Count > CPS_LOG_MAX) _cpsLog.Dequeue();
+
+                // CPS LOCK: identical consecutive readings
+                // P(n identical Poisson) = (e^-λ λ^k/k!)^n → 0
+                if (cps == _cpsLastVal)
+                {
+                    _cpsLockCount++;
+                    if (_cpsLockCount == LOCK_MIN)
+                        AddEvent(
+                            $"[{NsToUtc(wallNs)}] 🔒 CPS LOCK  "
+                            + $"CPS={cps} x{_cpsLockCount}+ consecutive  "
+                            + $"P(Poisson)<<0.001", "#FF00FF");
+                    else if (_cpsLockCount > LOCK_MIN && _cpsLockCount % 5 == 0)
+                        AddEvent(
+                            $"[{NsToUtc(wallNs)}] 🔒 CPS LOCK  "
+                            + $"CPS={cps} x{_cpsLockCount} sustained",
+                            "#CC00CC");
+                }
+                else
+                {
+                    if (_cpsLockCount >= LOCK_MIN)
+                        AddEvent(
+                            $"[{NsToUtc(wallNs)}] 🔒 CPS LOCK END  "
+                            + $"was CPS={_cpsLastVal} x{_cpsLockCount}  "
+                            + $"now CPS={cps}", "#884488");
+                    _cpsLockCount   = 1;
+                    _cpsLockStartNs = wallNs;
+                }
+                _cpsLastVal = cps;
+
+                // CPS CLUSTER: N counts in window
+                // CV_IAT = σ/μ of inter-arrival times
+                // Poisson: CV≈1.0  Structured: CV→0
+                if (wallNs - _lastClusterAlertNs > CPS_ALERT_COOLDOWN)
+                {
+                    long windowStart = wallNs
+                        - (long)CLUSTER_WINDOW_S * 1_000_000_000L;
+                    var winEvts = _cpsLog
+                        .Where(e => e.WallNs >= windowStart).ToList();
+                    int totalCounts = winEvts.Sum(e => e.Cps);
+                    if (totalCounts >= CLUSTER_MIN)
+                    {
+                        double cvIat = 0; string cvStr = "n/a";
+                        if (winEvts.Count >= 3)
+                        {
+                            var iats = new List<double>();
+                            for (int ii = 1; ii < winEvts.Count; ii++)
+                                iats.Add(
+                                    (winEvts[ii].WallNs
+                                    - winEvts[ii-1].WallNs) / 1e9);
+                            double muI = iats.Average();
+                            double s2I = iats.Average(
+                                v => (v-muI)*(v-muI));
+                            cvIat = muI > 0 ? Math.Sqrt(s2I)/muI : 0;
+                            cvStr = $"{cvIat:0.000}";
+                        }
+                        bool structured = cvIat > 0 && cvIat < 0.30;
+                        _lastClusterAlertNs = wallNs;
+                        AddEvent(
+                            $"[{NsToUtc(wallNs)}] ⚡ "
+                            + (structured
+                                ? "STRUCTURED CLUSTER"
+                                : "CPS CLUSTER")
+                            + $"  {totalCounts}cts/{CLUSTER_WINDOW_S}s  "
+                            + $"n={winEvts.Count}  CV_IAT={cvStr}"
+                            + (structured ? "  non-Poisson" : ""),
+                            structured ? "#FF4400" : "#FF8800");
+                    }
+                }
+            }
+            else
+            {
+                if (_cpsLastVal > 0)
+                {
+                    if (_cpsLockCount >= LOCK_MIN)
+                        AddEvent(
+                            $"[{NsToUtc(wallNs)}] 🔒 CPS LOCK END  "
+                            + $"was CPS={_cpsLastVal} x{_cpsLockCount}  now 0",
+                            "#884488");
+                    _cpsLockCount = 0;
+                    _cpsLastVal   = 0;
+                }
             }
 
-            // ── Buffer ────────────────────────────────────────────────
+            // ── Buffer
             double cpsNorm = cps * 0.00812;
             lock (_buffer)
             {
@@ -630,6 +812,7 @@ namespace GeigerScope
                     "#3388FF");
             }
         }
+        }
 
         // ── SDR reading handler ───────────────────────────────────────────
         private void HandleSdrReading(JObject obj)
@@ -806,12 +989,40 @@ namespace GeigerScope
 
             OsciCanvas.Children.Clear();
 
+            // Pan indicator — show when not at live tail
+            if (_panOffset > 0)
+            {
+                double secBack = _panOffset; // 1Hz samples = seconds
+                var panBadge = MakeBadge(
+                    $"◄ -{secBack:0}s  DRAG or SCROLL to pan  ► live",
+                    Color.FromArgb(0xEE, 0xFF, 0xFF, 0x00),
+                    Color.FromArgb(0xCC, 0x1A, 0x1A, 0x00), 10);
+                Canvas.SetLeft(panBadge, OsciCanvas.ActualWidth / 2 - 120);
+                Canvas.SetTop(panBadge,  OsciCanvas.ActualHeight - 24);
+                OsciCanvas.Children.Add(panBadge);
+            }
+
             SamplePoint[] samples;
             double peakDr, peak2Dr, peak3Dr, minDr;
             long   sessionStart;
             lock (_buffer)
             {
-                samples      = _buffer.ToArray();
+                var allSamples = _buffer.ToArray();
+                // Auto-return to live after PAN_LIVE_TIMEOUT
+                long nowNs = DateTimeOffset.UtcNow
+                    .ToUnixTimeMilliseconds() * 1_000_000L;
+                if (!_isPanning && _panOffset > 0
+                    && nowNs - _lastPanNs > PAN_LIVE_TIMEOUT)
+                    _panOffset = 0; // snap back to live
+
+                // SCROLL: 120-sample window, panned by _panOffset
+                // PANORAMA: full buffer, panned by _panOffset
+                int winSize = _panoramaMode ? MAX_SAMPLES : 120;
+                int tail    = Math.Max(0, allSamples.Length - _panOffset);
+                int head    = Math.Max(0, tail - winSize);
+                samples     = allSamples.Length > 0
+                    ? allSamples[head..tail]
+                    : allSamples;
                 peakDr       = _peakDr;
                 peak2Dr      = _peak2Dr;
                 peak3Dr      = _peak3Dr;
@@ -1087,24 +1298,25 @@ namespace GeigerScope
                 }
             }
 
-            double[] cpsArr = Smooth(
-                samples.Select(s => s.CpsNorm).ToArray(), 3);
-            double cpsMax = cpsArr.Length > 0
-                ? Math.Max(cpsArr.Max(), 0.001) : 0.001;
-
-            // CPS waveform (orange, lower 35%)
-            var cpsPoly = new Polyline
+            // CPS raw bars — unsmoothed, each count a discrete spike to zero
+            double[] cpsRaw = samples.Select(s => s.CpsNorm).ToArray();
+            double cpsMax = cpsRaw.Length > 0
+                ? Math.Max(cpsRaw.Max(), 0.001) : 0.001;
+            for (int ci = 0; ci < n && ci < cpsRaw.Length; ci++)
             {
-                Stroke = new SolidColorBrush(
-                    Color.FromArgb(0x77, 0xFF, 0xAA, 0x00)),
-                StrokeThickness = 1.2,
-                StrokeLineJoin  = PenLineJoin.Round,
-            };
-            for (int i = 0; i < n; i++)
-                cpsPoly.Points.Add(new Point(
-                    i * xStep,
-                    Math.Clamp(h - (cpsArr[i] / cpsMax) * h * 0.32, 0, h)));
-            OsciCanvas.Children.Add(cpsPoly);
+                double cx   = ci * xStep;
+                double ctop = cpsRaw[ci] > 0
+                    ? Math.Clamp(h - (cpsRaw[ci] / cpsMax) * h * 0.32, 0, h)
+                    : h;
+                OsciCanvas.Children.Add(new Line
+                {
+                    X1 = cx, Y1 = h,
+                    X2 = cx, Y2 = ctop,
+                    Stroke = new SolidColorBrush(
+                        Color.FromArgb(0xBB, 0xFF, 0xAA, 0x00)),
+                    StrokeThickness = Math.Max(0.8, xStep * 0.6),
+                });
+            }
 
             // ── 60GHz mmWave overlay (sliding window, full resolution)
             {
@@ -1537,6 +1749,21 @@ namespace GeigerScope
                         Canvas.SetLeft(cl, 36);
                         Canvas.SetTop(cl, py + 4);
                         OsciCanvas.Children.Add(cl);
+                        // Log peak1 curvature — only when peak timestamp changes
+                        if (rad < 9999 && rAp < 9999)
+                        {
+                            long pkNs = pi < samples.Length
+                                ? samples[pi].WallNs : 0L;
+                            if (pkNs != _lastCurvPeakNs && pkNs > 0)
+                            {
+                                _lastCurvPeakNs = pkNs;
+                                _curvLog.Add(new CurvatureRecord(
+                                    rad, ecc, rAp, peakDr, pkNs, true));
+                                if (_curvLog.Count > 200)
+                                    _curvLog.RemoveAt(0);
+                                AnalyzeCurvatureFingerprint(pkNs);
+                            }
+                        }
                     }
                 }
 
@@ -1697,6 +1924,20 @@ namespace GeigerScope
                         Canvas.SetRight(cl, 576);
                         Canvas.SetTop(cl, fy + 18);
                         OsciCanvas.Children.Add(cl);
+                        // Log floor curvature — only when floor timestamp changes
+                        if (rad < 9999 && rAp < 9999)
+                        {
+                            long flNs = pi < samples.Length
+                                ? samples[pi].WallNs : 0L;
+                            if (flNs != _lastCurvFloorNs && flNs > 0)
+                            {
+                                _lastCurvFloorNs = flNs;
+                                _curvLog.Add(new CurvatureRecord(
+                                    rad, ecc, rAp, minDr, flNs, false));
+                                if (_curvLog.Count > 200)
+                                    _curvLog.RemoveAt(0);
+                            }
+                        }
                     }
                 }
             }
@@ -2283,8 +2524,74 @@ namespace GeigerScope
             DateTimeOffset.FromUnixTimeMilliseconds(ns / 1_000_000)
                           .UtcDateTime.ToString("HH:mm:ss");
 
-        private void OsciCanvas_SizeChanged(
-            object sender, SizeChangedEventArgs e) => RenderScope();
+        // ── Calibration Button ─────────────────────────────────────────────
+        private void BtnCalibrate_Click(object sender, RoutedEventArgs e)
+        {
+            if (_isCalibrating)
+            {
+                StopCalibration();
+                return;
+            }
+
+            if (!_connected)
+            {
+                MessageBox.Show("Please connect to the instrument first.", "Not Connected", 
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (_calibrated)
+            {
+                var res = MessageBox.Show("Already calibrated.\nRecalibrate?", "Confirm", 
+                    MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (res != MessageBoxResult.Yes) return;
+                _calibrated = false;
+            }
+
+            string name = Microsoft.VisualBasic.Interaction.InputBox(
+                "Enter sample name (e.g. Thorium):", "Calibration", "Thorium");
+
+            if (string.IsNullOrWhiteSpace(name)) return;
+
+            _calName = name.Trim();
+            _isCalibrating = true;
+            _calStartNs = 0;
+            _calPeakDr = 0.0;
+            _calFloorDr = double.MaxValue;
+
+            BtnCalibrate.Content = "🛑 STOP CALIBRATION";
+            BtnCalibrate.Background = new SolidColorBrush(Colors.OrangeRed);
+
+            AddEvent($"[{Ts()}] 🔧 CALIBRATION START — {_calName}", "#FFAA00");
+        }
+
+        private void StopCalibration()
+        {
+            _isCalibrating = false;
+
+            BtnCalibrate.Content = "🔧 CALIBRATE";
+            BtnCalibrate.Background = new SolidColorBrush(Color.FromRgb(0x00, 0x66, 0xAA));
+
+            if (_buffer.Count == 0)
+            {
+                AddEvent($"[{Ts()}] ⚠ Calibration aborted - no data", "#FF4444");
+                return;
+            }
+
+            lock (_buffer)
+            {
+                _calPeakDr  = _buffer.Max(s => s.Dr);
+                _calFloorDr = _buffer.Min(s => s.Dr);
+            }
+
+            _calibrated = true;
+
+            string msg = $"[{Ts()}] ✅ CALIBRATION COMPLETE — {_calName} | Peak={_calPeakDr:0.0000} | Floor={_calFloorDr:0.0000}";
+            AddEvent(msg, "#00FF88");
+            _rawData.Insert(0, $"[CAL] {_calName} | PEAK={_calPeakDr:0.0000} | FLOOR={_calFloorDr:0.0000}");
+        }
+
+        private void OsciCanvas_SizeChanged(object sender, SizeChangedEventArgs e) => RenderScope();
 
 
 
@@ -2337,6 +2644,127 @@ namespace GeigerScope
 
             // Rebuild panel with current rank colors
             RefreshPeakPanel();
+        }
+
+
+        // ── EMF Curvature Fingerprint Analyser ───────────────────────────────────────
+        private void AnalyzeCurvatureFingerprint(long wallNs)
+        {
+            if (_curvLog.Count < 6) return;
+            if (wallNs - _lastFingerprintNs < FP_COOLDOWN_NS) return;
+
+            var peaks  = _curvLog.Where(r =>  r.IsPeak).ToList();
+            var floors = _curvLog.Where(r => !r.IsPeak).ToList();
+            if (peaks.Count < 3 || floors.Count < 2) return;
+
+            // 1. Poisson Variance Ratio χ²/μ
+            // Natural decay: σ²_R / μ_R ≈ 1.0  Structured: → 0
+            // Knoll, Radiation Detection §3.2
+            double muR  = peaks.Average(r => r.R);
+            double s2R  = peaks.Average(r => (r.R - muR) * (r.R - muR));
+            double pvr  = muR > 0 ? s2R / muR : 99.0;
+            bool pvFlag = pvr < 0.15;
+
+            // 2. Amplitude Modulation Index m = (A↑-A↓)/(A↑+A↓)
+            // Haykin, Communication Systems §3.1
+            double muPk = peaks.Average(r => r.DrVal);
+            double muFl = floors.Average(r => r.DrVal);
+            double m    = (muPk + muFl) > 0 ? (muPk - muFl) / (muPk + muFl) : 0;
+            bool mFlag  = m >= 0.25 && m <= 0.85;
+
+            // 3. Standing Wave Ratio SWR = V_peak / V_floor
+            // Pozar, Microwave Engineering §2.3
+            double swr   = muFl > 0.001 ? muPk / muFl : 0;
+            double gamma = swr > 0 ? (swr - 1.0) / (swr + 1.0) : 0;
+            double rl    = gamma > 0.001 ? -20.0 * Math.Log10(gamma) : 99.0;
+            bool swrFlag = swr > 1.8;
+
+            // 4. Curvature CV_R = σ_R / μ_R
+            double cvR  = muR > 0 ? Math.Sqrt(s2R) / muR : 99.0;
+            bool cvFlag = cvR < 0.12;
+
+            // 5. Power Spectral Coherence PSCI = 1 - σ²/μ²
+            // Mandel & Wolf, Optical Coherence §4.7
+            double muDr   = peaks.Average(r => r.DrVal);
+            double s2Dr   = peaks.Average(r => (r.DrVal - muDr) * (r.DrVal - muDr));
+            double psci   = muDr > 0 ? Math.Clamp(1.0 - s2Dr/(muDr*muDr), 0, 1) : 0;
+            bool psciFlag = psci > 0.80;
+
+            // 6. Apex Radius Consistency CV_Re = σ_Re / μ_Re
+            double muRe  = peaks.Average(r => r.Re);
+            double s2Re  = peaks.Average(r => (r.Re - muRe) * (r.Re - muRe));
+            double cvRe  = muRe > 0 ? Math.Sqrt(s2Re) / muRe : 99.0;
+            bool reFlag  = cvRe < 0.15;
+
+            // 7. Eccentricity Stability CV_e = σ_e / μ_e
+            double muE  = peaks.Average(r => r.E);
+            double s2E  = peaks.Average(r => (r.E - muE) * (r.E - muE));
+            double cvE  = muE > 0 ? Math.Sqrt(s2E) / muE : 99.0;
+            bool eFlag  = cvE < 0.05;
+
+            // 8. ELF/SLF Modulation Frequency f = 1/T
+            // ITU Radio Regulations, Article 2
+            double fMod = 0; string fBand = "---";
+            {
+                var sp = peaks.OrderBy(r => r.WallNs).ToList();
+                var iv = new List<double>();
+                for (int ii = 1; ii < sp.Count; ii++)
+                    iv.Add((sp[ii].WallNs - sp[ii-1].WallNs) / 1e9);
+                if (iv.Count > 0)
+                {
+                    double T = iv.Average();
+                    fMod  = T > 0 ? 1.0/T : 0;
+                    fBand = fMod switch {
+                        > 0 and < 0.003  => $"ULF {fMod*1000:0.000} mHz",
+                        >= 0.003 and < 0.03 => $"ELF {fMod*1000:0.00} mHz",
+                        >= 0.03  and < 0.3  => $"SLF {fMod:0.000} Hz",
+                        >= 0.3   and < 3.0  => $"LF  {fMod:0.00} Hz",
+                        _ => $"MF  {fMod:0.0} Hz"
+                    };
+                }
+            }
+
+            int score = (pvFlag?1:0)+(mFlag?1:0)+(swrFlag?1:0)
+                      + (cvFlag?1:0)+(psciFlag?1:0)+(reFlag?1:0)+(eFlag?1:0);
+
+            if (score < 3) return;
+            _lastFingerprintNs = wallNs;
+
+            string sev   = score >= 6 ? "⚠⚠ DEFINITIVE"
+                         : score >= 5 ? "⚠⚠ STRONG"
+                         : score >= 4 ? "⚠ PROBABLE"
+                         :              "⚠ POSSIBLE";
+            string color = score >= 6 ? "#FF2222"
+                         : score >= 5 ? "#FF6600"
+                         : score >= 4 ? "#FFAA00"
+                         :              "#FFFF00";
+
+            AddEvent(
+                $"[{Ts()}] {sev} EMF FINGERPRINT  score={score}/7  " +
+                $"n={peaks.Count}pk/{floors.Count}fl",
+                color);
+            AddEvent(
+                $"  χ²/μ={pvr:0.000}{(pvFlag?" ✓":"")}  " +
+                $"m={m:0.000}{(mFlag?" ✓":"")}  " +
+                $"SWR={swr:0.00}{(swrFlag?" ✓":"")}  " +
+                $"Γ={gamma:0.000}  RL={rl:0.0}dB",
+                "#CC8800");
+            AddEvent(
+                $"  CV_R={cvR:0.000}{(cvFlag?" ✓":"")}  " +
+                $"PSCI={psci:0.000}{(psciFlag?" ✓":"")}  " +
+                $"CV_Re={cvRe:0.000}{(reFlag?" ✓":"")}  " +
+                $"CV_e={cvE:0.000}{(eFlag?" ✓":"")}",
+                "#CC8800");
+            AddEvent(
+                $"  f_mod={fBand}  μR={muR:0.0}  μRe={muRe:0.0}  μe={muE:0.000}",
+                "#CC8800");
+
+            string interp = score >= 6
+                ? "Geometry INCONSISTENT with Poisson decay. Closed-loop power control confirmed."
+                : score >= 4
+                ? "Statistically improbable for natural source. Structured emission indicated."
+                : "Multiple physics parameters outside natural variance range.";
+            AddEvent($"  {interp}", "#AA6600");
         }
 
         private void RefreshPeakPanel()
@@ -2951,23 +3379,48 @@ namespace GeigerScope
         private void TailLoop()
         {
             long filePos = 0;
+            // Keep file open persistently — don't close/reopen on EOF
+            // Only re-open if file disappears or is recreated smaller
+            System.IO.FileStream? fs = null;
+            System.IO.StreamReader? sr = null;
+
             while (_running)
             {
                 try
                 {
                     if (!System.IO.File.Exists(_logPath))
-                        { Thread.Sleep(500); continue; }
+                    {
+                        fs?.Dispose(); sr?.Dispose();
+                        fs = null; sr = null; filePos = 0;
+                        Thread.Sleep(500); continue;
+                    }
 
-                    using var fs = new System.IO.FileStream(
-                        _logPath, System.IO.FileMode.Open,
-                        System.IO.FileAccess.Read, System.IO.FileShare.ReadWrite);
-                    fs.Seek(filePos, System.IO.SeekOrigin.Begin);
-                    using var sr = new System.IO.StreamReader(fs);
+                    // Detect file rotation (truncated or replaced)
+                    long diskSize = new System.IO.FileInfo(_logPath).Length;
+                    if (diskSize < filePos)
+                    {
+                        fs?.Dispose(); sr?.Dispose();
+                        fs = null; sr = null; filePos = 0;
+                    }
 
+                    // Open once, keep open
+                    if (fs == null)
+                    {
+                        fs = new System.IO.FileStream(
+                            _logPath, System.IO.FileMode.Open,
+                            System.IO.FileAccess.Read,
+                            System.IO.FileShare.ReadWrite);
+                        fs.Seek(filePos, System.IO.SeekOrigin.Begin);
+                        sr = new System.IO.StreamReader(fs);
+                    }
+
+                    // Drain all available lines
+                    bool gotAny = false;
                     while (_running)
                     {
-                        var line = sr.ReadLine();
-                        if (line == null) { Thread.Sleep(50); break; }
+                        var line = sr!.ReadLine();
+                        if (line == null) break; // EOF — wait for more
+                        gotAny = true;
                         string hex = System.Text.RegularExpressions
                             .Regex.Replace(line.Trim(), @"[^0-9a-fA-F]", "");
                         if (hex.Length < 2) continue;
@@ -2976,10 +3429,22 @@ namespace GeigerScope
                         catch { continue; }
                         DecodeFrames(raw);
                     }
+
+                    // Update position after draining
                     filePos = fs.Position;
+
+                    // Sleep briefly if nothing new — avoids busy loop
+                    if (!gotAny) Thread.Sleep(40);
                 }
-                catch { Thread.Sleep(200); }
+                catch
+                {
+                    fs?.Dispose(); sr?.Dispose();
+                    fs = null; sr = null;
+                    Thread.Sleep(200);
+                }
             }
+            fs?.Dispose();
+            sr?.Dispose();
         }
 
         private void DecodeFrames(byte[] data)
