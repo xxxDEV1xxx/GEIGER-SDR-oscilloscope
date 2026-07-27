@@ -189,6 +189,18 @@ namespace GeigerScope
         private const  long BEAT_COOLDOWN   = 60_000_000_000L;
         private const  int  BEAT_MIN_CYCLES = 2;
 
+        // ── OOK burst pattern detector
+        // Detects: repeated identical-CPS bursts separated by zero gaps
+        // Signature of On/Off Keying — structured pulsed source
+        private readonly List<(int Cps, int RunLen, int GapLen)> _ookBursts = new();
+        private int  _ookCurrentCps    = 0;
+        private int  _ookCurrentRun    = 0;
+        private int  _ookCurrentGap    = 0;
+        private bool _ookInBurst       = false;
+        private long _ookLastFireNs    = 0;
+        private const long OOK_COOLDOWN = 45_000_000_000L; // 45s
+        private const int  OOK_MIN_REPS = 3; // min repeated burst cycles
+
         // ── CPS forensic monitor fields
         private readonly Queue<(int Cps, long WallNs)> _cpsLog = new();
         private const int  CPS_LOG_MAX       = 120;
@@ -670,18 +682,124 @@ namespace GeigerScope
                     }
                 }
                 }
-                if (_calSampleCount % 30 == 0)
+
+            }
+
+            // ── OOK burst pattern detector
+            // Tracks: burst(identical CPS run) → gap(zero CPS) → burst → gap
+            // Fires when ≥3 cycles have consistent burst CPS + duration
+            {
+                if (cps > 0)
                 {
-                    double elapsed = _calStartNs > 0
-                        ? (wallNs-_calStartNs)/1e9 : 0;
-                    string integ = _calCompromised
-                        ? " ⚠COMPROMISED" : " ✅OK";
-                    AddEvent(
-                        $"[{NsToUtc(wallNs)}] 🔬 CAL:{_calName}{integ}  "
-                        +$"t={elapsed:0.0}s  DR={dr:0.0000}  "
-                        +$"peak={_calPeakDr:0.0000}  "
-                        +$"floor={(_calFloorDr<double.MaxValue?_calFloorDr:0):0.0000}",
-                        _calCompromised ? "#FF4400" : "#00CCFF");
+                    if (_ookInBurst && cps == _ookCurrentCps)
+                    {
+                        // Continuing current burst
+                        _ookCurrentRun++;
+                    }
+                    else
+                    {
+                        // New burst starts (different CPS or was in gap)
+                        if (_ookInBurst && _ookCurrentGap > 0)
+                        {
+                            // Complete burst+gap cycle recorded
+                            _ookBursts.Add((
+                                _ookCurrentCps,
+                                _ookCurrentRun,
+                                _ookCurrentGap));
+                            if (_ookBursts.Count > 20)
+                                _ookBursts.RemoveAt(0);
+                        }
+                        _ookInBurst    = true;
+                        _ookCurrentCps = cps;
+                        _ookCurrentRun = 1;
+                        _ookCurrentGap = 0;
+                    }
+                }
+                else
+                {
+                    // Zero CPS — in gap
+                    if (_ookInBurst)
+                        _ookCurrentGap++;
+                }
+
+                // Analyse when we have enough cycles
+                if (_ookBursts.Count >= OOK_MIN_REPS
+                    && wallNs - _ookLastFireNs > OOK_COOLDOWN)
+                {
+                    // Check consistency: same CPS value across bursts
+                    var recent = _ookBursts
+                        .Skip(Math.Max(0, _ookBursts.Count - 6))
+                        .ToList();
+
+                    // Group by CPS value — dominant CPS
+                    var byCps = recent
+                        .GroupBy(b => b.Cps)
+                        .OrderByDescending(g => g.Count())
+                        .First();
+                    int dominantCps  = byCps.Key;
+                    int matchCount   = byCps.Count();
+
+                    if (matchCount >= OOK_MIN_REPS)
+                    {
+                        var matched = byCps.ToList();
+                        double avgRun = matched.Average(b => b.RunLen);
+                        double avgGap = matched.Average(b => b.GapLen);
+                        double cvRun  = avgRun > 0
+                            ? matched.Select(b => (double)b.RunLen)
+                                .Select(v => Math.Pow(v-avgRun,2))
+                                .Average()
+                                / avgRun
+                            : 99;
+                        double cvGap  = avgGap > 0
+                            ? matched.Select(b => (double)b.GapLen)
+                                .Select(v => Math.Pow(v-avgGap,2))
+                                .Average()
+                                / avgGap
+                            : 99;
+
+                        // Consistent = low CV on both run and gap
+                        bool isOok = cvRun < 0.30 && cvGap < 0.50;
+
+                        if (isOok)
+                        {
+                            _ookLastFireNs = wallNs;
+
+                            // Duty cycle and period
+                            double period   = avgRun + avgGap;
+                            double duty     = period > 0 ? avgRun/period : 0;
+                            double freqHz   = period > 0 ? 1.0/period : 0;
+                            string band     = freqHz switch {
+                                > 0 and < 0.003    => "ULF",
+                                >= 0.003 and < 0.03 => "ELF",
+                                >= 0.03  and < 0.3  => "SLF",
+                                >= 0.3   and < 3.0  => "LF",
+                                _ => "MF+" };
+
+                            // RF power estimate
+                            double pEst = dominantCps
+                                * RF_DIST * RF_DIST / RF_K_MID;
+
+                            AddEvent(
+                                $"[{NsToUtc(wallNs)}] ⚡ OOK BURST PATTERN  "
+                                + $"CPS={dominantCps}  "
+                                + $"burst={avgRun:0.0}s  gap={avgGap:0.0}s  "
+                                + $"duty={duty:0.00}  cycles={matchCount}",
+                                "#FF8800");
+                            AddEvent(
+                                $"  f={freqHz:0.000}Hz ({band})  "
+                                + $"T={period:0.0}s  "
+                                + $"CV_run={cvRun:0.000}  "
+                                + $"CV_gap={cvGap:0.000}  "
+                                + $"RF≈{pEst:0.0}W@{RF_DIST}m",
+                                "#FF8800");
+                            AddEvent(
+                                $"  ON/OFF KEYING SIGNATURE  "
+                                + $"identical CPS={dominantCps} "
+                                + $"repeated {matchCount}x  "
+                                + $"structured pulsed source confirmed",
+                                "#FF4400");
+                        }
+                    }
                 }
             }
 
