@@ -235,6 +235,23 @@ namespace GeigerScope
         private string _calName       = "";
         private double _calPeakDr     = 0.0;
         private double _calFloorDr    = double.MaxValue;
+        private bool   _calFieldMode   = false;
+        private bool   _cleanCalValid  = false;
+        private string _cleanCalName   = "";
+        private double _cleanCalPeak   = 0.0;
+        private double _cleanCalFloor  = double.MaxValue;
+        private bool   _fieldCalValid  = false;
+        private string _fieldCalName   = "";
+        private double _fieldCalPeak   = 0.0;
+        private double _fieldCalFloor  = double.MaxValue;
+        private const double CAL_CLEAN_POISSON_MIN = 0.30;
+        private const double CAL_CLEAN_POISSON_MAX = 3.00;
+        private const double CAL_CLEAN_LOCK_MAX    = 0.40;
+        private const double CAL_CLEAN_PF_MAX      = 3.0;
+        private const double CAL_FIELD_POISSON_MIN = 0.10;
+        private const double CAL_FIELD_POISSON_MAX = 6.00;
+        private const double CAL_FIELD_LOCK_MAX    = 0.80;
+        private const double CAL_FIELD_PF_MAX      = 6.0;
         private long   _calStartNs    = 0;
         private long   _calEndNs      = 0;
         private bool   _calCompromised     = false;
@@ -244,6 +261,8 @@ namespace GeigerScope
         private readonly Queue<(int Cps, long WallNs)> _calCpsLog = new();
         private const double CAL_CV_IAT_MIN = 0.60;
         private const double CAL_CV_IAT_MAX = 1.40;
+        private const double CAL_POISSON_MIN = 0.20;  // low count rate = high variance
+        private const double CAL_POISSON_MAX = 4.00;  // natural low-activity source
 
         // ── Render timer ──────────────────────────────────────────────────
         private readonly DispatcherTimer _renderTimer;
@@ -619,30 +638,39 @@ namespace GeigerScope
                     if (_calCpsLog.Count > 60) _calCpsLog.Dequeue();
                 }
                 if (_calSampleCount % 10 == 0
-                    && _calCpsLog.Count >= 6 && !_calCompromised)
+                    && _calCpsLog.Count >= 30 && !_calCompromised)
                 {
-                    var arr = _calCpsLog.ToArray();
-                    var iats = new List<double>();
-                    for (int ii=1; ii<arr.Length; ii++)
-                        iats.Add((arr[ii].WallNs-arr[ii-1].WallNs)/1e9);
-                    if (iats.Count >= 4)
+                    var allC2 = _calCpsLog.Select(e => (double)e.Cps)
+                        .OrderBy(v=>v).ToList();
+                    double trimPct2 = _calFieldMode ? 0.70 : 0.90;
+                    var counts2 = allC2.Take(
+                        Math.Max(4,(int)(allC2.Count*trimPct2))).ToList();
+                    double muC2 = counts2.Average();
+                    double s2C2 = counts2.Average(v=>(v-muC2)*(v-muC2));
+                    double pr2  = muC2>0 ? s2C2/muC2 : 0;
+                    var ca2r    = _calCpsLog.ToArray();
+                    int lockR2  = 0;
+                    for (int ii=1; ii<ca2r.Length; ii++)
+                        if (ca2r[ii].Cps==ca2r[ii-1].Cps) lockR2++;
+                    double lockF2 = ca2r.Length>1
+                        ? (double)lockR2/(ca2r.Length-1) : 0;
+                    double rtMin2  = _calFieldMode
+                        ? CAL_FIELD_POISSON_MIN : CAL_CLEAN_POISSON_MIN;
+                    double rtLock2 = _calFieldMode
+                        ? CAL_FIELD_LOCK_MAX : CAL_CLEAN_LOCK_MAX;
+                    if (pr2 < rtMin2 && lockF2 > rtLock2)
                     {
-                        double mu = iats.Average();
-                        double s2 = iats.Average(v=>(v-mu)*(v-mu));
-                        double cv = mu>0 ? Math.Sqrt(s2)/mu : 0;
-                        if (cv < CAL_CV_IAT_MIN)
-                        {
-                            _calCompromised = true;
-                            AddEvent(
-                                $"[{NsToUtc(wallNs)}] ⚠ CAL COMPROMISED  "
-                                +$"CV_IAT={cv:0.000}<{CAL_CV_IAT_MIN}  "
-                                +"STRUCTURED CPS INJECTION DETECTED  "
-                                +"Natural isotope CV_IAT≈1.0",
-                                "#FF0000");
-                        }
+                        _calCompromised = true;
+                        AddEvent(
+                            $"[{NsToUtc(wallNs)}] ⚠ CAL COMPROMISED  "
+                            +$"σ²/μ={pr2:0.000}<{rtMin2}  "
+                            +$"lock={lockF2:0.000}>{rtLock2}  "
+                            +"BOTH tests failed",
+                            "#FF0000");
                     }
                 }
-                if (_calSampleCount % 5 == 0)
+                }
+                if (_calSampleCount % 30 == 0)
                 {
                     double elapsed = _calStartNs > 0
                         ? (wallNs-_calStartNs)/1e9 : 0;
@@ -990,11 +1018,18 @@ namespace GeigerScope
                 string dir   = _peakDr > _lastPeakEvent ? "▲ ROSE" : "▼ FELL";
                 string rStr  = evR   < 9999 ? $"R={evR:0.0}px"   : "R=∞";
                 string reStr = evRAp < 9999 ? $"Re={evRAp:0.0}px" : "Re=∞";
+                string calCmp = "";
+                if (_cleanCalValid)
+                    calCmp += $" CLNΔP={_peakDr-_cleanCalPeak:+0.0000}"
+                           + $" ΔF={_minDr-_cleanCalFloor:+0.0000}";
+                if (_fieldCalValid)
+                    calCmp += $" FLDΔP={_peakDr-_fieldCalPeak:+0.0000}"
+                           + $" ΔF={_minDr-_fieldCalFloor:+0.0000}";
                 AddEvent(
                     $"[{NsToUtc(wallNs)}] 🔔 PEAK SHIFT {dir}  " +
                     $"{_lastPeakEvent:0.0000} → {_peakDr:0.0000} µSv/h  " +
                     $"Δ={_peakDr-_lastPeakEvent:+0.0000;-0.0000}  " +
-                    $"∠{evAng:0.0}°  {rStr}  e={evEcc:0.00}  {reStr}",
+                    $"∠{evAng:0.0}°  {rStr}  e={evEcc:0.00}  {reStr}" + calCmp,
                     "#FFFF00");
                 _lastPeakEvent = _peakDr;
             }
@@ -1012,7 +1047,6 @@ namespace GeigerScope
                     $"∠{evAng:0.0}°  {rStr}  e={evEcc:0.00}  {reStr}",
                     "#3388FF");
             }
-        }
         }
 
         // ── SDR reading handler ───────────────────────────────────────────
@@ -2749,8 +2783,20 @@ namespace GeigerScope
                 _calibrated = false;
             }
 
+            // Ask for mode first
+            var modeResult = MessageBox.Show(
+                "Select calibration mode:\n\n"
+                + "YES  = CLEAN CAL (isolated environment, strict)\n"
+                + "NO   = FIELD CAL (hostile/noisy environment, wide thresholds)",
+                "Calibration Mode",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            _calFieldMode = (modeResult == MessageBoxResult.No);
+
             string name = Microsoft.VisualBasic.Interaction.InputBox(
-                "Enter sample name (e.g. Thorium):", "Calibration", "Thorium");
+                $"Enter sample name (e.g. Thorium):\n"
+                + $"Mode: {(_calFieldMode ? "FIELD (hostile)" : "CLEAN (isolated)")}",
+                "Calibration", "Thorium");
 
             if (string.IsNullOrWhiteSpace(name)) return;
 
@@ -2791,45 +2837,78 @@ namespace GeigerScope
                 _calFloorDr = _buffer.Min(s => s.Dr);
             }
 
-            double calCV = 0;
+            // Poisson variance test on TRIMMED counts
+            // Trim top 20% to remove attack burst outliers
+            // leaving only the natural background signal for testing
+            double calPR = 0;
+            int calLockRuns = 0;
             if (_calCpsLog.Count >= 4)
             {
-                var arr2 = _calCpsLog.ToArray();
-                var iv2  = new List<double>();
-                for (int ii=1; ii<arr2.Length; ii++)
-                    iv2.Add((arr2[ii].WallNs-arr2[ii-1].WallNs)/1e9);
-                double mu2 = iv2.Average();
-                double s22 = iv2.Average(v=>(v-mu2)*(v-mu2));
-                calCV = mu2>0 ? Math.Sqrt(s22)/mu2 : 0;
+                var ca2  = _calCpsLog.ToArray();
+                // Sort and trim top 20% (attack bursts are high outliers)
+                var allCnts = ca2.Select(e => (double)e.Cps)
+                    .OrderBy(v => v).ToList();
+                int trimCount = Math.Max(4,
+                    (int)(allCnts.Count * 0.80));
+                var cnts = allCnts.Take(trimCount).ToList();
+                double mu3 = cnts.Average();
+                double s23 = cnts.Average(v=>(v-mu3)*(v-mu3));
+                calPR = mu3>0 ? s23/mu3 : 0;
+                // Lock test on consecutive pairs
+                for (int ii=1; ii<ca2.Length; ii++)
+                    if (ca2[ii].Cps==ca2[ii-1].Cps) calLockRuns++;
             }
-            double calRatio = _calFloorDr>0.0001 && _calFloorDr<double.MaxValue
+            double lockFrac2 = _calCpsLog.Count>1
+                ? (double)calLockRuns/(_calCpsLog.Count-1) : 0;
+            double calRatio  = _calFloorDr>0.0001 && _calFloorDr<double.MaxValue
                 ? _calPeakDr/_calFloorDr : 0;
-            bool isNatural = !_calCompromised
-                && calCV >= CAL_CV_IAT_MIN
-                && calCV <= CAL_CV_IAT_MAX
-                && calRatio < 3.5;
-            string validity = isNatural
+            bool isNatural   = !_calCompromised
+                && calPR >= CAL_POISSON_MIN
+                && calPR <= CAL_POISSON_MAX
+                && lockFrac2 < 0.70
+                && calRatio < 4.0;
+            string validity  = isNatural
                 ? "✅ VALID NATURAL SOURCE"
                 : _calCompromised
                     ? "⚠ INVALID — STRUCTURED INJECTION"
-                    : $"⚠ QUESTIONABLE — CV_IAT={calCV:0.000}";
+                    : $"⚠ QUESTIONABLE — σ²/μ={calPR:0.000}";
             _calibrated = isNatural;
-            _calEndNs   = DateTimeOffset.UtcNow
-                .ToUnixTimeMilliseconds() * 1_000_000L;
+            if (isNatural)
+            {
+                if (_calFieldMode)
+                {
+                    _fieldCalValid = true;
+                    _fieldCalName  = _calName;
+                    _fieldCalPeak  = _calPeakDr;
+                    _fieldCalFloor = _calFloorDr < double.MaxValue ? _calFloorDr : 0;
+                }
+                else
+                {
+                    _cleanCalValid = true;
+                    _cleanCalName  = _calName;
+                    _cleanCalPeak  = _calPeakDr;
+                    _cleanCalFloor = _calFloorDr < double.MaxValue ? _calFloorDr : 0;
+                }
+            }
 
-            string msg = $"[{Ts()}] ✅ CALIBRATION COMPLETE — {_calName} | Peak={_calPeakDr:0.0000} | Floor={_calFloorDr:0.0000}";
+            double calDuration = _calStartNs > 0
+                ? (_calEndNs - _calStartNs) / 1e9 : 0;
+            string msg = $"[{Ts()}] ✅ CALIBRATION COMPLETE — {_calName} | "
+                + $"Peak={_calPeakDr:0.0000} | Floor={_calFloorDr:0.0000} | "
+                + $"Duration={calDuration:0.0}s";
             AddEvent(msg, "#00FF88");
             AddEvent(
                 $"[{Ts()}] {validity}  "
-                +$"CV_IAT={calCV:0.000}  P/F={calRatio:0.00}  "
-                +$"(natural CV {CAL_CV_IAT_MIN}-{CAL_CV_IAT_MAX} P/F<3.5)",
+                +$"σ²/μ={calPR:0.000} "
+                +$"(natural {CAL_POISSON_MIN}-{CAL_POISSON_MAX})  "
+                +$"lock={lockFrac2:0.000}  P/F={calRatio:0.00}",
                 isNatural ? "#00FF88" : "#FF0000");
             if (!isNatural)
                 AddEvent(
                     "[" + Ts() + "] CAL REJECTED — "
                     +"Signature inconsistent with natural isotope. "
-                    +"Thorium-232: CV_IAT≈1.0 flat emission. "
-                    +"W/M envelope + structured CPS = RF source.",
+                    +"Thorium-232: σ²/μ≈1.0 Poisson. "
+                    +"Structured CPS or W/M envelope = RF source.",
                     "#FF0000");
             _rawData.Insert(0, $"[CAL] {_calName} | PEAK={_calPeakDr:0.0000} | FLOOR={_calFloorDr:0.0000}");
         }
@@ -3130,7 +3209,7 @@ namespace GeigerScope
         }
     }
 
-// ── M-Signature Detector ──────────────────────────────────────────────────────
+    // ── M-Signature Detector ──────────────────────────────────────────────────────
     // Pattern: Rise → SteepFall → Shallow(1-2 bumps) → BigRise → SteepFall
     // Entity is declared the moment the closing right-leg fall is confirmed.
     public static class MSignatureDetector
@@ -3745,5 +3824,4 @@ namespace GeigerScope
             return Math.Round((SAMPLE_HZ / avgSamples) * 60.0, 1);
         }
     }
-
 }
