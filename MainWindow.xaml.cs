@@ -172,6 +172,23 @@ namespace GeigerScope
         private bool _mmOnline  = false;
         private int  _mmWindow  = 100; // 60GHz samples to show (10Hz = 10s)
 
+        // ── RF power estimation
+        private const double RF_K_LOW  = 0.01;
+        private const double RF_K_MID  = 0.20;
+        private const double RF_K_HIGH = 1.00;
+        private const double RF_DIST   = 0.50;
+
+        // ── Beat pattern detector fields
+        private readonly Queue<double> _beatEnvPeaks  = new();
+        private readonly Queue<double> _beatEnvFloors = new();
+        private readonly Queue<long>   _beatPeakNs    = new();
+        private double _beatLastPeak    = 0.0;
+        private double _beatLastFloor   = double.MaxValue;
+        private bool   _beatRising      = false;
+        private long   _beatLastFireNs  = 0;
+        private const  long BEAT_COOLDOWN   = 60_000_000_000L;
+        private const  int  BEAT_MIN_CYCLES = 2;
+
         // ── CPS forensic monitor fields
         private readonly Queue<(int Cps, long WallNs)> _cpsLog = new();
         private const int  CPS_LOG_MAX       = 120;
@@ -220,6 +237,13 @@ namespace GeigerScope
         private double _calFloorDr    = double.MaxValue;
         private long   _calStartNs    = 0;
         private long   _calEndNs      = 0;
+        private bool   _calCompromised     = false;
+        private int    _calSampleCount     = 0;
+        private double _calSumDr           = 0.0;
+        private int    _calSumCps          = 0;
+        private readonly Queue<(int Cps, long WallNs)> _calCpsLog = new();
+        private const double CAL_CV_IAT_MIN = 0.60;
+        private const double CAL_CV_IAT_MAX = 1.40;
 
         // ── Render timer ──────────────────────────────────────────────────
         private readonly DispatcherTimer _renderTimer;
@@ -473,6 +497,166 @@ namespace GeigerScope
                 _lastCpmElapsedSec = elapsedS;
                 if (cps > 0)
                     _currentMinuteCps += cps;
+            // ── Beat interference detector
+            // y = A1*sin(2pi*f1*t) + A2*sin(2pi*f2*t)
+            // Envelope: max=A1+A2, min=|A1-A2|, beat_freq=|f1-f2|
+            {
+                // Track envelope peaks
+                if (dr > _beatLastPeak)
+                    { _beatLastPeak = dr; _beatRising = true; }
+                else if (_beatRising && _beatLastPeak - dr >= 0.02)
+                {
+                    _beatRising = false;
+                    _beatEnvPeaks.Enqueue(_beatLastPeak);
+                    _beatPeakNs.Enqueue(wallNs);
+                    while (_beatEnvPeaks.Count > 10) _beatEnvPeaks.Dequeue();
+                    while (_beatPeakNs.Count  > 10) _beatPeakNs.Dequeue();
+                    _beatLastFloor = dr;
+                }
+                // Track envelope floors
+                if (!_beatRising && dr < _beatLastFloor)
+                    _beatLastFloor = dr;
+                if (!_beatRising && dr - _beatLastFloor >= 0.015
+                    && _beatLastFloor < double.MaxValue && _beatLastFloor > 0.001)
+                {
+                    _beatEnvFloors.Enqueue(_beatLastFloor);
+                    while (_beatEnvFloors.Count > 10) _beatEnvFloors.Dequeue();
+                    _beatLastFloor = double.MaxValue;
+                    _beatLastPeak  = dr;
+                    _beatRising    = true;
+                }
+                // Analyse when enough cycles collected
+                if (_beatEnvPeaks.Count  >= BEAT_MIN_CYCLES
+                    && _beatEnvFloors.Count >= BEAT_MIN_CYCLES
+                    && wallNs - _beatLastFireNs > BEAT_COOLDOWN)
+                {
+                    double avgPeak    = _beatEnvPeaks.Average();
+                    double avgFloor   = _beatEnvFloors.Average();
+                    double floorRatio = avgPeak > 0 ? avgFloor/avgPeak : 0;
+                    double cvPeaks    = 0;
+                    if (_beatEnvPeaks.Count >= 2)
+                    {
+                        double mu = avgPeak;
+                        double s2 = _beatEnvPeaks.Average(v => (v-mu)*(v-mu));
+                        cvPeaks = mu > 0 ? Math.Sqrt(s2)/mu : 99;
+                    }
+                    // Signature: non-zero floor (partial cancellation)
+                    //            consistent envelope amplitude
+                    bool isBeat = floorRatio >= 0.05 && floorRatio <= 0.80
+                              && cvPeaks < 0.20;
+                    if (isBeat)
+                    {
+                        _beatLastFireNs = wallNs;
+                        // Carrier decomposition
+                        double A1 = (avgPeak + avgFloor) / 2.0;
+                        double A2 = (avgPeak - avgFloor) / 2.0;
+                        double ampRatio = A1 > 0 ? A2/A1 : 0;
+                        // Beat period from peak timestamps
+                        double beatPeriodS = 0, beatFreqHz = 0;
+                        var pkArr = _beatPeakNs.ToArray();
+                        if (pkArr.Length >= 2)
+                        {
+                            var iv = new List<double>();
+                            for (int ii=1; ii<pkArr.Length; ii++)
+                                iv.Add((pkArr[ii]-pkArr[ii-1])/1e9);
+                            beatPeriodS = iv.Average();
+                            beatFreqHz  = beatPeriodS > 0 ? 1.0/beatPeriodS : 0;
+                        }
+                        string band = beatFreqHz switch {
+                            > 0 and < 0.003    => "ULF (<3mHz)",
+                            >= 0.003 and < 0.03 => "ELF (3-30mHz)",
+                            >= 0.03  and < 0.3  => "SLF (0.03-0.3Hz)",
+                            >= 0.3   and < 3.0  => "LF (0.3-3Hz)",
+                            _ => "MF+" };
+                        // RF power estimate for each carrier
+                        // P = A * d^2 / K  (amplitude proxy for CPS)
+                        double p1Est = A1 * RF_DIST * RF_DIST / RF_K_MID;
+                        double p2Est = A2 * RF_DIST * RF_DIST / RF_K_MID;
+                        AddEvent(
+                            $"[{NsToUtc(wallNs)}] ⚡ BEAT INTERFERENCE CONFIRMED",
+                            "#FF44FF");
+                        AddEvent(
+                            $"  y = A1·sin(2πf₁t) + A2·sin(2πf₂t)",
+                            "#FF44FF");
+                        AddEvent(
+                            $"  A1={A1:0.0000}µSv/h  A2={A2:0.0000}µSv/h  "
+                            +$"A2/A1={ampRatio:0.000}  "
+                            +$"floor/peak={floorRatio:0.000}",
+                            "#FF44FF");
+                        AddEvent(
+                            $"  f_beat=|f₁-f₂|={beatFreqHz:0.00000}Hz  "
+                            +$"T_beat={beatPeriodS:0.0}s  "
+                            +$"band={band}",
+                            "#FF44FF");
+                        AddEvent(
+                            $"  RF P≈C·d²/K: "
+                            +$"carrier1≈{p1Est:0.00}W  "
+                            +$"carrier2≈{p2Est:0.00}W  "
+                            +$"@d={RF_DIST}m (K={RF_K_MID})",
+                            "#CC00CC");
+                        AddEvent(
+                            $"  TWO-SOURCE INTERFERENCE  "
+                            +$"dominant={A1:0.0000}µSv/h  "
+                            +$"secondary={A2:0.0000}µSv/h  "
+                            +$"freq-sep≈{beatFreqHz:0.00000}Hz  "
+                            +$"CV_env={cvPeaks:0.000}",
+                            "#CC00CC");
+                    }
+                }
+            }
+
+            // ── Calibration accumulation + integrity
+            if (_isCalibrating)
+            {
+                if (dr > _calPeakDr)  _calPeakDr  = dr;
+                if (dr < _calFloorDr) _calFloorDr = dr;
+                _calSumDr      += dr;
+                _calSumCps     += cps;
+                _calSampleCount++;
+                if (cps > 0)
+                {
+                    _calCpsLog.Enqueue((cps, wallNs));
+                    if (_calCpsLog.Count > 60) _calCpsLog.Dequeue();
+                }
+                if (_calSampleCount % 10 == 0
+                    && _calCpsLog.Count >= 6 && !_calCompromised)
+                {
+                    var arr = _calCpsLog.ToArray();
+                    var iats = new List<double>();
+                    for (int ii=1; ii<arr.Length; ii++)
+                        iats.Add((arr[ii].WallNs-arr[ii-1].WallNs)/1e9);
+                    if (iats.Count >= 4)
+                    {
+                        double mu = iats.Average();
+                        double s2 = iats.Average(v=>(v-mu)*(v-mu));
+                        double cv = mu>0 ? Math.Sqrt(s2)/mu : 0;
+                        if (cv < CAL_CV_IAT_MIN)
+                        {
+                            _calCompromised = true;
+                            AddEvent(
+                                $"[{NsToUtc(wallNs)}] ⚠ CAL COMPROMISED  "
+                                +$"CV_IAT={cv:0.000}<{CAL_CV_IAT_MIN}  "
+                                +"STRUCTURED CPS INJECTION DETECTED  "
+                                +"Natural isotope CV_IAT≈1.0",
+                                "#FF0000");
+                        }
+                    }
+                }
+                if (_calSampleCount % 5 == 0)
+                {
+                    double elapsed = _calStartNs > 0
+                        ? (wallNs-_calStartNs)/1e9 : 0;
+                    string integ = _calCompromised
+                        ? " ⚠COMPROMISED" : " ✅OK";
+                    AddEvent(
+                        $"[{NsToUtc(wallNs)}] 🔬 CAL:{_calName}{integ}  "
+                        +$"t={elapsed:0.0}s  DR={dr:0.0000}  "
+                        +$"peak={_calPeakDr:0.0000}  "
+                        +$"floor={(_calFloorDr<double.MaxValue?_calFloorDr:0):0.0000}",
+                        _calCompromised ? "#FF4400" : "#00CCFF");
+                }
+            }
+
             // ── CPS forensic monitor
             if (cps > 0)
             {
@@ -485,10 +669,15 @@ namespace GeigerScope
                 {
                     _cpsLockCount++;
                     if (_cpsLockCount == LOCK_MIN)
+                    {
+                        double pLock = cps * RF_DIST * RF_DIST / RF_K_MID;
                         AddEvent(
                             $"[{NsToUtc(wallNs)}] 🔒 CPS LOCK  "
                             + $"CPS={cps} x{_cpsLockCount}+ consecutive  "
-                            + $"P(Poisson)<<0.001", "#FF00FF");
+                            + $"P(Poisson)<<0.001  "
+                            + $"RF≈{pLock:0.0}W@{RF_DIST}m",
+                            "#FF00FF");
+                    }
                     else if (_cpsLockCount > LOCK_MIN && _cpsLockCount % 5 == 0)
                         AddEvent(
                             $"[{NsToUtc(wallNs)}] 🔒 CPS LOCK  "
@@ -535,6 +724,11 @@ namespace GeigerScope
                         }
                         bool structured = cvIat > 0 && cvIat < 0.30;
                         _lastClusterAlertNs = wallNs;
+                        // RF power estimate: P = C*d^2/K
+                        double cpsRate = totalCounts / (double)CLUSTER_WINDOW_S;
+                        double pLow  = cpsRate*RF_DIST*RF_DIST/RF_K_HIGH;
+                        double pMid  = cpsRate*RF_DIST*RF_DIST/RF_K_MID;
+                        double pHigh = cpsRate*RF_DIST*RF_DIST/RF_K_LOW;
                         AddEvent(
                             $"[{NsToUtc(wallNs)}] ⚡ "
                             + (structured
@@ -544,6 +738,12 @@ namespace GeigerScope
                             + $"n={winEvts.Count}  CV_IAT={cvStr}"
                             + (structured ? "  non-Poisson" : ""),
                             structured ? "#FF4400" : "#FF8800");
+                        AddEvent(
+                            $"  RF est P=C·d²/K  "
+                            +$"@{RF_DIST}m: {pLow:0.0}-{pHigh:0.0}W  "
+                            +$"(mid={pMid:0.0}W)  "
+                            +$"CPS/s={cpsRate:0.0}",
+                            "#FF6600");
                     }
                 }
             }
@@ -676,10 +876,11 @@ namespace GeigerScope
                         if (dr - _pkRearmBase >= 0.05)
                         {
                             // Rearm complete — reset everything
-                            _pkConfirmed = false;
-                            _pkHigh      = dr;
-                            _pkValley    = dr;
-                            _pkRearmBase = 0.0;
+                            _pkConfirmed   = false;
+                            _pkHigh        = dr;
+                            _pkValley      = dr;
+                            _pkRearmBase   = 0.0;
+                            _sessionPeakDr = _pkHigh;
                         }
                     }
                 }
@@ -2553,11 +2754,17 @@ namespace GeigerScope
 
             if (string.IsNullOrWhiteSpace(name)) return;
 
-            _calName = name.Trim();
-            _isCalibrating = true;
-            _calStartNs = 0;
-            _calPeakDr = 0.0;
-            _calFloorDr = double.MaxValue;
+            _calName        = name.Trim();
+            _isCalibrating  = true;
+            _calStartNs     = DateTimeOffset.UtcNow
+                .ToUnixTimeMilliseconds() * 1_000_000L;
+            _calPeakDr      = 0.0;
+            _calFloorDr     = double.MaxValue;
+            _calCompromised = false;
+            _calSampleCount = 0;
+            _calSumDr       = 0.0;
+            _calSumCps      = 0;
+            _calCpsLog.Clear();
 
             BtnCalibrate.Content = "🛑 STOP CALIBRATION";
             BtnCalibrate.Background = new SolidColorBrush(Colors.OrangeRed);
@@ -2584,10 +2791,46 @@ namespace GeigerScope
                 _calFloorDr = _buffer.Min(s => s.Dr);
             }
 
-            _calibrated = true;
+            double calCV = 0;
+            if (_calCpsLog.Count >= 4)
+            {
+                var arr2 = _calCpsLog.ToArray();
+                var iv2  = new List<double>();
+                for (int ii=1; ii<arr2.Length; ii++)
+                    iv2.Add((arr2[ii].WallNs-arr2[ii-1].WallNs)/1e9);
+                double mu2 = iv2.Average();
+                double s22 = iv2.Average(v=>(v-mu2)*(v-mu2));
+                calCV = mu2>0 ? Math.Sqrt(s22)/mu2 : 0;
+            }
+            double calRatio = _calFloorDr>0.0001 && _calFloorDr<double.MaxValue
+                ? _calPeakDr/_calFloorDr : 0;
+            bool isNatural = !_calCompromised
+                && calCV >= CAL_CV_IAT_MIN
+                && calCV <= CAL_CV_IAT_MAX
+                && calRatio < 3.5;
+            string validity = isNatural
+                ? "✅ VALID NATURAL SOURCE"
+                : _calCompromised
+                    ? "⚠ INVALID — STRUCTURED INJECTION"
+                    : $"⚠ QUESTIONABLE — CV_IAT={calCV:0.000}";
+            _calibrated = isNatural;
+            _calEndNs   = DateTimeOffset.UtcNow
+                .ToUnixTimeMilliseconds() * 1_000_000L;
 
             string msg = $"[{Ts()}] ✅ CALIBRATION COMPLETE — {_calName} | Peak={_calPeakDr:0.0000} | Floor={_calFloorDr:0.0000}";
             AddEvent(msg, "#00FF88");
+            AddEvent(
+                $"[{Ts()}] {validity}  "
+                +$"CV_IAT={calCV:0.000}  P/F={calRatio:0.00}  "
+                +$"(natural CV {CAL_CV_IAT_MIN}-{CAL_CV_IAT_MAX} P/F<3.5)",
+                isNatural ? "#00FF88" : "#FF0000");
+            if (!isNatural)
+                AddEvent(
+                    "[" + Ts() + "] CAL REJECTED — "
+                    +"Signature inconsistent with natural isotope. "
+                    +"Thorium-232: CV_IAT≈1.0 flat emission. "
+                    +"W/M envelope + structured CPS = RF source.",
+                    "#FF0000");
             _rawData.Insert(0, $"[CAL] {_calName} | PEAK={_calPeakDr:0.0000} | FLOOR={_calFloorDr:0.0000}");
         }
 
