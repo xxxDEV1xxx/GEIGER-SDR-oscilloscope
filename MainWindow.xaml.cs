@@ -189,6 +189,21 @@ namespace GeigerScope
         private const  long BEAT_COOLDOWN   = 60_000_000_000L;
         private const  int  BEAT_MIN_CYCLES = 2;
 
+        // ── Paintbrush detector
+        private int  _pbConsecutive  = 0;
+        private int  _pbTotalCounts  = 0;
+        private long _pbLastFireNs   = 0;
+        private const int  PB_MIN_TICKS   = 4;
+        private const int  PB_MIN_DENSITY = 1;
+        private const long PB_COOLDOWN    = 20_000_000_000L;
+
+        // ── CPS staircase detector
+        private readonly List<int> _stairBuf     = new();
+        private long _stairLastFireNs             = 0;
+        private const int  STAIR_WIN              = 30;
+        private const int  STAIR_MIN_REPS         = 2;
+        private const long STAIR_COOLDOWN         = 30_000_000_000L;
+
         // ── OOK burst pattern detector
         // Detects: repeated identical-CPS bursts separated by zero gaps
         // Signature of On/Off Keying — structured pulsed source
@@ -683,6 +698,83 @@ namespace GeigerScope
                 }
                 }
 
+            }
+
+            // ── Paintbrush detector
+            {
+                if (cps > 0)
+                {
+                    _pbConsecutive++;
+                    _pbTotalCounts += cps;
+                }
+                else if (_pbConsecutive > 0)
+                {
+                    if (_pbConsecutive >= PB_MIN_TICKS
+                        && wallNs - _pbLastFireNs > PB_COOLDOWN)
+                    {
+                        double avgD = (double)_pbTotalCounts / _pbConsecutive;
+                        // Fire on consecutive density regardless of CPS magnitude
+                        // Paintbrush = tight cluster of any non-zero ticks
+                        {
+                            _pbLastFireNs = wallNs;
+                            double pEst = Math.Max(avgD,1) * RF_DIST * RF_DIST / RF_K_MID;
+                            AddEvent(
+                                $"[{NsToUtc(wallNs)}] 小刀 PAINTBRUSH BURST  "
+                                + $"{_pbConsecutive} consecutive ticks  "
+                                + $"total={_pbTotalCounts}cts  "
+                                + $"avg={avgD:0.0}CPS  "
+                                + $"RF~{pEst:0.0}W@{RF_DIST}m  "
+                                + "bars merge = dense burst",
+                                "#FF6600");
+                        }
+                    }
+                    _pbConsecutive = 0;
+                    _pbTotalCounts = 0;
+                }
+            }
+
+            // ── CPS staircase detector
+            {
+                _stairBuf.Add(cps);
+                if (_stairBuf.Count > STAIR_WIN) _stairBuf.RemoveAt(0);
+                if (_stairBuf.Count >= 6
+                    && wallNs - _stairLastFireNs > STAIR_COOLDOWN)
+                {
+                    bool found = false;
+                    for (int seqLen = 2; seqLen <= 4 && !found; seqLen++)
+                    {
+                        if (_stairBuf.Count < seqLen * STAIR_MIN_REPS) continue;
+                        for (int st = 0;
+                             st <= _stairBuf.Count - seqLen*STAIR_MIN_REPS
+                             && !found; st++)
+                        {
+                            var seq = _stairBuf.Skip(st).Take(seqLen).ToList();
+                            bool asc = seq.All(v => v > 0);
+                            for (int k=1; k<seq.Count && asc; k++)
+                                if (seq[k] <= seq[k-1]) asc = false;
+                            if (!asc) continue;
+                            int reps = 1, pos = st + seqLen;
+                            while (pos + seqLen <= _stairBuf.Count)
+                            {
+                                var nx = _stairBuf.Skip(pos).Take(seqLen).ToList();
+                                if (nx.SequenceEqual(seq))
+                                { reps++; pos += seqLen; }
+                                else break;
+                            }
+                            if (reps >= STAIR_MIN_REPS)
+                            {
+                                found = true;
+                                _stairLastFireNs = wallNs;
+                                string sq = string.Join(",", seq);
+                                AddEvent(
+                                    $"[{NsToUtc(wallNs)}] CPS STAIRCASE  "
+                                    + $"[{sq}] x{reps}  period={seqLen}s  "
+                                    + "ascending count-rate modulation",
+                                    "#FFAA00");
+                            }
+                        }
+                    }
+                }
             }
 
             // ── OOK burst pattern detector
