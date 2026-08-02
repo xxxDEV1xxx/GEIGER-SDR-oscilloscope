@@ -1139,6 +1139,15 @@ namespace GeigerScope
                         _peakLogSeq++;
                         var rec = new PeakRecord(_peakLogSeq, wallNs, _pkHigh);
                         _peakLog.Insert(0, rec);
+// Write peak to event log for cross-session correlation
+                        try
+                        {
+                            System.IO.File.AppendAllText(
+                                _eventLogFile,
+                                $"{DateTime.UtcNow:yyyy-MM-ddTHH:mm:ss.fffZ}  " +
+                                $"[PEAK] {_pkHigh:0.0000} µSv/h{Environment.NewLine}");
+                        }
+                        catch { }
                         if (_peakLog.Count > 1000)
                             _peakLog.RemoveAt(_peakLog.Count - 1);
                         UpdatePeakRanks();
@@ -1589,61 +1598,101 @@ if (graded.Count > 0
             // Every confirmed peak: check if same µSv/h value seen before.
             // Every confirmed floor return: same check on floor value.
             {
-                // Peak recurrence — fires when _pkConfirmed just became true
-                if (_pkConfirmed && wallNs != _lastPeakRecurNs)
+// Peak recurrence — parse event log for prior peaks at same µSv/h
+                if (_pkConfirmed && wallNs != _lastPeakRecurNs
+                    && wallNs - _lastRecurAlertNs > RECUR_COOLDOWN_NS)
                 {
-                    _lastPeakRecurNs = wallNs;
-                }
-                if (_pkConfirmed && _lastPeakRecurNs == wallNs
-                    && (_peakHistory.Count == 0
-                    || Math.Abs(_peakHistory[^1].WallNs - wallNs) > 2_000_000_000L))
-                {
-                    // Check for matching prior peak value
-                    var priorMatches = _peakHistory
-                        .Where(p => Math.Abs(p.Dr - _pkHigh) <= RECUR_TOLERANCE)
-                        .ToList();
+                    _lastPeakRecurNs  = wallNs;
+                    _lastRecurAlertNs = wallNs;
 
-                    if (priorMatches.Count > 0
-                        && wallNs - _lastRecurAlertNs > RECUR_COOLDOWN_NS)
+                    // Parse event log for [PEAK] lines matching this value
+                    var priorPeaks = new List<(string TimeStr, double Dr)>();
+                    try
                     {
-                        _lastRecurAlertNs = wallNs;
-                        foreach (var prior in priorMatches.TakeLast(3))
+                        if (System.IO.File.Exists(_eventLogFile))
                         {
-                            double intervalS = (wallNs - prior.WallNs) / 1_000_000_000.0;
+                            var logLines = System.IO.File.ReadAllLines(_eventLogFile);
+                            foreach (var line in logLines)
+                            {
+                                // Format: 2026-08-02T...Z  [PEAK] 0.2300 µSv/h
+                                if (!line.Contains("[PEAK]")) continue;
+                                var parts = line.Split(new[]{"[PEAK]"},
+                                    StringSplitOptions.None);
+                                if (parts.Length < 2) continue;
+                                var valPart = parts[1].Trim()
+                                    .Replace("µSv/h","").Trim();
+                                if (!double.TryParse(valPart,
+                                    System.Globalization.NumberStyles.Any,
+                                    System.Globalization.CultureInfo.InvariantCulture,
+                                    out double logDr)) continue;
+                                if (Math.Abs(logDr - _pkHigh) > RECUR_TOLERANCE)
+                                    continue;
+                                // Extract timestamp
+                                string ts = parts[0].Trim();
+                                if (ts.Length >= 19)
+                                    ts = ts.Substring(11, 8); // HH:mm:ss
+                                priorPeaks.Add((ts, logDr));
+                            }
+                    }
+                    }
+                    catch { }
+
+                    // Remove last entry — that's the one we just wrote this tick
+                    if (priorPeaks.Count > 0)
+                        priorPeaks.RemoveAt(priorPeaks.Count - 1);
+
+                    if (priorPeaks.Count > 0)
+                    {
+                        AddEvent(
+                            $"[{NsToUtc(wallNs)}] \ud83d\udd04 PEAK RECURRENCE  " +
+                            $"dr={_pkHigh:0.0000} \u00b5Sv/h  " +
+                            $"seen {priorPeaks.Count}x in log",
+                            "#FFFF44");
+
+                        foreach (var (ts, logDr) in priorPeaks.TakeLast(5))
                             AddEvent(
-                                $"[{NsToUtc(wallNs)}] \ud83d\udd04 PEAK RECURRENCE  " +
-                                $"dr={_pkHigh:0.0000} \u00b5Sv/h  " +
-                                $"prior={NsToUtc(prior.WallNs)}  " +
-                                $"interval={intervalS:0.0}s  " +
-                                $"({intervalS/60.0:0.00}min)",
-                                "#FFFF44");
-                        }
-                        if (priorMatches.Count >= 3)
+                                $"  prior peak  {logDr:0.0000} \u00b5Sv/h  " +
+                                $"at {ts}",
+                                "#CCCC00");
+
+                        if (priorPeaks.Count >= 3)
                         {
-                            // Compute average interval between all matches
-                            var times = priorMatches.Select(p => p.WallNs)
-                                .Append(wallNs).OrderBy(t => t).ToList();
-                            var intervals = new List<double>();
-                            for (int ti = 1; ti < times.Count; ti++)
-                                intervals.Add((times[ti] - times[ti-1]) / 1_000_000_000.0);
-                            double avgInterval = intervals.Average();
-                            double cvInterval  = intervals.Count > 1
-                                ? Math.Sqrt(intervals.Average(
-                                    v => Math.Pow(v - avgInterval, 2))) / avgInterval
-                                : 0;
-                            AddEvent(
-                                $"  PEAK PATTERN  n={priorMatches.Count + 1}  " +
-                                $"avg_interval={avgInterval:0.0}s  " +
-                                $"({avgInterval/60.0:0.00}min)  " +
-                                $"CV={cvInterval:0.000}" +
-                                (cvInterval < 0.10 ? "  PERIODIC \u26a0" : ""),
-                                "#FFDD00");
+                            // Compute intervals between all matching peaks
+                            // Parse ISO timestamps for interval math
+                            var allTimes = new List<DateTime>();
+                            foreach (var (ts, _) in priorPeaks)
+                            {
+                                if (DateTime.TryParse(ts,
+                                    null,
+                                    System.Globalization.DateTimeStyles.AssumeUniversal,
+                                    out DateTime dt))
+                                    allTimes.Add(dt);
+                            }
+                            allTimes.Add(DateTime.UtcNow);
+                            allTimes.Sort();
+
+                            if (allTimes.Count >= 3)
+                            {
+                                var ivs = new List<double>();
+                                for (int ti = 1; ti < allTimes.Count; ti++)
+                                    ivs.Add((allTimes[ti]-allTimes[ti-1])
+                                        .TotalSeconds);
+                                double avgIv = ivs.Average();
+                                double cvIv  = ivs.Count > 1
+                                    ? Math.Sqrt(ivs.Average(
+                                        v => Math.Pow(v-avgIv,2)))/avgIv
+                                    : 0;
+                                AddEvent(
+                                    $"  PEAK INTERVAL  n={allTimes.Count}  " +
+                                    $"avg={avgIv:0.0}s ({avgIv/60.0:0.00}min)  " +
+                                    $"CV={cvIv:0.000}" +
+                                    (cvIv < 0.15
+                                        ? "  \u26a0 PERIODIC"
+                                        : ""),
+                                    "#FFDD00");
+                            }
                         }
                     }
-
-                    _peakHistory.Add((_pkHigh, wallNs));
-                    if (_peakHistory.Count > RECUR_MAX_STORED)
-                        _peakHistory.RemoveAt(0);
                 }
 
                 // Floor recurrence — fires when dr returns to near window floor
