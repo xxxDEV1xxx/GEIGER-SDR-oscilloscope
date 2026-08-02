@@ -1447,6 +1447,13 @@ namespace GeigerScope
                     string pattern   = string.Join(",", _cpsPatternBuf);
                     long   peakNs    = wallNs;
                     double peakDr    = _pkHigh;
+// Skip if current pattern has no counts — no forensic value
+                    if (!_cpsPatternBuf.Any(v => v > 0))
+                    {
+                        _cpsPatternBuf.Clear();
+                        goto EndPatternSeal;
+                    }
+                    EndPatternSeal: ;
 // Graded substring match
                     // Grade 5 = full match
                     // Grade 4 = trim 1 from each end
@@ -1558,10 +1565,15 @@ if (graded.Count > 0
                     }
 
                     // Store
-                    _cpsPatterns.Add((pattern, _cpsPatternFloorNs, peakNs,
-                        _cpsPatternFloorDr, peakDr));
-                    if (_cpsPatterns.Count > CPP_MAX_STORED)
-                        _cpsPatterns.RemoveAt(0);
+                    // Store — only if pattern contains at least one non-zero count
+                    bool hasNonZero = _cpsPatternBuf.Any(v => v > 0);
+                    if (hasNonZero)
+                    {
+                        _cpsPatterns.Add((pattern, _cpsPatternFloorNs, peakNs,
+                            _cpsPatternFloorDr, peakDr));
+                        if (_cpsPatterns.Count > CPP_MAX_STORED)
+                            _cpsPatterns.RemoveAt(0);
+                    }
                     _cpsPatternBuf.Clear();
                 }
 
