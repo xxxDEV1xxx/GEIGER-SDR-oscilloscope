@@ -242,7 +242,17 @@ namespace GeigerScope
         private const int  CPP_MAX_STORED                   = 100;
         private const long CPP_COOLDOWN_NS                  = 10_000_000_000L;
         private long       _lastCppAlertNs                  = 0;
-
+// ── Equally spaced CPS burst detector ────────────────────────────────
+        // Detects: N occurrences of CPS >= 2, equally spaced in time.
+        // Fires after 3+ intervals are consistent (CV < threshold).
+        private readonly List<long> _eqBurstNs       = new();
+        private const int    EQ_MIN_CPS              = 2;
+        private const int    EQ_MIN_COUNT            = 3;
+        private const double EQ_CV_THRESHOLD         = 0.15;
+        private const long   EQ_MAX_GAP_NS           = 30_000_000_000L; // reset if >30s gap
+        private const long   EQ_COOLDOWN_NS          = 20_000_000_000L;
+        private long         _lastEqAlertNs          = 0;
+        private int          _lastEqCount            = 0;
         // ── Peak/floor value recurrence tracker ──────────────────────────────
         // Tracks every confirmed peak value and floor value with timestamps.
         // When the same value recurs, logs the interval between occurrences.
@@ -1258,7 +1268,90 @@ namespace GeigerScope
             }
             _lastState = curState;
             _lastDr    = dr;
+// ── Equally spaced CPS burst detector ────────────────────────────
+            // Accumulates timestamps of every tick where CPS >= EQ_MIN_CPS.
+            // After each new hit, checks if all inter-arrival intervals are
+            // consistent (CV < EQ_CV_THRESHOLD). Fires verdict on 3rd+ hit.
+            // Resets if gap between hits exceeds EQ_MAX_GAP_NS.
+            {
+                if (cps >= EQ_MIN_CPS)
+                {
+                    // Reset if too long since last burst tick
+                    if (_eqBurstNs.Count > 0
+                        && wallNs - _eqBurstNs[^1] > EQ_MAX_GAP_NS)
+                    {
+                        _eqBurstNs.Clear();
+                        _lastEqCount = 0;
+                    }
 
+                    _eqBurstNs.Add(wallNs);
+
+                    // Need at least 3 hits to compute 2 intervals
+                    if (_eqBurstNs.Count >= EQ_MIN_COUNT)
+                    {
+                        var ivs = new List<double>();
+                        for (int ei = 1; ei < _eqBurstNs.Count; ei++)
+                            ivs.Add((_eqBurstNs[ei] - _eqBurstNs[ei-1]) / 1_000_000_000.0);
+
+                        double avgIv = ivs.Average();
+                        double cvIv  = ivs.Count > 1
+                            ? Math.Sqrt(ivs.Average(
+                                v => Math.Pow(v - avgIv, 2))) / avgIv
+                            : 0;
+
+                        bool isEqual = cvIv <= EQ_CV_THRESHOLD && avgIv >= 0.5;
+
+                        if (isEqual)
+                        {
+                            // Only fire verdict when count increases
+                            if (_eqBurstNs.Count > _lastEqCount
+                                && wallNs - _lastEqAlertNs > EQ_COOLDOWN_NS)
+                            {
+                                _lastEqCount   = _eqBurstNs.Count;
+                                _lastEqAlertNs = wallNs;
+
+                                string intervals = string.Join(", ",
+                                    ivs.Select(v => $"{v:0.0}s"));
+                                AddEvent(
+                                    $"[{NsToUtc(wallNs)}] \u26a0 EQUAL BURST SPACING  " +
+                                    $"n={_eqBurstNs.Count}  CPS\u2265{EQ_MIN_CPS}  " +
+                                    $"interval={avgIv:0.0}s  CV={cvIv:0.000}  " +
+                                    $"spacings=[{intervals}]  " +
+                                    $"span={(wallNs - _eqBurstNs[0])/1_000_000_000.0:0.0}s",
+                                    "#FF8800");
+
+                                // Grade by count
+                                string verdict = _eqBurstNs.Count switch {
+                                    >= 7 => "\u26a0\u26a0\u26a0 DEFINITIVE PULSED SOURCE",
+                                    >= 5 => "\u26a0\u26a0 STRONG PERIODIC BURST",
+                                    >= 3 => "\u26a0 POSSIBLE PERIODIC BURST",
+                                    _    => "BURST SPACING NOTED"
+                                };
+                                string vcol = _eqBurstNs.Count switch {
+                                    >= 7 => "#FF2200",
+                                    >= 5 => "#FF6600",
+                                    >= 3 => "#FFAA00",
+                                    _    => "#FFDD88"
+                                };
+                                AddEvent(
+                                    $"  {verdict}  " +
+                                    $"f={1.0/avgIv:0.000}Hz  " +
+                                    $"T={avgIv:0.0}s  " +
+                                    $"total_counts={_eqBurstNs.Count}",
+                                    vcol);
+                            }
+                        }
+                        else
+                        {
+                            // Spacing broke — reset and start fresh from this hit
+                            long last = _eqBurstNs[^1];
+                            _eqBurstNs.Clear();
+                            _eqBurstNs.Add(last);
+                            _lastEqCount = 0;
+                        }
+                    }
+                }
+            }
 // ── CPS floor→peak ramp correlator ───────────────────────────────
             {
                 double windowFloor;
