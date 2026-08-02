@@ -150,7 +150,11 @@ namespace GeigerScope
                 System.IO.Path.GetDirectoryName(
                     System.Reflection.Assembly.GetExecutingAssembly().Location)!
                 , "peak_ranks.txt");
-
+        private readonly string _eventLogFile =
+            System.IO.Path.Combine(
+                System.IO.Path.GetDirectoryName(
+                    System.Reflection.Assembly.GetExecutingAssembly().Location)!
+                , "events.log");
         // Peak log state machine — driven by raw live dr
         private double _pkHigh       = 0.0;   // highest dr seen since last confirmation
         private double _pkValley     = 0.0;   // lowest dr seen since last confirmation
@@ -216,6 +220,40 @@ namespace GeigerScope
         private const long OOK_COOLDOWN = 45_000_000_000L; // 45s
         private const int  OOK_MIN_REPS = 3; // min repeated burst cycles
 
+        // ── CPS floor→peak ramp correlator ───────────────────────────────────
+        private readonly List<CpsRamp> _cpsRamps       = new();
+        private CpsRamp?               _cpsRampActive  = null;
+        private long                   _cpsRampFloorNs = 0;
+        private double                 _cpsRampFloorDr = double.MaxValue;
+        private bool                   _cpsRampArmed   = false;
+        private const int    CPS_RAMP_MAX_STORED       = 50;
+        private const long   CPS_RAMP_BUCKET_MS        = 500;
+        private const int    CPS_RAMP_MIN_MATCHES      = 1;// ── CPS binary pattern correlator ────────────────────────────────────
+// ── CPS binary pattern correlator ────────────────────────────────────
+        // Encodes each floor→peak climb as a string of CPS values per second.
+        // "0,1,0,0,2,0,1" — exact sequence from floor to peak.
+        // Two events match if their encoded strings are identical.
+        private readonly List<(string Pattern, long FloorNs, long PeakNs, double FloorDr, double PeakDr)>
+                                         _cpsPatterns       = new();
+        private readonly List<int>       _cpsPatternBuf     = new();
+        private bool                     _cpsPatternArmed   = false;
+        private long                     _cpsPatternFloorNs = 0;
+        private double                   _cpsPatternFloorDr = double.MaxValue;
+        private const int  CPP_MAX_STORED                   = 100;
+        private const long CPP_COOLDOWN_NS                  = 10_000_000_000L;
+        private long       _lastCppAlertNs                  = 0;
+
+        // ── Peak/floor value recurrence tracker ──────────────────────────────
+        // Tracks every confirmed peak value and floor value with timestamps.
+        // When the same value recurs, logs the interval between occurrences.
+        private readonly List<(double Dr, long WallNs)> _peakHistory  = new();
+        private readonly List<(double Dr, long WallNs)> _floorHistory = new();
+        private const double RECUR_TOLERANCE   = 0.005;  // µSv/h match window
+        private const int    RECUR_MAX_STORED  = 200;
+        private const long   RECUR_COOLDOWN_NS = 30_000_000_000L; // 30s min between alerts
+        private long         _lastRecurAlertNs  = 0;
+        private long         _lastPeakRecurNs   = 0;
+        private long         _lastFloorRecurNs  = 0;
         // ── CPS forensic monitor fields
         private readonly Queue<(int Cps, long WallNs)> _cpsLog = new();
         private const int  CPS_LOG_MAX       = 120;
@@ -1220,6 +1258,354 @@ namespace GeigerScope
             }
             _lastState = curState;
             _lastDr    = dr;
+
+// ── CPS floor→peak ramp correlator ───────────────────────────────
+            {
+                double windowFloor;
+                lock (_buffer) { windowFloor = _minDr < double.MaxValue ? _minDr : 0; }
+
+                if (_cpsRampArmed && _cpsRampActive != null)
+                    _cpsRampActive.Feed(wallNs, cps);
+// ARM — wait 30s after session start for baseline to establish
+                if (!_cpsRampArmed && _cpsRampActive == null
+                    && dr <= windowFloor + 0.005 && windowFloor > 0
+                    && _sessionStartNs > 0
+                    && (wallNs - _sessionStartNs) >= 30_000_000_000L)
+                {
+                    _cpsRampFloorNs = wallNs;
+                    _cpsRampFloorDr = dr;
+                    _cpsRampActive  = new CpsRamp(wallNs, dr);
+                    _cpsRampArmed   = true;
+                    _cpsRampActive.Feed(wallNs, cps);
+                }
+
+                if (_cpsRampArmed && _pkConfirmed && _cpsRampActive != null
+                    && _cpsRampActive.Points.Count >= 5
+                    && (wallNs - _cpsRampFloorNs) >= 3_000_000_000L)
+                {
+                    _cpsRampActive.Seal(wallNs, _pkHigh);
+                    _cpsRampArmed = false;
+
+                    for (int ri = 0; ri < _cpsRamps.Count; ri++)
+                    {
+                        var hits = _cpsRampActive.MatchAgainst(
+                            _cpsRamps[ri], CPS_RAMP_BUCKET_MS);
+                        if (hits.Count >= CPS_RAMP_MIN_MATCHES)
+                        {
+                            string hitStr = string.Join("  ",
+                                hits.Take(6).Select(
+                                    h => $"[t={h.ElapsedMs}ms CPS={h.Cps}]"));
+                            AddEvent(
+                                $"[{NsToUtc(wallNs)}] \u26a0 CPS RAMP MATCH  " +
+                                $"vs ramp#{ri + 1}  hits={hits.Count}  " +
+                                $"span={(wallNs - _cpsRampActive.FloorNs)/1_000_000_000.0:0.0}s  " +
+                                $"floor={_cpsRampActive.FloorDr:0.0000}  " +
+                                $"peak={_pkHigh:0.0000}  {hitStr}",
+                                "#FF44FF");
+                        }
+                    }
+
+                    _cpsRamps.Add(_cpsRampActive);
+                    if (_cpsRamps.Count > CPS_RAMP_MAX_STORED)
+                        _cpsRamps.RemoveAt(0);
+                    _cpsRampActive = null;
+                }
+
+                if (_cpsRampArmed && _cpsRampActive != null
+                    && dr < _cpsRampFloorDr - 0.03)
+                {
+                    _cpsRampActive = null;
+                    _cpsRampArmed  = false;
+                }
+            }
+
+            // ── CPS binary pattern correlator ────────────────────────────────
+            // ARM  : dr at window floor
+            // FEED : append cps each tick
+            // SEAL : on peak confirm, encode buffer to string, match all prior
+            // RESET: dr falls back below floor before peaking
+            {
+                double wf;
+                lock (_buffer) { wf = _minDr < double.MaxValue ? _minDr : 0; }
+
+                // FEED
+                if (_cpsPatternArmed)
+                    _cpsPatternBuf.Add(cps);
+
+// ARM — wait 30s after session start for baseline to establish
+                if (!_cpsPatternArmed
+                    && dr <= wf + 0.005 && wf > 0
+                    && _sessionStartNs > 0
+                    && (wallNs - _sessionStartNs) >= 30_000_000_000L)
+                {
+                    _cpsPatternArmed   = true;
+                    _cpsPatternFloorNs = wallNs;
+                    _cpsPatternFloorDr = dr;
+                    _cpsPatternBuf.Clear();
+                    _cpsPatternBuf.Add(cps);
+                }
+
+                // SEAL
+                if (_cpsPatternArmed && _pkConfirmed
+                    && _cpsPatternBuf.Count >= 3
+                    && (wallNs - _cpsPatternFloorNs) >= 3_000_000_000L)
+                {
+                    _cpsPatternArmed = false;
+                    string pattern   = string.Join(",", _cpsPatternBuf);
+                    long   peakNs    = wallNs;
+                    double peakDr    = _pkHigh;
+// Graded substring match
+                    // Grade 5 = full match
+                    // Grade 4 = trim 1 from each end
+                    // Grade 3 = trim 2 from each end
+                    // Grade 2 = trim 3 from each end
+                    // Grade 1 = trim 4 from each end (minimum meaningful)
+                    var tokens  = pattern.Split(',');
+                    var graded  = new List<(int Pi, int Grade, string Sub)>();
+
+                    for (int pi = 0; pi < _cpsPatterns.Count; pi++)
+                    {
+                        var priorTokens = _cpsPatterns[pi].Pattern.Split(',');
+                        int bestGrade   = 0;
+                        string bestSub  = "";
+
+                        for (int trim = 0; trim <= 4; trim++)
+                        {
+                            int grade = 5 - trim;
+                            // Build trimmed version of current pattern
+                            int lo = trim;
+                            int hi = tokens.Length - trim;
+                            if (hi - lo < 3) break; // minimum 3 tokens
+                            var sub = string.Join(",", tokens[lo..hi]);
+
+                            // Check if sub appears anywhere in prior pattern
+                            string priorFull = _cpsPatterns[pi].Pattern;
+                            if (priorFull.Contains(sub) ||
+                                _cpsPatterns[pi].Pattern.Split(',') is var pt &&
+                                ContainsSubsequence(pt, tokens[lo..hi]))
+                            {
+                                bestGrade = grade;
+                                bestSub   = sub;
+                                break; // take highest grade first
+                            }
+                        }
+
+                        if (bestGrade > 0)
+                            graded.Add((pi, bestGrade, bestSub));
+                    }
+if (graded.Count > 0
+                        && wallNs - _lastCppAlertNs > CPP_COOLDOWN_NS)
+                    {
+                        _lastCppAlertNs = wallNs;
+                        int bestGradeAll = graded.Max(g => g.Grade);
+                        string gradeLabel = bestGradeAll switch {
+                            5 => "EXACT",
+                            4 => "STRONG",
+                            3 => "MODERATE",
+                            2 => "WEAK",
+                            _ => "PARTIAL"
+                        };
+                        string gradeColor = bestGradeAll switch {
+                            5 => "#FF0088",
+                            4 => "#FF4499",
+                            3 => "#FF88AA",
+                            2 => "#FFAACC",
+                            _ => "#FFCCDD"
+                        };
+
+                        AddEvent(
+                            $"[{NsToUtc(wallNs)}] \u26a0\u26a0 CPS PATTERN {gradeLabel}  " +
+                            $"grade={bestGradeAll}/5  matches={graded.Count}  " +
+                            $"pattern=[{pattern}]  " +
+                            $"floor={_cpsPatternFloorDr:0.0000}  " +
+                            $"peak={peakDr:0.0000}  " +
+                            $"span={(wallNs - _cpsPatternFloorNs)/1_000_000_000.0:0.0}s",
+                            gradeColor);
+
+                        foreach (var (mi, grade, sub) in graded
+                            .OrderByDescending(g => g.Grade).Take(3))
+                        {
+                            var prior = _cpsPatterns[mi];
+                            double intervalS = (wallNs - prior.PeakNs) / 1_000_000_000.0;
+                            AddEvent(
+                                $"  prior#{mi+1}  grade={grade}/5  " +
+                                $"sub=[{sub}]  " +
+                                $"floor={prior.FloorDr:0.0000}  " +
+                                $"peak={prior.PeakDr:0.0000}  " +
+                                $"at={NsToUtc(prior.PeakNs)}  " +
+                                $"interval={intervalS:0.0}s ({intervalS/60.0:0.00}min)",
+                                gradeColor);
+                        }
+
+                        // Periodicity on grade 4+ matches
+                        var strongMatches = graded
+                            .Where(g => g.Grade >= 4)
+                            .Select(g => g.Pi).ToList();
+                        if (strongMatches.Count >= 2)
+                        {
+                            var allNs = strongMatches
+                                .Select(mi => _cpsPatterns[mi].PeakNs)
+                                .Append(wallNs)
+                                .OrderBy(t => t).ToList();
+                            var ivs = new List<double>();
+                            for (int ti = 1; ti < allNs.Count; ti++)
+                                ivs.Add((allNs[ti] - allNs[ti-1]) / 1_000_000_000.0);
+                            double avgIv = ivs.Average();
+                            double cvIv  = ivs.Count > 1
+                                ? Math.Sqrt(ivs.Average(
+                                    v => Math.Pow(v - avgIv, 2))) / avgIv
+                                : 0;
+                            AddEvent(
+                                $"  PATTERN PERIOD  n={strongMatches.Count + 1}  " +
+                                $"avg={avgIv:0.0}s ({avgIv/60.0:0.00}min)  " +
+                                $"CV={cvIv:0.000}" +
+                                (cvIv < 0.15 ? "  \u26a0 PERIODIC STRUCTURED SOURCE" : ""),
+                                "#FF0088");
+                        }
+                    }
+
+                    // Store
+                    _cpsPatterns.Add((pattern, _cpsPatternFloorNs, peakNs,
+                        _cpsPatternFloorDr, peakDr));
+                    if (_cpsPatterns.Count > CPP_MAX_STORED)
+                        _cpsPatterns.RemoveAt(0);
+                    _cpsPatternBuf.Clear();
+                }
+
+                // RESET — false start
+                if (_cpsPatternArmed
+                    && dr < _cpsPatternFloorDr - 0.03)
+                {
+                    _cpsPatternArmed = false;
+                    _cpsPatternBuf.Clear();
+                }
+            }
+            // ── Peak/floor value recurrence tracker ──────────────────────────
+            // Every confirmed peak: check if same µSv/h value seen before.
+            // Every confirmed floor return: same check on floor value.
+            {
+                // Peak recurrence — fires when _pkConfirmed just became true
+                if (_pkConfirmed && wallNs != _lastPeakRecurNs)
+                {
+                    _lastPeakRecurNs = wallNs;
+                }
+                if (_pkConfirmed && _lastPeakRecurNs == wallNs
+                    && (_peakHistory.Count == 0
+                    || Math.Abs(_peakHistory[^1].WallNs - wallNs) > 2_000_000_000L))
+                {
+                    // Check for matching prior peak value
+                    var priorMatches = _peakHistory
+                        .Where(p => Math.Abs(p.Dr - _pkHigh) <= RECUR_TOLERANCE)
+                        .ToList();
+
+                    if (priorMatches.Count > 0
+                        && wallNs - _lastRecurAlertNs > RECUR_COOLDOWN_NS)
+                    {
+                        _lastRecurAlertNs = wallNs;
+                        foreach (var prior in priorMatches.TakeLast(3))
+                        {
+                            double intervalS = (wallNs - prior.WallNs) / 1_000_000_000.0;
+                            AddEvent(
+                                $"[{NsToUtc(wallNs)}] \ud83d\udd04 PEAK RECURRENCE  " +
+                                $"dr={_pkHigh:0.0000} \u00b5Sv/h  " +
+                                $"prior={NsToUtc(prior.WallNs)}  " +
+                                $"interval={intervalS:0.0}s  " +
+                                $"({intervalS/60.0:0.00}min)",
+                                "#FFFF44");
+                        }
+                        if (priorMatches.Count >= 3)
+                        {
+                            // Compute average interval between all matches
+                            var times = priorMatches.Select(p => p.WallNs)
+                                .Append(wallNs).OrderBy(t => t).ToList();
+                            var intervals = new List<double>();
+                            for (int ti = 1; ti < times.Count; ti++)
+                                intervals.Add((times[ti] - times[ti-1]) / 1_000_000_000.0);
+                            double avgInterval = intervals.Average();
+                            double cvInterval  = intervals.Count > 1
+                                ? Math.Sqrt(intervals.Average(
+                                    v => Math.Pow(v - avgInterval, 2))) / avgInterval
+                                : 0;
+                            AddEvent(
+                                $"  PEAK PATTERN  n={priorMatches.Count + 1}  " +
+                                $"avg_interval={avgInterval:0.0}s  " +
+                                $"({avgInterval/60.0:0.00}min)  " +
+                                $"CV={cvInterval:0.000}" +
+                                (cvInterval < 0.10 ? "  PERIODIC \u26a0" : ""),
+                                "#FFDD00");
+                        }
+                    }
+
+                    _peakHistory.Add((_pkHigh, wallNs));
+                    if (_peakHistory.Count > RECUR_MAX_STORED)
+                        _peakHistory.RemoveAt(0);
+                }
+
+                // Floor recurrence — fires when dr returns to near window floor
+                // after having been above it (i.e. a peak just ended)
+                double wFloor;
+                lock (_buffer) { wFloor = _minDr < double.MaxValue ? _minDr : 0; }
+
+                if (_pkConfirmed && wFloor > 0
+                    && Math.Abs(dr - wFloor) <= RECUR_TOLERANCE * 2
+                    && (_floorHistory.Count == 0
+                    || Math.Abs(_floorHistory[^1].WallNs - wallNs) > 2_000_000_000L)
+                    && wallNs != _lastFloorRecurNs)
+                {
+                    _lastFloorRecurNs = wallNs;
+                }
+                if (_pkConfirmed && wFloor > 0
+                    && _lastFloorRecurNs == wallNs
+                    && Math.Abs(dr - wFloor) <= RECUR_TOLERANCE * 2
+                    && (_floorHistory.Count == 0
+                    || Math.Abs(_floorHistory[^1].WallNs - wallNs) > 2_000_000_000L))
+                {
+                    var priorFloors = _floorHistory
+                        .Where(f => Math.Abs(f.Dr - dr) <= RECUR_TOLERANCE)
+                        .ToList();
+
+                    if (priorFloors.Count > 0
+                        && wallNs - _lastRecurAlertNs > RECUR_COOLDOWN_NS)
+                    {
+                        _lastRecurAlertNs = wallNs;
+                        foreach (var prior in priorFloors.TakeLast(3))
+                        {
+                            double intervalS = (wallNs - prior.WallNs) / 1_000_000_000.0;
+                            AddEvent(
+                                $"[{NsToUtc(wallNs)}] \ud83d\udd04 FLOOR RECURRENCE  " +
+                                $"dr={dr:0.0000} \u00b5Sv/h  " +
+                                $"prior={NsToUtc(prior.WallNs)}  " +
+                                $"interval={intervalS:0.0}s  " +
+                                $"({intervalS/60.0:0.00}min)",
+                                "#44FFFF");
+                        }
+                        if (priorFloors.Count >= 3)
+                        {
+                            var times = priorFloors.Select(f => f.WallNs)
+                                .Append(wallNs).OrderBy(t => t).ToList();
+                            var intervals = new List<double>();
+                            for (int ti = 1; ti < times.Count; ti++)
+                                intervals.Add((times[ti] - times[ti-1]) / 1_000_000_000.0);
+                            double avgInterval = intervals.Average();
+                            double cvInterval  = intervals.Count > 1
+                                ? Math.Sqrt(intervals.Average(
+                                    v => Math.Pow(v - avgInterval, 2))) / avgInterval
+                                : 0;
+                            AddEvent(
+                                $"  FLOOR PATTERN  n={priorFloors.Count + 1}  " +
+                                $"avg_interval={avgInterval:0.0}s  " +
+                                $"({avgInterval/60.0:0.00}min)  " +
+                                $"CV={cvInterval:0.000}" +
+                                (cvInterval < 0.10 ? "  PERIODIC \u26a0" : ""),
+                                "#00DDDD");
+                        }
+                    }
+
+                    _floorHistory.Add((dr, wallNs));
+                    if (_floorHistory.Count > RECUR_MAX_STORED)
+                        _floorHistory.RemoveAt(0);
+                }
+            }
 
             // Peak1 shift > 0.05 event
             if (_lastPeakEvent == 0.0) _lastPeakEvent = _peakDr;
@@ -2960,6 +3346,13 @@ namespace GeigerScope
                 if (_events.Count > 500)
                     _events.RemoveAt(_events.Count - 1);
             });
+            try
+            {
+                System.IO.File.AppendAllText(
+                    _eventLogFile,
+                    $"{DateTime.UtcNow:yyyy-MM-ddTHH:mm:ss.fffZ}  {msg}{Environment.NewLine}");
+            }
+            catch { }
         }
 
         private static string Ts() =>
@@ -3298,7 +3691,18 @@ namespace GeigerScope
                 : "Multiple physics parameters outside natural variance range.";
             AddEvent($"  {interp}", "#AA6600");
         }
-
+        private static bool ContainsSubsequence(string[] haystack, string[] needle)
+        {
+            if (needle.Length > haystack.Length) return false;
+            for (int start = 0; start <= haystack.Length - needle.Length; start++)
+            {
+                bool match = true;
+                for (int ni = 0; ni < needle.Length; ni++)
+                    if (haystack[start + ni] != needle[ni]) { match = false; break; }
+                if (match) return true;
+            }
+            return false;
+        }
         private void RefreshPeakPanel()
         {
             PeakPanel.Children.Clear();
@@ -3836,6 +4240,44 @@ namespace GeigerScope
         }
     }
 
+// ── CPS ramp record ──────────────────────────────────────────────────────────
+    public class CpsRamp
+    {
+        public long   FloorNs { get; }
+        public long   PeakNs  { get; private set; }
+        public double FloorDr { get; }
+        public double PeakDr  { get; private set; }
+        public List<(long ElapsedMs, int Cps)> Points { get; } = new();
+
+        public CpsRamp(long floorNs, double floorDr)
+        {
+            FloorNs = floorNs;
+            FloorDr = floorDr;
+        }
+
+        public void Feed(long wallNs, int cps)
+        {
+            long elapsed = (wallNs - FloorNs) / 1_000_000L;
+            Points.Add((elapsed, cps));
+        }
+
+        public void Seal(long peakNs, double peakDr)
+        {
+            PeakNs = peakNs;
+            PeakDr = peakDr;
+        }
+
+        public List<(long ElapsedMs, int Cps)> MatchAgainst(
+            CpsRamp other, long bucketMs)
+        {
+            var hits = new List<(long, int)>();
+            foreach (var (eMs, cps) in Points)
+                foreach (var (oMs, oCps) in other.Points)
+                    if (cps == oCps && cps > 0 && Math.Abs(eMs - oMs) <= bucketMs)
+                    { hits.Add((eMs, cps)); break; }
+            return hits;
+        }
+    }
 
     // ── HLK-LD6002B 60GHz frame reader ───────────────────────────────────────────
     public class MmWaveReader : IDisposable
