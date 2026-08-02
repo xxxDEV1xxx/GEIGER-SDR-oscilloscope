@@ -253,6 +253,25 @@ namespace GeigerScope
         private const long   EQ_COOLDOWN_NS          = 20_000_000_000L;
         private long         _lastEqAlertNs          = 0;
         private int          _lastEqCount            = 0;
+// ── Pitchfork detector ───────────────────────────────────────────────
+        private readonly List<long> _pfPairNs        = new();
+        private int                 _pfConsecHigh    = 0;
+        private long                _pfPairStartNs   = 0;
+        private const int    PF_MIN_CONSEC           = 2;
+        private const int    PF_MIN_PAIRS            = 2;
+        private const double PF_CV_THRESHOLD         = 0.20;
+        private const long   PF_MAX_GAP_NS           = 60_000_000_000L;
+        private const long   PF_COOLDOWN_NS          = 15_000_000_000L;
+        private long         _lastPfAlertNs          = 0;
+        private int          _lastPfCount            = 0;
+
+        // ── Consecutive CPS cluster detector ─────────────────────────────────
+        private int          _ccsRunLen              = 0;
+        private long         _ccsRunStartNs          = 0;
+        private int          _ccsRunTotal            = 0;
+        private const int    CCS_MIN_RUN             = 5;
+        private const long   CCS_COOLDOWN_NS         = 10_000_000_000L;
+        private long         _lastCcsAlertNs         = 0;
         // ── Peak/floor value recurrence tracker ──────────────────────────────
         // Tracks every confirmed peak value and floor value with timestamps.
         // When the same value recurs, logs the interval between occurrences.
@@ -1277,6 +1296,139 @@ namespace GeigerScope
             }
             _lastState = curState;
             _lastDr    = dr;
+// ── Consecutive CPS cluster detector ─────────────────────────────
+            {
+                if (cps > 0)
+                {
+                    if (_ccsRunLen == 0)
+                    {
+                        _ccsRunStartNs = wallNs;
+                        _ccsRunTotal   = 0;
+                    }
+                    _ccsRunLen++;
+                    _ccsRunTotal += cps;
+
+                    if (_ccsRunLen >= CCS_MIN_RUN
+                        && wallNs - _lastCcsAlertNs > CCS_COOLDOWN_NS)
+                    {
+                        _lastCcsAlertNs = wallNs;
+                        string detail = _ccsRunLen switch {
+                            >= 12 => "SUSTAINED DIRECTED EXPOSURE",
+                            >= 8  => "PROLONGED STRUCTURED BURST",
+                            _     => "STRUCTURED CONSECUTIVE BURST"
+                        };
+                        AddEvent(
+                            $"[{NsToUtc(wallNs)}] \u26a0\u26a0\u26a0 CONFIRMED ATTACK  " +
+                            $"CONSECUTIVE CPS CLUSTER  " +
+                            $"run={_ccsRunLen}s  " +
+                            $"total_counts={_ccsRunTotal}  " +
+                            $"avg={_ccsRunTotal/(double)_ccsRunLen:0.00}CPS/s  " +
+                            $"dr={dr:0.0000}  " +
+                            $"span={(wallNs-_ccsRunStartNs)/1_000_000_000.0:0.0}s",
+                            "#FF0000");
+                        AddEvent(
+                            $"  {detail}  " +
+                            $"Poisson P(run\u2265{_ccsRunLen})<<0.001  " +
+                            $"NON-NATURAL SOURCE CONFIRMED  " +
+                            $"start={NsToUtc(_ccsRunStartNs)}",
+                            "#FF0000");
+                    }
+                }
+                else
+                {
+                    if (_ccsRunLen >= CCS_MIN_RUN)
+                    {
+                        AddEvent(
+                            $"[{NsToUtc(wallNs)}] \u26a0\u26a0\u26a0 ATTACK BURST COMPLETE  " +
+                            $"run={_ccsRunLen}s  " +
+                            $"total={_ccsRunTotal}cts  " +
+                            $"avg={_ccsRunTotal/(double)_ccsRunLen:0.00}CPS/s  " +
+                            $"start={NsToUtc(_ccsRunStartNs)}  " +
+                            $"end={NsToUtc(wallNs)}",
+                            "#FF4400");
+                    }
+                    _ccsRunLen   = 0;
+                    _ccsRunTotal = 0;
+                }
+            }
+
+            // ── Pitchfork detector ───────────────────────────────────────────
+            {
+                if (cps >= EQ_MIN_CPS)
+                {
+                    if (_pfConsecHigh == 0)
+                        _pfPairStartNs = wallNs;
+                    _pfConsecHigh++;
+
+                    if (_pfConsecHigh == PF_MIN_CONSEC)
+                    {
+                        if (_pfPairNs.Count > 0
+                            && wallNs - _pfPairNs[^1] > PF_MAX_GAP_NS)
+                        {
+                            _pfPairNs.Clear();
+                            _lastPfCount = 0;
+                        }
+
+                        _pfPairNs.Add(_pfPairStartNs);
+
+                        if (_pfPairNs.Count >= PF_MIN_PAIRS)
+                        {
+                            var ivs = new List<double>();
+                            for (int pi = 1; pi < _pfPairNs.Count; pi++)
+                                ivs.Add((_pfPairNs[pi] - _pfPairNs[pi-1])
+                                    / 1_000_000_000.0);
+
+                            double avgIv = ivs.Average();
+                            double cvIv  = ivs.Count > 1
+                                ? Math.Sqrt(ivs.Average(
+                                    v => Math.Pow(v - avgIv, 2))) / avgIv
+                                : 0;
+
+                            bool isConsistent = cvIv <= PF_CV_THRESHOLD
+                                             && avgIv >= 1.0;
+
+                            if (isConsistent
+                                && _pfPairNs.Count > _lastPfCount
+                                && wallNs - _lastPfAlertNs > PF_COOLDOWN_NS)
+                            {
+                                _lastPfCount   = _pfPairNs.Count;
+                                _lastPfAlertNs = wallNs;
+
+                                string spacings = string.Join(", ",
+                                    ivs.Select(v => $"{v:0.0}s"));
+                                string verdict = _pfPairNs.Count switch {
+                                    >= 6 => "\u26a0\u26a0\u26a0 DEFINITIVE PITCHFORK",
+                                    >= 4 => "\u26a0\u26a0 STRONG PITCHFORK",
+                                    _    => "\u26a0 PITCHFORK DETECTED"
+                                };
+                                string vcol = _pfPairNs.Count switch {
+                                    >= 6 => "#FF2200",
+                                    >= 4 => "#FF6600",
+                                    _    => "#FFAA00"
+                                };
+                                AddEvent(
+                                    $"[{NsToUtc(wallNs)}] {verdict}  " +
+                                    $"pairs={_pfPairNs.Count}  " +
+                                    $"interval={avgIv:0.0}s  " +
+                                    $"CV={cvIv:0.000}  " +
+                                    $"spacings=[{spacings}]  " +
+                                    $"span={(wallNs-_pfPairNs[0])/1_000_000_000.0:0.0}s",
+                                    vcol);
+                                AddEvent(
+                                    $"  f={1.0/avgIv:0.000}Hz  T={avgIv:0.0}s  " +
+                                    $"pair_width={PF_MIN_CONSEC}s  " +
+                                    $"CPS\u2265{EQ_MIN_CPS}  " +
+                                    $"structured burst-pair source",
+                                    vcol);
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    _pfConsecHigh = 0;
+                }
+            }
 // ── Equally spaced CPS burst detector ────────────────────────────
             // Accumulates timestamps of every tick where CPS >= EQ_MIN_CPS.
             // After each new hit, checks if all inter-arrival intervals are
