@@ -125,6 +125,23 @@
                                FontSize="14" Foreground="#AAAAFF"
                                FontFamily="Consolas" Margin="0,0,0,8"/>
 
+                    <Separator Background="#222" Margin="0,4,0,8"/>
+
+                    <TextBlock Text="CPS DISTRIBUTION" Foreground="#444"
+                               FontSize="10" FontFamily="Consolas"/>
+                    <TextBlock x:Name="TxtUniTotal" Text="total: 0s"
+                               FontSize="10" Foreground="#666"
+                               FontFamily="Consolas" Margin="0,1,0,2"/>
+                    <ItemsControl x:Name="CpsDistList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}"
+                                           FontFamily="Consolas"
+                                           FontSize="10"
+                                           Foreground="#FFAA00"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                     <TextBlock Text="STATE" Foreground="#555"
                                FontSize="10" FontFamily="Consolas"/>
                     <TextBlock x:Name="TxtState" Text="---"
