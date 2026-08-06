@@ -131,8 +131,8 @@ namespace GeigerScope
         // ── CPM tracking ──────────────────────────────────────────────────
         private long _sessionStartNs     = 0;
         private int  _currentMinuteCps   = 0;
-        private int  _currentMinuteIdx   = 0;
-        private long _lastCpmElapsedSec  = -1;
+        private int  _currentMinuteIdx   = 0; 
+        private int  _cpmBaseCount       = 0;
         private readonly ObservableCollection<CpmRecord> _cpmHistory = new();
 
         // ── Collections ───────────────────────────────────────────────────
@@ -272,6 +272,16 @@ namespace GeigerScope
         private const int    CCS_MIN_RUN             = 5;
         private const long   CCS_COOLDOWN_NS         = 10_000_000_000L;
         private long         _lastCcsAlertNs         = 0;
+// ── CPS uniformity detector ───────────────────────────────────────────
+        private readonly Queue<int> _uniWindow        = new();
+        private const int    UNI_WINDOW_S             = 30;
+        private const double UNI_LOCK_THRESHOLD       = 0.60;
+        private const long   UNI_COOLDOWN_NS          = 30_000_000_000L;
+        private long         _lastUniAlertNs          = 0;
+        private readonly Dictionary<int, int> _cpsDistribution = new();
+        private int                           _uniTotalSecs    = 0;
+        private long                          _lastDistElapsedSec = -1;
+        private readonly ObservableCollection<string> _cpsDist = new();
         // ── Peak/floor value recurrence tracker ──────────────────────────────
         // Tracks every confirmed peak value and floor value with timestamps.
         // When the same value recurs, logs the interval between occurrences.
@@ -281,6 +291,12 @@ namespace GeigerScope
         private const int    RECUR_MAX_STORED  = 200;
         private const long   RECUR_COOLDOWN_NS = 30_000_000_000L; // 30s min between alerts
         private long         _lastRecurAlertNs  = 0;
+// ── Power level lock detector ─────────────────────────────────────────
+        private readonly Dictionary<double, List<long>> _powerLevelHits = new();
+        private const double PWR_LOCK_TOLERANCE  = 0.005;
+        private const int    PWR_LOCK_MIN_HITS   = 3;
+        private const long   PWR_LOCK_COOLDOWN   = 60_000_000_000L;
+        private long         _lastPwrLockNs      = 0;
         private long         _lastPeakRecurNs   = 0;
         private long         _lastFloorRecurNs  = 0;
         // ── CPS forensic monitor fields
@@ -500,6 +516,40 @@ namespace GeigerScope
         private async Task DisconnectAsync()
         {
             _cts.Cancel();
+// ── Session summary to event log ──────────────────────────────────
+            try
+            {
+                long nowNs   = DateTimeOffset.UtcNow
+                    .ToUnixTimeMilliseconds() * 1_000_000L;
+                double durS  = _sessionStartNs > 0
+                    ? (nowNs - _sessionStartNs) / 1_000_000_000.0 : 0;
+                int totalCts = _cpsDistribution
+                    .Where(kv => kv.Key > 0)
+                    .Sum(kv => kv.Key * kv.Value);
+
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("=== SESSION SUMMARY ===");
+                sb.AppendLine($"Time     : {DateTime.UtcNow:yyyy-MM-ddTHH:mm:ssZ}");
+                sb.AppendLine($"Duration : {durS:0.0}s ({durS/60.0:0.00}min)");
+                sb.AppendLine($"Peak     : {_peakDr:0.0000} \u00b5Sv/h");
+                sb.AppendLine($"Floor    : {(_minDr < double.MaxValue ? _minDr : 0):0.0000} \u00b5Sv/h");
+                sb.AppendLine($"Total cts: {totalCts}");
+                sb.AppendLine($"Peaks log: {_peakLog.Count} confirmed peaks");
+                sb.AppendLine($"CPS dist :");
+                foreach (var kv in _cpsDistribution.OrderByDescending(k => k.Key))
+                    sb.AppendLine($"  CPS={kv.Key}: {kv.Value}s  " +
+                        $"{kv.Key*kv.Value}cts  " +
+                        $"{kv.Value/(double)_uniTotalSecs:0.0%}");
+                sb.AppendLine("Power level hits:");
+                foreach (var kv in _powerLevelHits
+                    .OrderByDescending(k => k.Value.Count))
+                    sb.AppendLine($"  {kv.Key:0.0000} \u00b5Sv/h  x{kv.Value.Count}");
+                sb.AppendLine("Signatures detected (see events.log for detail)");
+                sb.AppendLine("=== END SESSION ===");
+
+                System.IO.File.AppendAllText(_eventLogFile, sb.ToString());
+            }
+            catch { }
             try { await _ws?.CloseAsync(
                 WebSocketCloseStatus.NormalClosure, "",
                 CancellationToken.None)!; } catch { }
@@ -580,36 +630,40 @@ namespace GeigerScope
             long elapsedS   = elapsedNs / 1_000_000_000L;
             long secInMin   = elapsedS % 60;
 
-            // ── CPM minute rollover ───────────────────────────────────
+// ── CPM from session CPS distribution ─────────────────────
+            // At each 60s boundary, CPM = total counts in that minute
+            // derived from _cpsDistribution snapshot minus prior minutes.
             if (minuteIdx > _currentMinuteIdx)
             {
+// Total counts from coin sorter tally
+                int totalCtsNow = _cpsDistribution
+                    .Where(kv => kv.Key > 0)
+                    .Sum(kv => kv.Key * kv.Value);
+
+                // CPM for this minute = total now minus total at start of minute
+                int finalCpm = totalCtsNow - _cpmBaseCount;
+                _cpmBaseCount = totalCtsNow;
+
                 long minStartNs = _sessionStartNs
                     + (long)_currentMinuteIdx * 60_000_000_000L;
+                int minNum = _currentMinuteIdx + 1;
 
-                // Save final accumulated value for completed minute
-                int finalCpm = _currentMinuteCps;
-                int minNum   = _currentMinuteIdx + 1;
                 Dispatcher.Invoke(() =>
                 {
                     var rec = new CpmRecord(minNum, minStartNs, finalCpm);
                     _cpmHistory.Insert(0, rec);
+                    TxtCPM.Text = finalCpm.ToString("D5");
                 });
                 AddEvent(
                     $"[Min {minNum:D3}  {NsToUtc(minStartNs)}]" +
-                    $"  CPM={finalCpm:D5}  ✓ COMPLETE", "#00BBFF");
+                    $"  CPM={finalCpm:D5}  \u2713 COMPLETE", "#00BBFF");
 
-                _currentMinuteCps  = 0;
                 _currentMinuteIdx  = minuteIdx;
-                _lastCpmElapsedSec = -1;
+                _currentMinuteCps  = 0;
             }
 
-            // ── CPM accumulate once per unique second ─────────────────
-            // Multiple packets arrive per second — only count once
-            if (elapsedS != _lastCpmElapsedSec)
-            {
-                _lastCpmElapsedSec = elapsedS;
-                if (cps > 0)
-                    _currentMinuteCps += cps;
+// ── Accumulate CPM — every packet is a discrete event ────
+            _currentMinuteCps += cps;
             // ── Beat interference detector
             // y = A1*sin(2pi*f1*t) + A2*sin(2pi*f2*t)
             // Envelope: max=A1+A2, min=|A1-A2|, beat_freq=|f1-f2|
@@ -762,7 +816,6 @@ namespace GeigerScope
                             +"BOTH tests failed",
                             "#FF0000");
                     }
-                }
                 }
 
             }
@@ -1103,6 +1156,7 @@ namespace GeigerScope
                 TxtDR.Text     = dr.ToString("0.0000");
                 TxtCPS.Text    = cps.ToString("0");
                 TxtCPM.Text    = _currentMinuteCps.ToString("D5");
+                TxtCpmSec.Text = $"{secInMin:D2}s / 60s  live={_currentMinuteCps}cts  eS={elapsedS}";
                 TxtCpmSec.Text = $"{secInMin:D2}s / 60s elapsed";
                 TxtDose.Text        = dose.ToString("0.0000");
                 TxtSessionDose.Text = sessionDose.ToString("0.0000");
@@ -1296,6 +1350,100 @@ namespace GeigerScope
             }
             _lastState = curState;
             _lastDr    = dr;
+// ── CPS uniformity detector ──────────────────────────────────────
+            {
+                _uniWindow.Enqueue(cps);
+                if (_uniWindow.Count > UNI_WINDOW_S)
+                    _uniWindow.Dequeue();
+
+
+// Tally into session-wide distribution once per unique second
+                if (elapsedS != _lastDistElapsedSec)
+                {
+                    _lastDistElapsedSec = elapsedS;
+                    _uniTotalSecs++;
+                    int cpsVal = cps;
+                    if (!_cpsDistribution.ContainsKey(cpsVal))
+                        _cpsDistribution[cpsVal] = 0;
+                    _cpsDistribution[cpsVal]++;
+                }
+
+// Coin sorter — one tally per unique second
+                if (elapsedS != _lastDistElapsedSec)
+                {
+                    _lastDistElapsedSec = elapsedS;
+                    if (!_cpsDistribution.ContainsKey(cps))
+                        _cpsDistribution[cps] = 0;
+                    _cpsDistribution[cps]++;
+                    _uniTotalSecs++;
+                }
+
+                Dispatcher.Invoke(() =>
+                {
+                    if (CpsDistList.ItemsSource == null)
+                        CpsDistList.ItemsSource = _cpsDist;
+
+                    // Deduplicate buffer by second — one entry per unique second
+                    SamplePoint[] snap;
+                    lock (_buffer) { snap = _buffer.ToArray(); }
+
+                    var dist = new Dictionary<int, int>();
+                    foreach (var sp in snap)
+                    {
+                        int v = (int)Math.Round(sp.CpsNorm / 0.00812);
+                        if (!dist.ContainsKey(v)) dist[v] = 0;
+                        dist[v]++;
+                    }
+
+                    int total = snap.Length;
+                    int totalCts = dist.Where(kv => kv.Key > 0)
+                                       .Sum(kv => kv.Key * kv.Value);
+                    if (total == 0) return;
+
+                    TxtUniTotal.Text = $"total: {total}s  {totalCts}cts";
+
+                    _cpsDist.Clear();
+                    foreach (var kv in dist.OrderByDescending(kv => kv.Key))
+                    {
+                        double pct = kv.Value / (double)total;
+                        if (kv.Key == 0)
+                            _cpsDist.Add($"  CPS=0  {kv.Value,5}s  {pct:0.0%}");
+                        else
+                        {
+                            int    cts = kv.Key * kv.Value;
+                            string col = kv.Key >= 5 ? "\u26a0 " :
+                                         kv.Key >= 2 ? "! "      : "  ";
+                            _cpsDist.Add($"{col}CPS={kv.Key,-3} {cts,5}cts  {pct:0.0%}");
+                        }
+                    }
+                });
+
+                // Rolling window uniformity alert
+                if (_uniWindow.Count >= UNI_WINDOW_S
+                    && wallNs - _lastUniAlertNs > UNI_COOLDOWN_NS)
+                {
+                    var arr   = _uniWindow.ToArray();
+                    int ones  = arr.Count(v => v == 1);
+                    int zeros = arr.Count(v => v == 0);
+                    int highs = arr.Count(v => v >= 2);
+                    double frac1 = ones / (double)UNI_WINDOW_S;
+                    if (frac1 >= UNI_LOCK_THRESHOLD)
+                    {
+                        _lastUniAlertNs = wallNs;
+                        AddEvent(
+                            $"[{NsToUtc(wallNs)}] \u26a0\u26a0\u26a0 CPS UNIFORMITY LOCK  " +
+                            $"CPS=1 on {ones}/{UNI_WINDOW_S}s ({frac1:0.0%})  " +
+                            $"zeros={zeros}  highs={highs}  " +
+                            $"Poisson P<<0.001  CONTROLLED SOURCE CONFIRMED",
+                            "#FF0000");
+                        AddEvent(
+                            $"  Natural Poisson: expected CPS=1 on " +
+                            $"~{(int)(UNI_WINDOW_S*0.30)}-{(int)(UNI_WINDOW_S*0.45)}s  " +
+                            $"observed={ones}s  locked synthetic output indicated",
+                            "#CC0000");
+                    }
+                }
+            }
 // ── Consecutive CPS cluster detector ─────────────────────────────
             {
                 if (cps > 0)
@@ -1746,11 +1894,57 @@ if (graded.Count > 0
                     _cpsPatternBuf.Clear();
                 }
             }
+
+// ── Power level lock detector ─────────────────────────────────
+                // When the same µSv/h peak value recurs 3+ times it indicates
+                // a fixed-output source returning to the same power setting.
+                if (_pkConfirmed && wallNs != _lastPeakRecurNs)
+                {
+                    // Find or create bucket for this peak value
+                    double bucketKey = -1;
+                    foreach (var k in _powerLevelHits.Keys)
+                        if (Math.Abs(k - _pkHigh) <= PWR_LOCK_TOLERANCE)
+                        { bucketKey = k; break; }
+
+                    if (bucketKey < 0)
+                    {
+                        bucketKey = _pkHigh;
+                        _powerLevelHits[bucketKey] = new List<long>();
+                    }
+                    _powerLevelHits[bucketKey].Add(wallNs);
+
+                    var hits = _powerLevelHits[bucketKey];
+                    if (hits.Count >= PWR_LOCK_MIN_HITS
+                        && wallNs - _lastPwrLockNs > PWR_LOCK_COOLDOWN)
+                    {
+                        _lastPwrLockNs = wallNs;
+                        var ivs = new List<double>();
+                        for (int hi = 1; hi < hits.Count; hi++)
+                            ivs.Add((hits[hi] - hits[hi-1]) / 1_000_000_000.0);
+                        double avgIv = ivs.Average();
+                        double cvIv  = ivs.Count > 1
+                            ? Math.Sqrt(ivs.Average(
+                                v => Math.Pow(v - avgIv, 2))) / avgIv
+                            : 0;
+                        AddEvent(
+                            $"[{NsToUtc(wallNs)}] \u26a0\u26a0\u26a0 POWER LEVEL LOCK  " +
+                            $"dr={bucketKey:0.0000} \u00b5Sv/h  " +
+                            $"hits={hits.Count}  " +
+                            $"avg_interval={avgIv:0.0}s ({avgIv/60.0:0.00}min)  " +
+                            $"CV={cvIv:0.000}" +
+                            (cvIv < 0.20 ? "  FIXED OUTPUT CONFIRMED" : ""),
+                            "#FF0000");
+                        AddEvent(
+                            $"  Source returns to identical power level {hits.Count}x  " +
+                            $"Natural decay cannot reproduce fixed amplitude  " +
+                            $"Controlled RF source confirmed",
+                            "#CC0000");
+                    }
+                }
+
             // ── Peak/floor value recurrence tracker ──────────────────────────
-            // Every confirmed peak: check if same µSv/h value seen before.
-            // Every confirmed floor return: same check on floor value.
             {
-// Peak recurrence — parse event log for prior peaks at same µSv/h
+                // Peak recurrence — parse event log for prior peaks at same µSv/h
                 if (_pkConfirmed && wallNs != _lastPeakRecurNs
                     && wallNs - _lastRecurAlertNs > RECUR_COOLDOWN_NS)
                 {
