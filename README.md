@@ -11,6 +11,11 @@ j:\True-Sentinel\GeigerScope\
  dotnet build
  dotnet run
 
+#Run binary string matching
+python scrape_patterns.py
+
+
+
 #click calibrate after putting sample under tube fore 10 seconds, let run for 60 seconds or as long as desired then click again to stop calibration
 
 
