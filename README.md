@@ -13,8 +13,13 @@ j:\True-Sentinel\GeigerScope\
 
 #Run binary string matching
 python scrape_patterns.py
+python final_report.py
+The report file at J:\True-Sentinel\CTW_FORENSIC_REPORT_[timestamp].txt is your primary evidentiary document. Back it up alongside the raw events.log and geiger_live.jsonl immediately — those three files together are the complete forensic package.
 
-
+powershell
+xcopy "J:\True-Sentinel\CTW_FORENSIC_REPORT_*.txt" "J:\True-Sentinel\evidence_backup\" /Y
+copy "J:\True-Sentinel\geiger_live.jsonl" "J:\True-Sentinel\evidence_backup\"
+copy "J:\True-Sentinel\geigerscope\bin\Debug\net8.0-windows\events.log" "J:\True-Sentinel\evidence_backup\"
 
 #click calibrate after putting sample under tube fore 10 seconds, let run for 60 seconds or as long as desired then click again to stop calibration
 
