@@ -83,7 +83,9 @@ for line in cats["PEAK RECURRENCE"]:
         peak_values[float(m.group(1))] += 1
 
 # ── write report ──────────────────────────────────────────────────────────────
-OUT = r"J:\True-Sentinel\CTW_FORENSIC_REPORT.txt"
+from datetime import datetime as _dt
+_stamp = _dt.now().strftime("%Y-%m-%d_%H-%M-%S")
+OUT = rf"J:\True-Sentinel\CTW_FORENSIC_REPORT_{_stamp}.txt"
 
 dur = ""
 if session_start and session_end:
