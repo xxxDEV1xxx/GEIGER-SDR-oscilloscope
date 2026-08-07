@@ -1,0 +1,11 @@
+python fs5000_serial.py
+python geiger_live_server.py
+open geigerscope folder in powershell and run dotnet build 
+then dotnet run
+
+scrape_patterns.py
+final_report.py
+python ctw_verify.py --file J:\True-Sentinel\geiger_live.jsonl --window 600
+python ctw_verify.py --file J:\True-Sentinel\serial_20260805_225418.jsonl.gz
+python ctw_verify.py --file J:\True-Sentinel\geiger_live.jsonl --window 600
+python ctw_verify.py --file J:\True-Sentinel\serial_20260722_211443.jsonl.gz
