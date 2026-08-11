@@ -15,6 +15,28 @@ using Newtonsoft.Json.Linq;
 
 namespace GeigerScope
 {
+// ── CPS Signature entry ───────────────────────────────────────────────────────
+public class SigEntry
+{
+    public string   N      { get; set; } = "";
+    public int      Len    { get; set; }
+    public int      Peak   { get; set; }
+    public int      Total  { get; set; }
+    public int[]    Seq    { get; set; } = Array.Empty<int>();
+    public string   T      { get; set; } = "";
+    public long     Ts     { get; set; }
+
+    // Pre-built bar geometry for the UI (filled by BuildBars)
+    public List<SigBar> Bars { get; set; } = new();
+}
+
+public class SigBar
+{
+    public double Width  { get; set; }
+    public double Height { get; set; }
+    public Brush  Fill   { get; set; } = Brushes.Gray;
+    public bool   IsGap  { get; set; }
+}
 // ── Peak log record ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
     public class PeakRecord
     {
@@ -54,9 +76,17 @@ namespace GeigerScope
                           .UtcDateTime.ToString("HH:mm:ss");
     }
 
-    // ── Sample point ──────────────────────────────────────────────────────
+// ── Sample point ──────────────────────────────────────────────────────
     public record SamplePoint(double Dr, double CpsNorm, long WallNs);
-
+    // ── SDR frequency table entry ─────────────────────────────────────────
+    public class SdrFreqEntry
+    {
+        public double  FreqMhz  { get; set; }
+        public double  PowerDbm { get; set; }
+        public string  Band     { get; set; } = "";
+        public string  Display  =>
+            $"{FreqMhz,9:0.000} MHz  {PowerDbm,7:0.00} dBm  {Band}";
+    }
     // ── Event log row ─────────────────────────────────────────────────────
     public class EventRow
     {
@@ -106,8 +136,12 @@ namespace GeigerScope
         private double _sdrFloorDbm = 0.0;
         private double _sdrMinDbm   = -120.0;
         private double _sdrMaxDbm   = -20.0;
-        private bool   _sdrOnline   = false;
+        private bool   _sdrOnline    = false;
         private bool   _geigerOnline = false;
+        // SDR spectrum canvas
+        private readonly Dictionary<double, double> _sdrSpectrum = new();
+        private readonly object _sdrSpecLock = new();
+        private ObservableCollection<SdrFreqEntry> _sdrFreqItems = new();
         private double _sessionDose    = 0.0;
         private double _deviceDoseBase = -1.0;
         private int    _wPatternCount  = 0;
@@ -139,6 +173,14 @@ namespace GeigerScope
         private readonly ObservableCollection<EventRow> _events  = new();
         private readonly ObservableCollection<string>   _rawData = new();
         private readonly ObservableCollection<PeakRecord> _peakLog  = new();
+        // ── CPS Signature Ledger ──────────────────────────────────────────────────────
+private readonly List<int>          _sigBuf      = new();
+private int                         _sigGapCount = 0;
+private int                         _sigSeqNum   = 0;
+private readonly List<SigEntry>     _sigLedger   = new();
+private readonly List<SigEntry>     _sigPending  = new();
+private readonly ObservableCollection<SigEntry> _sigView = new();
+private const int SIG_GAP_CLOSE = 4;
         private double _sessionPeakDr = 0.0;
         private int    _peakLogSeq    = 0;
         // Peak log rank variables — updated every second
@@ -175,6 +217,7 @@ namespace GeigerScope
         private readonly MmWaveReader _mmReader = new(MAX_SAMPLES);
         private bool _mmOnline  = false;
         private int  _mmWindow  = 100; // 60GHz samples to show (10Hz = 10s)
+        private System.Diagnostics.Process? _radar3DProcess;
 
         // ── RF power estimation
         private const double RF_K_LOW  = 0.01;
@@ -382,6 +425,8 @@ namespace GeigerScope
             InitializeComponent();
 
             EventList.ItemsSource = _events;
+            if (SigLedgerList != null)
+    SigLedgerList.ItemsSource = _sigView;
             CpmList.ItemsSource   = _cpmHistory;
             RawList.ItemsSource   = _rawData;
 
@@ -479,6 +524,33 @@ namespace GeigerScope
                     .ToUnixTimeMilliseconds() * 1_000_000L;
             };
             _mmReader.Start();
+try
+            {
+                _radar3DProcess = new System.Diagnostics.Process
+                {
+                    StartInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName        = "python",
+                        Arguments       = @"J:\True-Sentinel\mmwave\spatial3d.py",
+                        CreateNoWindow  = true,
+                        UseShellExecute = false,
+                    }
+                };
+                _radar3DProcess.Start();
+                Task.Delay(3000).ContinueWith(async _ =>
+                    await Dispatcher.InvokeAsync(async () =>
+                    {
+                        await Radar3DView.EnsureCoreWebView2Async();
+                        Radar3DView.Source = new Uri("http://127.0.0.1:8080");
+                        Txt3DStatus.Text       = "3D RADAR — LIVE";
+                        Txt3DStatus.Foreground =
+                            new SolidColorBrush(Color.FromRgb(0x00, 0xFF, 0xFF));
+                    }));
+            }
+            catch (Exception ex)
+            {
+                AddEvent($"[3D] Failed to start: {ex.Message}", "#FF4444");
+            }
         }
 
         // ── Connect ───────────────────────────────────────────────────────
@@ -500,8 +572,13 @@ namespace GeigerScope
                 Dispatcher.Invoke(() =>
                 {
                     TxtStatus.Text       = "CONNECTED  ○ G  ○ SDR";
-                    TxtStatus.Foreground = Brushes.LimeGreen;
-                    BtnConnect.Content   = "DISCONNECT";
+                TxtStatus.Foreground = Brushes.LimeGreen;
+                BtnConnect.Content   = "DISCONNECT";
+                SdrFreqList.ItemsSource = _sdrFreqItems;
+                var sdrTimer = new DispatcherTimer
+                    { Interval = TimeSpan.FromMilliseconds(500) };
+                sdrTimer.Tick += DrawSdrCanvas;
+                sdrTimer.Start();
                 });
                 _ = Task.Run(ReceiveLoopAsync);
             }
@@ -2143,11 +2220,70 @@ if (graded.Count > 0
                     $"∠{evAng:0.0}°  {rStr}  e={evEcc:0.00}  {reStr}",
                     "#3388FF");
             }
+// ── CPS Signature Ledger (exact web parity) ───────────────────────────────────
+{
+    if (cps > 0 || _sigBuf.Count > 0)
+    {
+        _sigBuf.Add(cps);
+
+        if (cps == 0) _sigGapCount++;
+        else          _sigGapCount = 0;
+
+        if (_sigGapCount >= SIG_GAP_CLOSE)
+        {
+            // trim trailing zeros that closed the signature
+            while (_sigBuf.Count > 0 && _sigBuf[^1] == 0)
+                _sigBuf.RemoveAt(_sigBuf.Count - 1);
+
+            if (_sigBuf.Count > 0)
+            {
+                _sigSeqNum++;
+                int peak  = _sigBuf.Count > 0 ? _sigBuf.Max() : 0;
+int total = _sigBuf.Count > 0 ? _sigBuf.Sum() : 0;
+                var entry = new SigEntry
+                {
+                    N     = _sigSeqNum.ToString(),
+                    Len   = _sigBuf.Count,
+                    Peak  = peak,
+                    Total = total,
+                    Seq   = _sigBuf.ToArray(),
+                    T     = NsToUtc(wallNs),
+                    Ts    = wallNs / 1_000_000   // ms
+                };
+                BuildBars(entry);
+
+                int visible = entry.Seq.Count(v => v > 0);
+
+                if (visible < 4)
+                {
+                    // short signature → hold for merging
+                    _sigPending.Add(entry);
+                }
+                else
+                {
+                    // real signature → first flush pending shorts
+                    if (_sigPending.Count > 0)
+                    {
+                        RenderCombinedSig(_sigPending);
+                        _sigPending.Clear();
+                    }
+                    RenderSig(entry);
+                }
+            }
+
+            _sigBuf.Clear();
+            _sigGapCount = 0;
+        }
+    }
+}
         }
 
         // ── SDR reading handler ───────────────────────────────────────────
         private void HandleSdrReading(JObject obj)
         {
+            var recType = obj["t"]?.ToString() ?? "";
+            if (recType == "P") return;
+            if (recType != "S" && recType != "") return;
             var power  = obj["power_dbm"]?.Value<double>() ?? -120.0;
             var freq   = obj["freq_mhz"]?.Value<double>()  ?? 0.0;
             var wallNs = obj["wall_ns"]?.Value<long>()     ?? 0L;
@@ -2155,7 +2291,7 @@ if (graded.Count > 0
             if (wallNs == 0)
                 wallNs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
                          * 1_000_000L;
-
+            UpdateSdrSpectrum(obj["freq_mhz"]?.Value<double>() ?? freq / 1e6, power);
             lock (_sdrBuffer)
             {
                 if (_sdrBuffer.Count >= MAX_SAMPLES) _sdrBuffer.Dequeue();
@@ -2169,7 +2305,113 @@ if (graded.Count > 0
                 _sdrFloorDbm = _sdrBuffer.Min(s => s.PowerDbm);
             }
         }
+// ── SDR spectrum updater (called from HandleSdrReading) ───────────
+        private void UpdateSdrSpectrum(double freqMhz, double powerDbm)
+        {
+            lock (_sdrSpecLock)
+            {
+                if (!_sdrSpectrum.TryGetValue(freqMhz, out var existing)
+                    || powerDbm > existing)
+                    _sdrSpectrum[freqMhz] = powerDbm;
+            }
+        }
 
+        // ── SDR canvas redraw (500ms timer) ───────────────────────────────
+        private void DrawSdrCanvas(object? sender, EventArgs e)
+        {
+            SdrCanvas.Children.Clear();
+            double cw = SdrCanvas.ActualWidth;
+            double ch = SdrCanvas.ActualHeight;
+            if (cw < 10 || ch < 10) return;
+
+            double[]? freqs;
+            double[]? powers;
+            lock (_sdrSpecLock)
+            {
+                if (_sdrSpectrum.Count < 2) return;
+                var sorted = _sdrSpectrum.OrderBy(k => k.Key).ToList();
+                freqs  = sorted.Select(k => k.Key).ToArray();
+                powers = sorted.Select(k => k.Value).ToArray();
+            }
+
+            double minF = freqs[0],  maxF = freqs[^1];
+            double minP = powers.Min(), maxP = powers.Max();
+            double rangeF = Math.Max(maxF - minF, 1.0);
+            double rangeP = Math.Max(maxP - minP, 1.0);
+
+            // Grid lines
+            for (int db = -120; db <= -20; db += 20)
+            {
+                double ny = ch - ((db - minP) / rangeP) * ch;
+                if (ny < 0 || ny > ch) continue;
+                var gl = new System.Windows.Shapes.Line
+                {
+                    X1 = 0, X2 = cw, Y1 = ny, Y2 = ny,
+                    Stroke = new SolidColorBrush(Color.FromRgb(30,30,40)),
+                    StrokeThickness = 0.5
+                };
+                SdrCanvas.Children.Add(gl);
+                var lbl = new TextBlock
+                {
+                    Text       = $"{db}",
+                    FontFamily = new FontFamily("Consolas"),
+                    FontSize   = 9,
+                    Foreground = new SolidColorBrush(Color.FromRgb(80,80,100))
+                };
+                Canvas.SetLeft(lbl, 2);
+                Canvas.SetTop(lbl, ny - 10);
+                SdrCanvas.Children.Add(lbl);
+            }
+
+            // Spectrum polyline
+            var poly = new Polyline
+            {
+                Stroke          = new SolidColorBrush(Color.FromRgb(200,80,255)),
+                StrokeThickness = 1.2,
+                StrokeLineJoin  = PenLineJoin.Round
+            };
+            for (int i = 0; i < freqs.Length; i++)
+            {
+                double x = ((freqs[i] - minF) / rangeF) * cw;
+                double y = ch - ((powers[i] - minP) / rangeP) * ch;
+                poly.Points.Add(new Point(x, y));
+            }
+            SdrCanvas.Children.Add(poly);
+
+            // Freq axis labels
+            for (int i = 0; i < freqs.Length; i += Math.Max(1, freqs.Length / 8))
+            {
+                double x = ((freqs[i] - minF) / rangeF) * cw;
+                var fl = new TextBlock
+                {
+                    Text       = $"{freqs[i]:0}MHz",
+                    FontFamily = new FontFamily("Consolas"),
+                    FontSize   = 8,
+                    Foreground = new SolidColorBrush(Color.FromRgb(100,60,140))
+                };
+                Canvas.SetLeft(fl, x + 2);
+                Canvas.SetTop(fl, ch - 14);
+                SdrCanvas.Children.Add(fl);
+            }
+
+            // Update frequency table — top 30 by power
+            var top30 = _sdrSpectrum
+                .OrderByDescending(k => k.Value)
+                .Take(30)
+                .Select(k => new SdrFreqEntry
+                {
+                    FreqMhz  = k.Key,
+                    PowerDbm = k.Value,
+                    Band     = ""
+                })
+                .ToList();
+            Dispatcher.BeginInvoke(() =>
+            {
+                _sdrFreqItems.Clear();
+                foreach (var entry in top30)
+                    _sdrFreqItems.Add(entry);
+            });
+        }
         // ── Instrument status handler ──────────────────────────────────────
         private void HandleStatus(JObject obj)
         {
@@ -2649,70 +2891,95 @@ if (graded.Count > 0
                 });
             }
 
-            // ── 60GHz mmWave overlay (sliding window, full resolution)
+// ── 60GHz mmWave overlay — 5 channels, flowing waveforms ──────────
             {
-                // Take last _mmWindow samples at native 10Hz — no downsampling
-                // This shows a 10-second window at full detail, right-edge locked
                 var (mmBreath, mmHeart) = _mmReader.WindowSnapshot(_mmWindow);
                 _mmOnline = mmBreath.Length >= 4;
 
                 if (_mmOnline)
                 {
-                    const double MM_TOP = 0.02;
-                    const double MM_H   = 0.43;
-                    double mmTop = h * MM_TOP;
-                    double mmHH  = h * MM_H;
-
-                    // Breath — cyan dashed
-                    if (mmBreath.Length >= 2)
+                    // Channel definitions: label, color, data
+                    // All 5 share the same horizontal flow as the Geiger DR line
+                    // Each normalized to its own window min/max for full deviation
+                    var channels = new (string Label, byte R, byte G, byte B, sbyte[] Data)[]
                     {
-                        var bPoly = new Polyline
+                        ("BREATH",   0x00, 0xFF, 0xFF, mmBreath),
+                        ("BR_RATE",  0x00, 0xFF, 0x88, _mmReader.BreathRateRaw),
+                        ("HR_RATE",  0xFF, 0xFF, 0x00, _mmReader.HeartRateRaw),
+                        ("HEART_I",  0xFF, 0x44, 0xFF, mmHeart),
+                        ("HEART_Q",  0xFF, 0x88, 0xCC, _mmReader.HeartQRaw),
+                    };
+
+                    // Band: each channel gets equal vertical slice of canvas
+                    double bandH    = h * 0.12;   
+                    double bandGap  = h * 0.01;
+                    double bandTop  = h * 0.02;
+
+                    for (int ci = 0; ci < channels.Length; ci++)
+                    {
+                        var (label, r, g, b, data) = channels[ci];
+                        if (data.Length < 2) continue;
+
+                        double top  = bandTop + ci * (bandH + bandGap);
+                        double bot  = top + bandH;
+
+                        // Dynamic normalization against window
+                        double dMin  = data.Min(v => (double)v);
+                        double dMax  = data.Max(v => (double)v);
+                        double span  = Math.Max(dMax - dMin, 1.0);
+
+                        // Background band
+                        var band = new System.Windows.Shapes.Rectangle
+                        {
+                            Width  = w,
+                            Height = bandH,
+                            Fill   = new SolidColorBrush(
+                                Color.FromArgb(0x18, r, g, b)),
+                        };
+                        Canvas.SetLeft(band, 0);
+                        Canvas.SetTop(band, top);
+                        OsciCanvas.Children.Add(band);
+
+                        // Waveform polyline — same flowing style as Geiger DR
+                        var poly = new Polyline
                         {
                             Stroke          = new SolidColorBrush(
-                                Color.FromArgb(0xCC, 0x00, 0xFF, 0xFF)),
+                                Color.FromArgb(0xEE, r, g, b)),
                             StrokeThickness = 1.8,
                             StrokeLineJoin  = PenLineJoin.Round,
-                            StrokeDashArray = new DoubleCollection { 6, 2 },
                         };
-                        double bXStep = w / Math.Max(mmBreath.Length - 1, 1);
-                        for (int bi = 0; bi < mmBreath.Length; bi++)
+
+                        double mmXStep = w / Math.Max(data.Length - 1, 1);
+                        for (int di = 0; di < data.Length; di++)
                         {
-                            double norm = (mmBreath[bi] + 128.0) / 255.0;
-                            double bx   = bi * bXStep;
-                            double by   = mmTop + mmHH * (1.0 - norm);
-                            bPoly.Points.Add(new Point(bx, Math.Clamp(by, 0, h)));
+                            double norm = (data[di] - dMin) / span;
+                            double mmPx = di * mmXStep;
+                            double mmPy = bot - norm * bandH;
+                            poly.Points.Add(new Point(mmPx, Math.Clamp(mmPy, top, bot)));
                         }
-                        OsciCanvas.Children.Add(bPoly);
+                        OsciCanvas.Children.Add(poly);
+
+                        // Channel label on left edge
+                        var lbl = MakeLabel(label,
+                            Color.FromArgb(0xCC, r, g, b), 8);
+                        Canvas.SetLeft(lbl, 2);
+                        Canvas.SetTop(lbl, top + 1);
+                        OsciCanvas.Children.Add(lbl);
+
+                        // Current value on right edge
+                        var valLbl = MakeLabel($"{data[^1]}",
+                            Color.FromArgb(0xCC, r, g, b), 8);
+                        Canvas.SetRight(valLbl, 2);
+                        Canvas.SetTop(valLbl, top + 1);
+                        OsciCanvas.Children.Add(valLbl);
                     }
 
-                    // Heart — magenta dashed
-                    if (mmHeart.Length >= 2)
-                    {
-                        var hPoly = new Polyline
-                        {
-                            Stroke          = new SolidColorBrush(
-                                Color.FromArgb(0xAA, 0xFF, 0x44, 0xFF)),
-                            StrokeThickness = 1.4,
-                            StrokeLineJoin  = PenLineJoin.Round,
-                            StrokeDashArray = new DoubleCollection { 3, 3 },
-                        };
-                        double hXStep = w / Math.Max(mmHeart.Length - 1, 1);
-                        for (int hi2 = 0; hi2 < mmHeart.Length; hi2++)
-                        {
-                            double norm = (mmHeart[hi2] + 128.0) / 255.0;
-                            double hx   = hi2 * hXStep;
-                            double hy   = mmTop + mmHH * (1.0 - norm);
-                            hPoly.Points.Add(new Point(hx, Math.Clamp(hy, 0, h)));
-                        }
-                        OsciCanvas.Children.Add(hPoly);
-                    }
-
-                    // Window size label + rates badge
-                    double winSec  = _mmWindow / (double)MmWaveReader.SAMPLE_HZ;
-                    double brRate  = _mmReader.BreathRate;
-                    double hrRate  = _mmReader.HeartRate;
-                    string brStr   = brRate > 0 ? $"{brRate:0.0} br/min" : "--";
-                    string hrStr   = hrRate > 0 ? $"{hrRate:0.0} bpm"    : "--";
+                    // Rates badge
+                    double winSec = _mmWindow / (double)MmWaveReader.SAMPLE_HZ;
+                    double brRate = _mmReader.BreathRate;
+                    double hrRate = _mmReader.HeartRate;
+                    string brStr  = brRate > 0 ? $"{brRate:0.0} br/min" : "--";
+                    string hrStr  = hrRate > 0 ? $"{hrRate:0.0} bpm"    : "--";
                     var mmBadge = MakeBadge(
                         $"60GHz [{winSec:0}s]  BR:{brStr}  HR:{hrStr}",
                         Color.FromArgb(0xEE, 0x00, 0xFF, 0xFF),
@@ -2721,7 +2988,7 @@ if (graded.Count > 0
                     Canvas.SetTop(mmBadge,  4);
                     OsciCanvas.Children.Add(mmBadge);
 
-                    // [ - ] and [ + ] window controls rendered as badges
+                    // Window controls
                     var btnMinus = MakeBadge(" - ",
                         Color.FromArgb(0xCC, 0x00, 0xFF, 0xFF),
                         Color.FromArgb(0xCC, 0x00, 0x18, 0x18), 11);
@@ -3836,7 +4103,258 @@ if (graded.Count > 0
             }
             return result;
         }
+// ── Signature ledger helpers ──────────────────────────────────────────────────
+private static void BuildBars(SigEntry entry)
+{
+    entry.Bars.Clear();
+    int maxBar = Math.Max(entry.Peak, 1);
 
+    foreach (int v in entry.Seq)
+    {
+        if (v == 0)
+        {
+            entry.Bars.Add(new SigBar
+            {
+                Width  = 4,
+                Height = 2,
+                IsGap  = true
+                // Fill set on UI thread below
+            });
+        }
+        else
+        {
+            double h = Math.Max(3, Math.Round((v / (double)maxBar) * 14));
+            entry.Bars.Add(new SigBar
+            {
+                Width  = 3,
+                Height = h,
+                IsGap  = false
+            });
+        }
+    }
+}
+
+private void RenderSig(SigEntry entry)
+{
+    // Store data only — no UI objects yet
+    _sigLedger.Insert(0, entry);
+    if (_sigLedger.Count > 500)
+        _sigLedger.RemoveAt(_sigLedger.Count - 1);
+
+    Dispatcher.Invoke(() =>
+    {
+        // Create brushes HERE (UI thread)
+        int maxBar = Math.Max(entry.Peak, 1);
+        foreach (var bar in entry.Bars)
+        {
+            if (bar.IsGap)
+            {
+                bar.Fill = new SolidColorBrush(Color.FromRgb(0x22, 0x22, 0x22));
+            }
+            else
+            {
+                // recover approximate CPS from height for colour
+                int approx = (int)Math.Round((bar.Height / 14.0) * maxBar);
+                Color col = approx >= 10 ? Color.FromRgb(0xFF, 0x44, 0x44)
+                          : approx >= 4  ? Color.FromRgb(0xFF, 0xAA, 0x00)
+                                         : Color.FromRgb(0x00, 0xFF, 0x88);
+                bar.Fill = new SolidColorBrush(col);
+            }
+        }
+
+        _sigView.Insert(0, entry);
+        if (_sigView.Count > 500)
+            _sigView.RemoveAt(_sigView.Count - 1);
+
+        if (TxtSigCount != null)
+            TxtSigCount.Text = $"{_sigLedger.Count} seqs";
+    });
+}
+
+private void RenderCombinedSig(List<SigEntry> entries)
+{
+    if (entries.Count == 0) return;
+
+    var combinedSeq = new List<int>();
+    for (int i = 0; i < entries.Count; i++)
+    {
+        combinedSeq.AddRange(entries[i].Seq);
+        if (i < entries.Count - 1)
+        {
+            // infer gap from wall-clock time between signatures (ms → seconds)
+            long dt = Math.Max(0, (entries[i + 1].Ts - entries[i].Ts) / 1000);
+            for (int g = 0; g < Math.Min(dt, 12); g++)
+                combinedSeq.Add(0);
+        }
+    }
+
+    var entry = new SigEntry
+    {
+        N     = $"{entries[0].N}–{entries[^1].N}",
+        Peak  = combinedSeq.Count > 0 ? combinedSeq.Max() : 0,
+        Seq   = combinedSeq.ToArray(),
+        T     = entries[0].T,
+        Ts    = entries[0].Ts
+    };
+    BuildBars(entry);
+    RenderSig(entry);
+}
+
+private void SortSigs(string mode)
+{
+    if (_sigLedger.Count == 0) return;
+
+    if (mode == "time")
+        _sigLedger.Sort((a, b) => b.Ts.CompareTo(a.Ts));
+    else
+        _sigLedger.Sort((a, b) =>
+        {
+            string sa = string.Join(",", a.Seq);
+            string sb = string.Join(",", b.Seq);
+            int cmp = string.CompareOrdinal(sa, sb);
+            return cmp != 0 ? cmp : b.Peak.CompareTo(a.Peak);
+        });
+
+    RedrawLedger();
+}
+
+private void SearchSigs(string query)
+{
+    if (SigSearchResults == null) return;
+
+    string raw = (query ?? "").Trim();
+    if (string.IsNullOrEmpty(raw))
+    {
+        SigSearchResults.Visibility = Visibility.Collapsed;
+        SigSearchResults.ItemsSource = null;
+        return;
+    }
+
+    var needle = raw.Split(new[] { ' ', ',', ';', '|', '_', '-' },
+                           StringSplitOptions.RemoveEmptyEntries)
+                    .Select(s => int.TryParse(s, out int n) ? n : -1)
+                    .Where(n => n >= 0)
+                    .ToArray();
+
+    if (needle.Length == 0)
+    {
+        SigSearchResults.ItemsSource = new[] { new SigEntry { N = "no numbers" } };
+        SigSearchResults.Visibility = Visibility.Visible;
+        return;
+    }
+
+    var matches = _sigLedger.Where(e =>
+    {
+        var s = e.Seq;
+        if (s.Length < needle.Length) return false;
+        for (int i = 0; i <= s.Length - needle.Length; i++)
+        {
+            bool ok = true;
+            for (int j = 0; j < needle.Length; j++)
+                if (s[i + j] != needle[j]) { ok = false; break; }
+            if (ok) return true;
+        }
+        return false;
+    }).ToList();
+
+    SigSearchResults.ItemsSource = matches;
+    SigSearchResults.Visibility = matches.Count > 0
+        ? Visibility.Visible : Visibility.Collapsed;
+}
+
+private void RedrawLedger()
+{
+    Dispatcher.Invoke(() =>
+    {
+        _sigView.Clear();
+        foreach (var e in _sigLedger)
+            _sigView.Add(e);
+        if (TxtSigCount != null)
+            TxtSigCount.Text = $"{_sigLedger.Count} seqs";
+    });
+}
+
+// Button / key handlers (wire from XAML)
+private void BtnSigSortVal_Click(object sender, RoutedEventArgs e)  => SortSigs("value");
+private void BtnSigSortTime_Click(object sender, RoutedEventArgs e) => SortSigs("time");
+private void TxtSigSearch_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+{
+    if (e.Key == System.Windows.Input.Key.Enter)
+        SearchSigs(TxtSigSearch.Text);
+}
+// ── Corr-hit handler ──────────────────────────────────────────────
+        private static readonly Dictionary<string, (int[] Seq, int Tolerance)> KeyingSigs = new()
+        {
+            // Tolerance -1 = topology only (zero vs nonzero, ignores CPS height)
+            // Tolerance  0 = exact CPS match
+            // Tolerance  1 = CPS within ±1
+            // Tolerance  2 = CPS within ±2
+            ["OOK-A"]   = (new[] { 1,1,0,1,1,0,1,0,0 }, -1),
+            ["OOK-B"]   = (new[] { 0,1,1,1,1,1,1,1,0 }, -1),
+            ["PULSE-C"] = (new[] { 1,2,2,2,2,2,2,1 },    1),
+        };
+
+        private void HandleCorrHit(JObject obj)
+        {
+            var freqMhz  = obj["freq_mhz"]?.Value<double>()   ?? 0.0;
+            var riseDb   = obj["rise_db"]?.Value<double>()    ?? 0.0;
+            var usvH     = obj["usv_h"]?.Value<double>()      ?? 0.0;
+            var wallNs   = obj["wall_ns"]?.Value<long>()      ?? 0L;
+            var elevNs   = obj["elev_start_ns"]?.Value<long>() ?? 0L;
+            double lagMs = wallNs > 0 && elevNs > 0
+                ? (wallNs - elevNs) / 1_000_000.0 : 0;
+
+            AddEvent(
+                $"[{NsToUtc(wallNs)}] \u2691 CORR HIT  " +
+                $"{freqMhz:0.000} MHz  " +
+                $"+{riseDb:0.00}dB  " +
+                $"dr={usvH:0.0000} \u00b5Sv/h  " +
+                $"lag={lagMs:+0.0;-0.0}ms",
+                "#FF44FF");
+
+            CheckKeyingSig(wallNs);
+        }
+
+        private void CheckKeyingSig(long wallNs)
+        {
+            if (_sigLedger.Count == 0) return;
+            var latest = _sigLedger[0];
+            var s = latest.Seq;
+
+            foreach (var (name, (needle, tol)) in KeyingSigs)
+            {
+                if (s.Length < needle.Length) continue;
+                for (int i = 0; i <= s.Length - needle.Length; i++)
+                {
+                    bool ok = true;
+                    for (int j = 0; j < needle.Length; j++)
+                    {
+                        int sv = s[i + j];
+                        int nv = needle[j];
+                        if (tol == -1)
+                        {
+                            if ((sv == 0) != (nv == 0)) { ok = false; break; }
+                        }
+                        else
+                        {
+                            if (Math.Abs(sv - nv) > tol) { ok = false; break; }
+                        }
+                    }
+                    if (ok)
+                    {
+                        var matched = s[i..(i + needle.Length)];
+                        AddEvent(
+                            $"[{NsToUtc(wallNs)}] \u2691 KEYING SIG MATCH  [{name}]  " +
+                            $"seq#{latest.N}  peak={latest.Peak}  " +
+                            $"tol={( tol == -1 ? "TOPO" : $"\u00b1{tol}" )}  " +
+                            $"matched=[{string.Join(",", matched)}]  " +
+                            $"needle=[{string.Join(",", needle)}]",
+                            "#FF00FF");
+                        break;
+                    }
+                }
+            }
+        }
         // ── Misc ──────────────────────────────────────────────────────────
         private void AddEvent(string msg, string color)
         {
@@ -4026,6 +4544,7 @@ if (graded.Count > 0
         {
             _cts.Cancel();
             _mmReader.Stop();
+            try { _radar3DProcess?.Kill(); } catch { }
         }
 
         // ── Tethered badge helpers ────────────────────────────────────────────────
@@ -4784,10 +5303,13 @@ if (graded.Count > 0
     {
         public const int    SAMPLE_HZ   = 10;
         public const string DEFAULT_LOG =
-            @"J:\True-Sentinel\mmwave\1\log.log";
+            @"J:\True-Sentinel\mmwave\mmwave_raw.log";
 
-        private readonly Queue<sbyte> _breath = new();
-        private readonly Queue<sbyte> _heart  = new();
+        private readonly Queue<sbyte> _breath     = new();
+        private readonly Queue<sbyte> _heart      = new();
+        private readonly Queue<sbyte> _breathRate = new();
+        private readonly Queue<sbyte> _heartRate  = new();
+        private readonly Queue<sbyte> _heartQ     = new();
         private readonly int          _maxSamples;
         private readonly string       _logPath;
         private          Thread?      _thread;
@@ -4795,6 +5317,11 @@ if (graded.Count > 0
 
         public double BreathRate { get; private set; }
         public double HeartRate  { get; private set; }
+        public sbyte[] BreathRateRaw => SnapshotQ(_breathRate);
+        public sbyte[] HeartRateRaw  => SnapshotQ(_heartRate);
+        public sbyte[] HeartQRaw     => SnapshotQ(_heartQ);
+        private sbyte[] SnapshotQ(Queue<sbyte> q)
+        { lock (_breath) { return q.ToArray(); } }
         public bool   IsRunning  => _running;
 
         public MmWaveReader(int maxSamples = 600, string? logPath = null)
@@ -4928,26 +5455,39 @@ if (graded.Count > 0
             {
                 if (data[i] != 0x01) { i++; continue; }
                 byte ftype = i + 4 < data.Length ? data[i + 4] : (byte)0;
-                int  flen  = ftype == 0x10 ? 25 : ftype == 0x04 ? 12 : 0;
+                int flen = ftype switch {
+                    0x01 => 10, 0x02 => 11, 0x04 => 13,
+                    0x08 => 19, 0x0C => 23, 0x0F => 11,
+                    _ => 0
+                };
                 if (flen == 0) { i++; continue; }
                 if (i + flen > data.Length) break;
-                if (data[i + 5] != 0x0A) { i++; continue; }
-                if (ftype == 0x10 && data[i + flen - 1] != 0xFF)
-                    { i++; continue; }
+                if (data[i + flen - 1] != 0xFF) { i++; continue; }
 
                 sbyte sample = (sbyte)data[i + 7];
+                byte major2 = i + 5 < data.Length ? data[i + 5] : (byte)0;
+                byte minor2 = i + 6 < data.Length ? data[i + 6] : (byte)0;
                 lock (_breath)
                 {
-                    if (ftype == 0x10)
-                    {
-                        _breath.Enqueue(sample);
-                        while (_breath.Count > _maxSamples) _breath.Dequeue();
+                    void Enq(Queue<sbyte> q) {
+                        q.Enqueue(sample);
+                        while (q.Count > _maxSamples) q.Dequeue();
                     }
-                    else
-                    {
-                        _heart.Enqueue(sample);
-                        while (_heart.Count > _maxSamples) _heart.Dequeue();
-                    }
+                    // 0x01/0A/38 = BREATH_WAVE
+                    if (ftype == 0x01 && major2 == 0x0A && minor2 == 0x38)
+                        Enq(_breath);
+                    // 0x02/0A/18 = BREATH_RATE
+                    else if (ftype == 0x02 && major2 == 0x0A && minor2 == 0x18)
+                        Enq(_breathRate);
+                    // 0x02/0F/09 = HEART_RATE
+                    else if (ftype == 0x02 && major2 == 0x0F && minor2 == 0x09)
+                        Enq(_heartRate);
+                    // 0x04/0A/14 = HEART_I
+                    else if (ftype == 0x04 && major2 == 0x0A && minor2 == 0x14)
+                        Enq(_heart);
+                    // 0x04/0A/15 = HEART_Q
+                    else if (ftype == 0x04 && major2 == 0x0A && minor2 == 0x15)
+                        Enq(_heartQ);
                 }
                 i += flen;
             }
