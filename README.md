@@ -1,4 +1,6 @@
 # GEIGER-SDR-oscilloscope
+hop in loser, were reverse engineering radiation protocol signatures
+
 This is largely a humanitarian project. I hope you all find peace.
 
 j:
