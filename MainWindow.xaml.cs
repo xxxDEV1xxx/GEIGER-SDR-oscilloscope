@@ -2871,13 +2871,14 @@ int total = _sigBuf.Count > 0 ? _sigBuf.Sum() : 0;
                 }
             }
 
-            // CPS raw bars — unsmoothed, each count a discrete spike to zero
+         // CPS raw bars — unsmoothed, each count a discrete spike to zero
             double[] cpsRaw = samples.Select(s => s.CpsNorm).ToArray();
             double cpsMax = cpsRaw.Length > 0
                 ? Math.Max(cpsRaw.Max(), 0.001) : 0.001;
             for (int ci = 0; ci < n && ci < cpsRaw.Length; ci++)
             {
                 double cx   = ci * xStep;
+                int    cpsVal = (int)Math.Round(cpsRaw[ci] / 0.00812);
                 double ctop = cpsRaw[ci] > 0
                     ? Math.Clamp(h - (cpsRaw[ci] / cpsMax) * h * 0.32, 0, h)
                     : h;
@@ -2889,6 +2890,19 @@ int total = _sigBuf.Count > 0 ? _sigBuf.Sum() : 0;
                         Color.FromArgb(0xBB, 0xFF, 0xAA, 0x00)),
                     StrokeThickness = Math.Max(0.8, xStep * 0.6),
                 });
+                var lbl = new TextBlock
+                {
+                    Text       = cpsVal.ToString(),
+                    FontFamily = new FontFamily("Consolas"),
+                    FontSize   = 11,
+                    Foreground = new SolidColorBrush(
+                        cpsVal > 0
+                            ? Color.FromArgb(0xFF, 0x00, 0x00, 0x00)
+                            : Color.FromArgb(0xFF, 0x00, 0xFF, 0xFF)),
+                };
+                Canvas.SetLeft(lbl, cx - 3);
+                Canvas.SetTop(lbl, cpsVal > 0 ? h - 40 : h - 24);
+                OsciCanvas.Children.Add(lbl);
             }
 
 // ── 60GHz mmWave overlay — 5 channels, flowing waveforms ──────────
