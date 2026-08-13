@@ -947,35 +947,81 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
   <div id="gp-status" style="display:none;">OFFLINE</div>
   <!-- SIREN CONFIG MODAL -->
   <div id="gp-siren-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:999999;align-items:center;justify-content:center;">
-    <div style="background:#0a0a0a;border:1px solid #8844FF;border-radius:8px;padding:20px;width:420px;font-family:Consolas,monospace;color:#aaa;">
+    <div style="background:#0a0a0a;border:1px solid #8844FF;border-radius:8px;padding:20px;width:420px;max-height:90vh;overflow-y:auto;font-family:Consolas,monospace;color:#aaa;">
       <div style="color:#8844FF;font-weight:700;margin-bottom:12px;font-size:.85rem;">🔊 SIREN CONFIGURATION</div>
-      <div style="margin-bottom:10px;">
-        <div style="color:#555;font-size:.65rem;margin-bottom:4px;">LEVEL 1 THRESHOLD (µSv/h)</div>
-        <input id="gp-siren-thresh1" type="number" step="0.01" value="0.20" style="background:#111;border:1px solid #444;color:#fff;padding:4px 8px;font-family:Consolas,monospace;width:100px;">
-        <span style="color:#555;font-size:.65rem;margin-left:8px;">Current: <span id="gp-siren-t1-display">0.20</span></span>
+
+      <!-- ═══ LEVEL 1 ═══ -->
+      <div style="border:1px solid #331111;border-radius:6px;padding:10px;margin-bottom:10px;">
+        <div style="color:#FF4444;font-weight:700;font-size:.7rem;margin-bottom:8px;">LEVEL 1 — STEAM SIREN</div>
+        <div style="margin-bottom:8px;">
+          <div style="color:#555;font-size:.65rem;margin-bottom:4px;">THRESHOLD (µSv/h)</div>
+          <input id="gp-siren-thresh1" type="number" step="0.01" value="0.20" style="background:#111;border:1px solid #444;color:#fff;padding:4px 8px;font-family:Consolas,monospace;width:100px;">
+          <span style="color:#555;font-size:.65rem;margin-left:8px;">Current: <span id="gp-siren-t1-display">0.20</span></span>
+        </div>
+        <div style="margin-bottom:8px;">
+          <div style="color:#555;font-size:.65rem;margin-bottom:4px;">VOLUME <span id="gp-siren-vol1-display" style="color:#FF4444;">85%</span></div>
+          <input id="gp-siren-vol1" type="range" min="0" max="100" value="85"
+            style="width:100%;accent-color:#FF4444;cursor:pointer;"
+            oninput="_gp.setAlarmVolume(1, this.value/100)">
+        </div>
+        <div style="margin-bottom:4px;color:#555;font-size:.65rem;">SOUND</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button type="button" onclick="_gp._sirenTestL1()" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">▶ TEST</button>
+          <button type="button" onclick="_gp._sirenLoadFile(1)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">📂 LOAD WAV/MP3</button>
+          <span id="gp-siren-file1" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">661steamsiren.wav</span>
+          <button type="button" id="gp-siren-clear1" onclick="_gp._sirenClear(1)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">✕</button>
+        </div>
       </div>
-      <div style="margin-bottom:6px;color:#555;font-size:.65rem;">LEVEL 1 SOUND</div>
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
-        <button onclick="_gp._sirenTestL1()" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">▶ TEST</button>
-        <button onclick="_gp._sirenLoadFile(1)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">📂 LOAD WAV/MP3</button>
-        <span id="gp-siren-file1" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">built-in</span>
-        <button id="gp-siren-clear1" onclick="_gp._sirenClear(1)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">✕</button>
+
+      <!-- ═══ LEVEL 2 ═══ -->
+      <div style="border:1px solid #332200;border-radius:6px;padding:10px;margin-bottom:10px;">
+        <div style="color:#FFAA00;font-weight:700;font-size:.7rem;margin-bottom:8px;">LEVEL 2 — ACTION STATIONS</div>
+        <div style="margin-bottom:8px;">
+          <div style="color:#555;font-size:.65rem;margin-bottom:4px;">THRESHOLD (µSv/h)</div>
+          <input id="gp-siren-thresh2" type="number" step="0.01" value="0.27" style="background:#111;border:1px solid #444;color:#fff;padding:4px 8px;font-family:Consolas,monospace;width:100px;">
+          <span style="color:#555;font-size:.65rem;margin-left:8px;">Current: <span id="gp-siren-t2-display">0.27</span></span>
+        </div>
+        <div style="margin-bottom:8px;">
+          <div style="color:#555;font-size:.65rem;margin-bottom:4px;">VOLUME <span id="gp-siren-vol2-display" style="color:#FFAA00;">85%</span></div>
+          <input id="gp-siren-vol2" type="range" min="0" max="100" value="85"
+            style="width:100%;accent-color:#FFAA00;cursor:pointer;"
+            oninput="_gp.setAlarmVolume(2, this.value/100)">
+        </div>
+        <div style="margin-bottom:4px;color:#555;font-size:.65rem;">SOUND</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button type="button" onclick="_gp._sirenTestL2()" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">▶ TEST</button>
+          <button type="button" onclick="_gp._sirenLoadFile(2)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">📂 LOAD WAV/MP3</button>
+          <span id="gp-siren-file2" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">HMSIllustriousActionStations.wav</span>
+          <button type="button" id="gp-siren-clear2" onclick="_gp._sirenClear(2)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">✕</button>
+        </div>
       </div>
-      <div style="margin-bottom:10px;">
-        <div style="color:#555;font-size:.65rem;margin-bottom:4px;">LEVEL 2 THRESHOLD (µSv/h)</div>
-        <input id="gp-siren-thresh2" type="number" step="0.01" value="0.27" style="background:#111;border:1px solid #444;color:#fff;padding:4px 8px;font-family:Consolas,monospace;width:100px;">
-        <span style="color:#555;font-size:.65rem;margin-left:8px;">Current: <span id="gp-siren-t2-display">0.27</span></span>
+
+      <!-- ═══ LEVEL 3 ═══ -->
+      <div style="border:1px solid #330033;border-radius:6px;padding:10px;margin-bottom:14px;">
+        <div style="color:#FF00FF;font-weight:700;font-size:.7rem;margin-bottom:8px;">LEVEL 3 — CHEMICAL ALARM</div>
+        <div style="margin-bottom:8px;">
+          <div style="color:#555;font-size:.65rem;margin-bottom:4px;">THRESHOLD (µSv/h)</div>
+          <input id="gp-siren-thresh3" type="number" step="0.01" value="0.33" style="background:#111;border:1px solid #444;color:#fff;padding:4px 8px;font-family:Consolas,monospace;width:100px;">
+          <span style="color:#555;font-size:.65rem;margin-left:8px;">Current: <span id="gp-siren-t3-display">0.33</span></span>
+        </div>
+        <div style="margin-bottom:8px;">
+          <div style="color:#555;font-size:.65rem;margin-bottom:4px;">VOLUME <span id="gp-siren-vol3-display" style="color:#FF00FF;">85%</span></div>
+          <input id="gp-siren-vol3" type="range" min="0" max="100" value="85"
+            style="width:100%;accent-color:#FF00FF;cursor:pointer;"
+            oninput="_gp.setAlarmVolume(3, this.value/100)">
+        </div>
+        <div style="margin-bottom:4px;color:#555;font-size:.65rem;">SOUND</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button type="button" onclick="_gp._sirenTestL3()" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">▶ TEST</button>
+          <button type="button" onclick="_gp._sirenLoadFile(3)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">📂 LOAD WAV/MP3</button>
+          <span id="gp-siren-file3" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">chemalm.wav</span>
+          <button type="button" id="gp-siren-clear3" onclick="_gp._sirenClear(3)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">✕</button>
+        </div>
       </div>
-      <div style="margin-bottom:6px;color:#555;font-size:.65rem;">LEVEL 2 SOUND</div>
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;">
-        <button onclick="_gp._sirenTestL2()" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">▶ TEST</button>
-        <button onclick="_gp._sirenLoadFile(2)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">📂 LOAD WAV/MP3</button>
-        <span id="gp-siren-file2" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">built-in</span>
-        <button id="gp-siren-clear2" onclick="_gp._sirenClear(2)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">✕</button>
-      </div>
+
       <div style="display:flex;gap:8px;justify-content:flex-end;">
-        <button onclick="_gp._sirenSave()" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:4px 16px;cursor:pointer;font-family:Consolas,monospace;font-size:.75rem;">SAVE</button>
-        <button onclick="document.getElementById('gp-siren-modal').style.display='none'" style="background:#111;border:1px solid #444;color:#888;padding:4px 16px;cursor:pointer;font-family:Consolas,monospace;font-size:.75rem;">CLOSE</button>
+        <button type="button" onclick="_gp._sirenSave()" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:4px 16px;cursor:pointer;font-family:Consolas,monospace;font-size:.75rem;">SAVE</button>
+        <button type="button" onclick="document.getElementById('gp-siren-modal').style.display='none'" style="background:#111;border:1px solid #444;color:#888;padding:4px 16px;cursor:pointer;font-family:Consolas,monospace;font-size:.75rem;">CLOSE</button>
       </div>
     </div>
   </div>
@@ -1914,6 +1960,11 @@ const _gp = {
   drHistory: [], cpsHistory: [], peakLog: [], sessionDose: 0, peakWindow: 0, floorWindow: 99,
   cpmBuf: [], sigPending: [], cpmMinStart: null, canvas: null, ctx: null,
   _yMax: 0.30,
+  _viewMin: 0,
+  _viewMax: 0.30,
+  _alarmVolume: 0.85,
+  _gainL1: null,
+  _gainL2: null,
   _replay: {active:false},
   _zoomFreezeN: 0,
   _tlLines:[],
@@ -2039,7 +2090,7 @@ const _gp = {
       return;
     }
 
-    // Fixed slot count → constant xStep (no hop when a new sample arrives)
+    // Fixed slot count → constant xStep (no horizontal hop)
     let slots;
     if (this._panorama && this._panZoomed) {
       slots = 2 * ZOOM_HALF;
@@ -2062,28 +2113,46 @@ const _gp = {
     };
     const smoothed = smooth(data, 7);
 
+    // Stable Y-axis: expand fast, shrink very slowly — kills vertical hop
     const Y_MAX_DEF = 0.30;
+    const Y_MIN_DEF = 0.0;
+    if (this._viewMax == null) this._viewMax = Y_MAX_DEF;
+    if (this._viewMin == null) this._viewMin = Y_MIN_DEF;
+
     const drMax = Math.max(...smoothed);
     const drMin = Math.min(...smoothed);
-    if (drMax > this._yMax * 0.9)
-      this._yMax = Math.max(drMax * 1.25, Y_MAX_DEF);
-    else if (smoothed.length > 20 && drMax < this._yMax * 0.5 && this._yMax > Y_MAX_DEF)
-      this._yMax = Math.max(drMax * 1.5, Y_MAX_DEF);
 
-    const dataSpan = Math.max(drMax - drMin, 0.02);
-    const viewMin = Math.max(0, drMin - dataSpan * 0.2);
-    const viewMax = Math.max(viewMin + 0.30, drMax + dataSpan * 0.2);
-    const max = viewMax;
-    const min = viewMin;
+    if (drMax > this._viewMax * 0.92) {
+      this._viewMax = drMax * 1.18;
+    }
+    if (drMin < this._viewMin + 0.005) {
+      this._viewMin = Math.max(0, drMin - 0.01);
+    }
 
-    // Waveform — live mode right-aligns so left edge clips cleanly
+    if (smoothed.length > 20) {
+      const targetMax = Math.max(drMax * 1.25, Y_MAX_DEF);
+      const targetMin = Math.max(0, Math.min(drMin - 0.015, targetMax - 0.25));
+      this._viewMax += (targetMax - this._viewMax) * 0.02;
+      this._viewMin += (targetMin - this._viewMin) * 0.02;
+    }
+
+    if (this._viewMax - this._viewMin < 0.25) {
+      this._viewMax = this._viewMin + 0.25;
+    }
+
+    const max = this._viewMax;
+    const min = this._viewMin;
+
+    // Waveform — live mode right-aligns; Math.round locks pixels (no shimmer)
     ctx.strokeStyle = '#00FF88';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     smoothed.forEach((v, i) => {
-      const x = this._panorama
-        ? i * xStep
-        : (LIVE_WIN - data.length + i) * xStep;
+      const x = Math.round(
+        this._panorama
+          ? i * xStep
+          : (LIVE_WIN - data.length + i) * xStep
+      );
       const y = h - ((v - min) / (max - min || 1)) * h;
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     });
@@ -2143,9 +2212,11 @@ const _gp = {
       const cpsMax = Math.max(...cpsData, 1);
       const barW = Math.max(0.8, xStep * 0.6);
       cpsData.forEach((v, i) => {
-        const x = this._panorama
-          ? i * xStep
-          : (LIVE_WIN - cpsData.length + i) * xStep;
+        const x = Math.round(
+          this._panorama
+            ? i * xStep
+            : (LIVE_WIN - cpsData.length + i) * xStep
+        );
         const barH = (v / cpsMax) * h * 0.32;
         if (v > 0) {
           ctx.strokeStyle = 'rgba(255,170,0,0.73)';
@@ -2226,268 +2297,398 @@ const _gp = {
       if(btn){btn.textContent='⏹ STOP REC';btn.style.borderColor='#FF0000';btn.style.color='#FF0000';btn.style.background='#330000';}
     }).catch(e=>{alert('Screen capture failed: '+e.message);});
   },
-  _alarmEnabled:false,
-  _alarmThreshold:0.20,
-  _alarmThreshold2:0.27,
-  _alarmL1Wanted:false,
-  _alarmL2Wanted:false,
-  _alarmAudioL1:null,
-  _alarmAudioL2:null,
-  _sirenAudioL1:null,
-  _sirenAudioL2:null,
-  _sirenLoadTarget:0,
-  _customAlarmCtxL1:null,
-  _customAlarmSrcL1:null,
-  _customAlarmCtxL2:null,
-  _customAlarmSrcL2:null,
+  _alarmEnabled: false,
+  _alarmThreshold: 0.20,   // L1
+  _alarmThreshold2: 0.27,  // L2
+  _alarmThreshold3: 0.33,  // L3  (chemalm) — set to 33 if you meant absolute 33
+
+  _alarmL1Wanted: false,
+  _alarmL2Wanted: false,
+  _alarmL3Wanted: false,
+
+  _alarmVol1: 0.85,
+  _alarmVol2: 0.85,
+  _alarmVol3: 0.85,
+
+  _alarmAudioL1: null,
+  _alarmAudioL2: null,
+  _alarmAudioL3: null,
+
+  _sirenAudioL1: null,  // custom decoded buffers (optional)
+  _sirenAudioL2: null,
+  _sirenAudioL3: null,
+
+  _customAlarmCtxL1: null,
+  _customAlarmSrcL1: null,
+  _gainL1: null,
+  _customAlarmCtxL2: null,
+  _customAlarmSrcL2: null,
+  _gainL2: null,
+  _customAlarmCtxL3: null,
+  _customAlarmSrcL3: null,
+  _gainL3: null,
+
+  _sirenLoadTarget: 0,
 
   toggleAlarm(){
-    this._alarmEnabled=!this._alarmEnabled;
-    const btn=document.getElementById('gp-alarm-btn');
-    if(btn){
-      btn.textContent=this._alarmEnabled?'🔔 ALARM':'🔇 ALARM';
-      btn.style.borderColor=this._alarmEnabled?'#FF4444':'#333';
-      btn.style.color=this._alarmEnabled?'#FF4444':'#555';
-      btn.style.background=this._alarmEnabled?'#1a0000':'#0a0a0a';
+    this._alarmEnabled = !this._alarmEnabled;
+    const btn = document.getElementById('gp-alarm-btn');
+    if (btn) {
+      btn.textContent = this._alarmEnabled ? '🔔 ALARM' : '🔇 ALARM';
+      btn.style.borderColor = this._alarmEnabled ? '#FF4444' : '#333';
+      btn.style.color = this._alarmEnabled ? '#FF4444' : '#555';
+      btn.style.background = this._alarmEnabled ? '#1a0000' : '#0a0a0a';
     }
-    if(!this._alarmEnabled){
-      this._alarmL1Wanted=false;
-      this._alarmL2Wanted=false;
+    if (!this._alarmEnabled) {
+      this._alarmL1Wanted = false;
+      this._alarmL2Wanted = false;
+      this._alarmL3Wanted = false;
       this._stopSirenLevel(1);
       this._stopSirenLevel(2);
+      this._stopSirenLevel(3);
     }
   },
 
+  setAlarmVolume(level, v){
+    const vol = Math.max(0, Math.min(1, Number(v) || 0));
+    if (level === 1) {
+      this._alarmVol1 = vol;
+      if (this._alarmAudioL1) this._alarmAudioL1.volume = vol;
+      if (this._gainL1) this._gainL1.gain.value = vol;
+    } else if (level === 2) {
+      this._alarmVol2 = vol;
+      if (this._alarmAudioL2) this._alarmAudioL2.volume = vol;
+      if (this._gainL2) this._gainL2.gain.value = vol;
+    } else {
+      this._alarmVol3 = vol;
+      if (this._alarmAudioL3) this._alarmAudioL3.volume = vol;
+      if (this._gainL3) this._gainL3.gain.value = vol;
+    }
+    const disp = document.getElementById('gp-siren-vol' + level + '-display');
+    if (disp) disp.textContent = Math.round(vol * 100) + '%';
+    const slider = document.getElementById('gp-siren-vol' + level);
+    if (slider) slider.value = Math.round(vol * 100);
+    const bar = document.getElementById('gp-alarm-vol' + level);
+    if (bar) bar.value = Math.round(vol * 100);
+  },
+
   _checkAlarm(dr){
-    if(!this._alarmEnabled){
-      this._alarmL1Wanted=false;
-      this._alarmL2Wanted=false;
+    if (!this._alarmEnabled) {
+      this._alarmL1Wanted = false;
+      this._alarmL2Wanted = false;
+      this._alarmL3Wanted = false;
       return;
     }
+
+    // L3 — independent, can overlap L1/L2
+    const want3 = dr >= this._alarmThreshold3;
+    if (want3 && !this._alarmL3Wanted) {
+      this._alarmL3Wanted = true;
+      this._ensureSirenPlaying(3);
+    } else if (!want3) {
+      this._alarmL3Wanted = false;
+    }
+
+    // L2 — independent
     const want2 = dr >= this._alarmThreshold2;
-    if(want2 && !this._alarmL2Wanted){
+    if (want2 && !this._alarmL2Wanted) {
       this._alarmL2Wanted = true;
       this._ensureSirenPlaying(2);
-    } else if(!want2){
+    } else if (!want2) {
       this._alarmL2Wanted = false;
     }
+
+    // L1 — independent
     const want1 = dr >= this._alarmThreshold;
-    if(want1 && !this._alarmL1Wanted){
+    if (want1 && !this._alarmL1Wanted) {
       this._alarmL1Wanted = true;
       this._ensureSirenPlaying(1);
-    } else if(!want1){
+    } else if (!want1) {
       this._alarmL1Wanted = false;
     }
   },
 
   _ensureSirenPlaying(level){
-    if(level===1){
-      if(this._alarmAudioL1 || this._customAlarmSrcL1) return;
+    if (level === 1) {
+      if (this._alarmAudioL1 || this._customAlarmSrcL1) return;
       this._playSirenOnce(1);
-    } else {
-      if(this._alarmAudioL2 || this._customAlarmSrcL2) return;
+    } else if (level === 2) {
+      if (this._alarmAudioL2 || this._customAlarmSrcL2) return;
       this._playSirenOnce(2);
+    } else {
+      if (this._alarmAudioL3 || this._customAlarmSrcL3) return;
+      this._playSirenOnce(3);
     }
   },
 
   _playSirenOnce(level){
-    const isL1 = (level===1);
-    const customBuf = isL1 ? this._sirenAudioL1 : this._sirenAudioL2;
+    const isL1 = level === 1;
+    const isL2 = level === 2;
+    const customBuf = isL1 ? this._sirenAudioL1 : isL2 ? this._sirenAudioL2 : this._sirenAudioL3;
     const wavUrl = isL1
       ? '/661steamsiren.wav'
-      : '/HMSIllustriousActionStations.wav';
+      : isL2
+        ? '/HMSIllustriousActionStations.wav'
+        : '/chemalm.wav';
+    const vol = isL1 ? this._alarmVol1 : isL2 ? this._alarmVol2 : this._alarmVol3;
 
-    if(customBuf){
+    if (customBuf) {
       this._playCustomBufferOnce(level, customBuf);
       return;
     }
 
     const a = new Audio(wavUrl);
-    a.volume = 0.85;
-    if(isL1) this._alarmAudioL1 = a;
-    else     this._alarmAudioL2 = a;
+    a.volume = vol;
+    if (isL1) this._alarmAudioL1 = a;
+    else if (isL2) this._alarmAudioL2 = a;
+    else this._alarmAudioL3 = a;
 
-    a.onended = ()=>{
-      if(isL1) this._alarmAudioL1 = null;
-      else     this._alarmAudioL2 = null;
-      const stillWanted = isL1 ? this._alarmL1Wanted : this._alarmL2Wanted;
-      if(this._alarmEnabled && stillWanted){
+    a.onended = () => {
+      if (isL1) this._alarmAudioL1 = null;
+      else if (isL2) this._alarmAudioL2 = null;
+      else this._alarmAudioL3 = null;
+      const stillWanted = isL1 ? this._alarmL1Wanted
+        : isL2 ? this._alarmL2Wanted
+        : this._alarmL3Wanted;
+      if (this._alarmEnabled && stillWanted) {
         this._playSirenOnce(level);
       }
     };
 
-    a.play().catch(e=>{
-      console.warn('Siren L'+level+' play failed:', e);
-      if(isL1) this._alarmAudioL1 = null;
-      else     this._alarmAudioL2 = null;
+    a.play().catch(e => {
+      console.warn('Siren L' + level + ' play failed:', e);
+      if (isL1) this._alarmAudioL1 = null;
+      else if (isL2) this._alarmAudioL2 = null;
+      else this._alarmAudioL3 = null;
     });
   },
 
   _playCustomBufferOnce(level, buffer){
-    const isL1 = (level===1);
+    const isL1 = level === 1;
+    const isL2 = level === 2;
     this._stopCustomLevel(level);
 
-    const actx = new (window.AudioContext||window.webkitAudioContext)();
+    const actx = new (window.AudioContext || window.webkitAudioContext)();
     actx.resume();
     const src = actx.createBufferSource();
     src.buffer = buffer;
     src.loop = false;
-    src.connect(actx.destination);
+    const gain = actx.createGain();
+    gain.gain.value = isL1 ? this._alarmVol1 : isL2 ? this._alarmVol2 : this._alarmVol3;
+    src.connect(gain);
+    gain.connect(actx.destination);
     src.start(0);
 
-    if(isL1){
+    if (isL1) {
       this._customAlarmCtxL1 = actx;
       this._customAlarmSrcL1 = src;
-    } else {
+      this._gainL1 = gain;
+    } else if (isL2) {
       this._customAlarmCtxL2 = actx;
       this._customAlarmSrcL2 = src;
+      this._gainL2 = gain;
+    } else {
+      this._customAlarmCtxL3 = actx;
+      this._customAlarmSrcL3 = src;
+      this._gainL3 = gain;
     }
 
-    src.onended = ()=>{
+    src.onended = () => {
       this._stopCustomLevel(level);
-      const stillWanted = isL1 ? this._alarmL1Wanted : this._alarmL2Wanted;
-      if(this._alarmEnabled && stillWanted){
+      const stillWanted = isL1 ? this._alarmL1Wanted
+        : isL2 ? this._alarmL2Wanted
+        : this._alarmL3Wanted;
+      if (this._alarmEnabled && stillWanted) {
         this._playSirenOnce(level);
       }
     };
   },
 
   _stopSirenLevel(level){
-    const isL1 = (level===1);
-    if(isL1){
-      if(this._alarmAudioL1){
-        try{ this._alarmAudioL1.pause(); this._alarmAudioL1.src=''; }catch(e){}
+    if (level === 1) {
+      if (this._alarmAudioL1) {
+        try { this._alarmAudioL1.pause(); this._alarmAudioL1.src = ''; } catch (e) {}
         this._alarmAudioL1 = null;
       }
       this._stopCustomLevel(1);
-    } else {
-      if(this._alarmAudioL2){
-        try{ this._alarmAudioL2.pause(); this._alarmAudioL2.src=''; }catch(e){}
+    } else if (level === 2) {
+      if (this._alarmAudioL2) {
+        try { this._alarmAudioL2.pause(); this._alarmAudioL2.src = ''; } catch (e) {}
         this._alarmAudioL2 = null;
       }
       this._stopCustomLevel(2);
+    } else {
+      if (this._alarmAudioL3) {
+        try { this._alarmAudioL3.pause(); this._alarmAudioL3.src = ''; } catch (e) {}
+        this._alarmAudioL3 = null;
+      }
+      this._stopCustomLevel(3);
     }
   },
 
   _stopCustomLevel(level){
-    if(level===1){
-      if(this._customAlarmSrcL1){
-        try{ this._customAlarmSrcL1.stop(); }catch(e){}
-        this._customAlarmSrcL1 = null;
-      }
-      if(this._customAlarmCtxL1){
-        try{ this._customAlarmCtxL1.close(); }catch(e){}
-        this._customAlarmCtxL1 = null;
-      }
+    if (level === 1) {
+      if (this._customAlarmSrcL1) { try { this._customAlarmSrcL1.stop(); } catch (e) {} this._customAlarmSrcL1 = null; }
+      if (this._customAlarmCtxL1) { try { this._customAlarmCtxL1.close(); } catch (e) {} this._customAlarmCtxL1 = null; }
+      this._gainL1 = null;
+    } else if (level === 2) {
+      if (this._customAlarmSrcL2) { try { this._customAlarmSrcL2.stop(); } catch (e) {} this._customAlarmSrcL2 = null; }
+      if (this._customAlarmCtxL2) { try { this._customAlarmCtxL2.close(); } catch (e) {} this._customAlarmCtxL2 = null; }
+      this._gainL2 = null;
     } else {
-      if(this._customAlarmSrcL2){
-        try{ this._customAlarmSrcL2.stop(); }catch(e){}
-        this._customAlarmSrcL2 = null;
-      }
-      if(this._customAlarmCtxL2){
-        try{ this._customAlarmCtxL2.close(); }catch(e){}
-        this._customAlarmCtxL2 = null;
-      }
+      if (this._customAlarmSrcL3) { try { this._customAlarmSrcL3.stop(); } catch (e) {} this._customAlarmSrcL3 = null; }
+      if (this._customAlarmCtxL3) { try { this._customAlarmCtxL3.close(); } catch (e) {} this._customAlarmCtxL3 = null; }
+      this._gainL3 = null;
     }
   },
 
   _stopSiren(){
-    this._alarmL1Wanted=false;
-    this._alarmL2Wanted=false;
+    this._alarmL1Wanted = false;
+    this._alarmL2Wanted = false;
+    this._alarmL3Wanted = false;
     this._stopSirenLevel(1);
     this._stopSirenLevel(2);
+    this._stopSirenLevel(3);
   },
+
   _stopCustomAlarm(){
     this._stopCustomLevel(1);
     this._stopCustomLevel(2);
+    this._stopCustomLevel(3);
   },
 
   openSirenConfig(){
-    document.getElementById('gp-siren-thresh1').value = this._alarmThreshold.toFixed(2);
-    document.getElementById('gp-siren-thresh2').value = this._alarmThreshold2.toFixed(2);
-    document.getElementById('gp-siren-t1-display').textContent = this._alarmThreshold.toFixed(2);
-    document.getElementById('gp-siren-t2-display').textContent = this._alarmThreshold2.toFixed(2);
+    const t1 = document.getElementById('gp-siren-thresh1');
+    const t2 = document.getElementById('gp-siren-thresh2');
+    const t3 = document.getElementById('gp-siren-thresh3');
+    if (t1) t1.value = this._alarmThreshold.toFixed(2);
+    if (t2) t2.value = this._alarmThreshold2.toFixed(2);
+    if (t3) t3.value = this._alarmThreshold3.toFixed(2);
+    const d1 = document.getElementById('gp-siren-t1-display');
+    const d2 = document.getElementById('gp-siren-t2-display');
+    const d3 = document.getElementById('gp-siren-t3-display');
+    if (d1) d1.textContent = this._alarmThreshold.toFixed(2);
+    if (d2) d2.textContent = this._alarmThreshold2.toFixed(2);
+    if (d3) d3.textContent = this._alarmThreshold3.toFixed(2);
+
+    [1, 2, 3].forEach(lv => {
+      const vol = Math.round((lv === 1 ? this._alarmVol1 : lv === 2 ? this._alarmVol2 : this._alarmVol3) * 100);
+      const s = document.getElementById('gp-siren-vol' + lv);
+      if (s) s.value = vol;
+      const b = document.getElementById('gp-alarm-vol' + lv);
+      if (b) b.value = vol;
+      const disp = document.getElementById('gp-siren-vol' + lv + '-display');
+      if (disp) disp.textContent = vol + '%';
+    });
+
     const m = document.getElementById('gp-siren-modal');
-    m.style.display = 'flex';
+    if (m) m.style.display = 'flex';
   },
 
   _sirenLoadFile(level){
     this._sirenLoadTarget = level;
     const input = document.getElementById('gp-siren-file-input');
+    if (!input) return;
     input.onchange = async (e) => {
       const file = e.target.files[0];
-      if(!file) return;
+      if (!file) return;
       input.value = '';
       try {
         const buf = await file.arrayBuffer();
-        const actx = new (window.AudioContext||window.webkitAudioContext)();
+        const actx = new (window.AudioContext || window.webkitAudioContext)();
         const decoded = await actx.decodeAudioData(buf);
         actx.close();
-        if(level===1){ this._sirenAudioL1 = decoded; }
-        else { this._sirenAudioL2 = decoded; }
-        const nameEl = document.getElementById(`gp-siren-file${level}`);
-        if(nameEl) nameEl.textContent = file.name;
-        const clearBtn = document.getElementById(`gp-siren-clear${level}`);
-        if(clearBtn) clearBtn.style.display = '';
-      } catch(e) {
-        alert('Failed to decode audio: ' + e.message);
+        if (level === 1) this._sirenAudioL1 = decoded;
+        else if (level === 2) this._sirenAudioL2 = decoded;
+        else this._sirenAudioL3 = decoded;
+        const nameEl = document.getElementById('gp-siren-file' + level);
+        if (nameEl) nameEl.textContent = file.name;
+        const clearBtn = document.getElementById('gp-siren-clear' + level);
+        if (clearBtn) clearBtn.style.display = '';
+      } catch (err) {
+        alert('Failed to decode audio: ' + err.message);
       }
     };
     input.click();
   },
 
   _sirenClear(level){
-    if(level===1){ this._sirenAudioL1=null; }
-    else { this._sirenAudioL2=null; }
-    const nameEl = document.getElementById(`gp-siren-file${level}`);
-    if(nameEl) nameEl.textContent = 'built-in';
-    const clearBtn = document.getElementById(`gp-siren-clear${level}`);
-    if(clearBtn) clearBtn.style.display = 'none';
+    if (level === 1) this._sirenAudioL1 = null;
+    else if (level === 2) this._sirenAudioL2 = null;
+    else this._sirenAudioL3 = null;
+    const nameEl = document.getElementById('gp-siren-file' + level);
+    if (nameEl) {
+      nameEl.textContent = level === 1 ? '661steamsiren.wav'
+        : level === 2 ? 'HMSIllustriousActionStations.wav'
+        : 'chemalm.wav';
+    }
+    const clearBtn = document.getElementById('gp-siren-clear' + level);
+    if (clearBtn) clearBtn.style.display = 'none';
   },
 
-  _sirenPlayBuffer(buffer){
-    if(!buffer) return;
-    const actx = new (window.AudioContext||window.webkitAudioContext)();
+  _sirenPlayBuffer(buffer, level){
+    if (!buffer) return;
+    const actx = new (window.AudioContext || window.webkitAudioContext)();
     actx.resume();
     const src = actx.createBufferSource();
     src.buffer = buffer;
-    src.connect(actx.destination);
+    const gain = actx.createGain();
+    gain.gain.value = level === 1 ? this._alarmVol1 : level === 2 ? this._alarmVol2 : this._alarmVol3;
+    src.connect(gain);
+    gain.connect(actx.destination);
     src.start(0);
     src.onended = () => actx.close();
   },
 
   _sirenTestL1(){
-    if(this._sirenAudioL1){
-      this._sirenPlayBuffer(this._sirenAudioL1);
+    if (this._sirenAudioL1) {
+      this._sirenPlayBuffer(this._sirenAudioL1, 1);
     } else {
       const a = new Audio('/661steamsiren.wav');
-      a.volume = 0.85;
-      a.play().catch(()=>{});
+      a.volume = this._alarmVol1;
+      a.play().catch(() => {});
     }
   },
 
   _sirenTestL2(){
-    if(this._sirenAudioL2){
-      this._sirenPlayBuffer(this._sirenAudioL2);
+    if (this._sirenAudioL2) {
+      this._sirenPlayBuffer(this._sirenAudioL2, 2);
     } else {
       const a = new Audio('/HMSIllustriousActionStations.wav');
-      a.volume = 0.85;
-      a.play().catch(()=>{});
+      a.volume = this._alarmVol2;
+      a.play().catch(() => {});
+    }
+  },
+
+  _sirenTestL3(){
+    if (this._sirenAudioL3) {
+      this._sirenPlayBuffer(this._sirenAudioL3, 3);
+    } else {
+      const a = new Audio('/chemalm.wav');
+      a.volume = this._alarmVol3;
+      a.play().catch(() => {});
     }
   },
 
   _sirenSave(){
-    const t1 = parseFloat(document.getElementById('gp-siren-thresh1').value);
-    const t2 = parseFloat(document.getElementById('gp-siren-thresh2').value);
-    if(isNaN(t1)||isNaN(t2)||t1<=0||t2<=t1){
-      alert('Invalid thresholds — Level 2 must be greater than Level 1.');
+    const t1 = parseFloat(document.getElementById('gp-siren-thresh1')?.value);
+    const t2 = parseFloat(document.getElementById('gp-siren-thresh2')?.value);
+    const t3 = parseFloat(document.getElementById('gp-siren-thresh3')?.value);
+    if (isNaN(t1) || isNaN(t2) || isNaN(t3) || t1 <= 0 || t2 <= t1 || t3 <= t2) {
+      alert('Invalid thresholds — must be L1 < L2 < L3, all positive.');
       return;
     }
     this._alarmThreshold = t1;
     this._alarmThreshold2 = t2;
-    document.getElementById('gp-siren-t1-display').textContent = t1.toFixed(2);
-    document.getElementById('gp-siren-t2-display').textContent = t2.toFixed(2);
-    document.getElementById('gp-siren-modal').style.display = 'none';
+    this._alarmThreshold3 = t3;
+    const d1 = document.getElementById('gp-siren-t1-display');
+    const d2 = document.getElementById('gp-siren-t2-display');
+    const d3 = document.getElementById('gp-siren-t3-display');
+    if (d1) d1.textContent = t1.toFixed(2);
+    if (d2) d2.textContent = t2.toFixed(2);
+    if (d3) d3.textContent = t3.toFixed(2);
+    const m = document.getElementById('gp-siren-modal');
+    if (m) m.style.display = 'none';
   },
 
   _remoteWS: null,
