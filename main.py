@@ -4854,7 +4854,21 @@ async def stereogram():
         404,
         "ctw-sir-gif-alot.html not found"
     )
+@app.get("/downloads/GNSS_AttackModel.ps1")
+async def dl_gnss_ps1():
+    p = Path(__file__).parent / "GNSS_AttackModel.ps1"
+    if p.exists():
+        return FileResponse(str(p), media_type="application/octet-stream",
+                          headers={"Content-Disposition":"attachment; filename=GNSS_AttackModel.ps1"})
+    raise HTTPException(404, "GNSS_AttackModel.ps1 not found")
 
+@app.get("/downloads/SCANUSB.txt")
+async def dl_scanusb():
+    p = Path(__file__).parent / "SCANUSB.txt"
+    if p.exists():
+        return FileResponse(str(p), media_type="text/plain",
+                          headers={"Content-Disposition":"attachment; filename=SCANUSB.txt"})
+    raise HTTPException(404, "SCANUSB.txt not found")
 # ──────────────────────────────────────────────────────────────
 # GEIGER ALARM WAVS (bundled in /app root on Railway)
 # Frontend plays these via new Audio('/661steamsiren.wav') etc.
