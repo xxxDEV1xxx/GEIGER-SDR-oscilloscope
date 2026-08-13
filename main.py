@@ -4859,7 +4859,16 @@ async def stereogram():
 # GEIGER ALARM WAVS (bundled in /app root on Railway)
 # Frontend plays these via new Audio('/661steamsiren.wav') etc.
 # ──────────────────────────────────────────────────────────────
-
+@app.get("/chemalm.wav")
+async def serve_chemalm():
+    for p in (Path(__file__).parent / "chemalm.wav", Path("/app/chemalm.wav")):
+        if p.exists():
+            return FileResponse(
+                str(p),
+                media_type="audio/wav",
+                headers={"Cache-Control": "public, max-age=86400"},
+            )
+    raise HTTPException(404, "chemalm.wav not found")
 @app.get("/661steamsiren.wav")
 async def serve_siren_l1():
     p = Path(__file__).parent / "661steamsiren.wav"
