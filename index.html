@@ -2606,29 +2606,32 @@ const _gp = {
 
   // Fire a CPS sound — called from wherever CPS is dispatched
 _playCpsSound(cps){
-    const idx = Math.min(cps, 11) - 1;
+    const idx = Math.min(Math.max(cps, 1), 11) - 1;
     if (idx < 0) return;
-    const vol = this._cpsVolumes[idx];
-    // custom loaded buffer takes priority
+    const vol = this._cpsVolumes[idx] ?? 1;
+    // Custom file buffer first, then preloaded for current _cpsSounds[idx]
     const buf = this._cpsSoundBuffers[idx] || this._cpsPreloaded[idx];
     if (buf) {
-      const ctx = this._getCpsCtx();
-      const gain = ctx.createGain();
-      gain.gain.value = vol;
-      const src = ctx.createBufferSource();
-      src.buffer = buf;
-      src.connect(gain);
-      gain.connect(ctx.destination);
-      src.start(0);
-      // src auto-disconnects when done — no cleanup needed
-    } else {
-      // fallback: file not preloaded yet, spin up a one-shot Audio
-      const filename = this._cpsSounds[idx];
-      if (!filename) return;
-      const a = new Audio('/' + filename);
-      a.volume = vol;
-      a.play().catch(() => {});
+      try {
+        const ctx = this._getCpsCtx();
+        const gain = ctx.createGain();
+        gain.gain.value = vol;
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.connect(gain);
+        gain.connect(ctx.destination);
+        src.start(0);
+      } catch (e) {
+        console.warn('CPS buffer play failed', e);
+      }
+      return;
     }
+    // Not decoded yet — play path from current selection immediately
+    const filename = this._cpsSounds[idx];
+    if (!filename) return;
+    const a = new Audio('/' + encodeURIComponent(filename));
+    a.volume = vol;
+    a.play().catch(() => {});
   },
   // Dropdown: CPS level changed — update sound picker to reflect stored choice
   _cpsLevelSelectChanged(){
@@ -2650,7 +2653,7 @@ _playCpsSound(cps){
     this._cpsSoundSelectChanged();
   },
 
-  // Dropdown: sound file selection changed
+  // Dropdown: sound file selection changed — apply immediately + play so you hear it now
   _cpsSoundSelectChanged(){
     const lvl  = parseInt(document.getElementById('gp-cps-level-select').value, 10);
     const idx  = Math.min(lvl, 11) - 1;
@@ -2660,14 +2663,47 @@ _playCpsSound(cps){
 
     if (val === '__custom__') {
       customRow.style.display = 'flex';
-    } else {
-      customRow.style.display = 'none';
-      // Save choice, clear any custom buffer for this slot
-      this._cpsSounds[idx] = val;
-      this._cpsSoundBuffers[idx] = null;
-      this._cpsSoundCustomNames[idx] = null;
+      this._cpsUpdateLabel(lvl, idx);
+      return;
     }
+
+    customRow.style.display = 'none';
+    // New choice for this CPS level only
+    this._cpsSounds[idx] = val;
+    this._cpsSoundBuffers[idx] = null;
+    this._cpsSoundCustomNames[idx] = null;
+    // Drop old preloaded buffer so we never play the previous file
+    this._cpsPreloaded[idx] = null;
     this._cpsUpdateLabel(lvl, idx);
+
+    // Load new file and play as soon as it is ready
+    this._cpsReloadAndPlay(idx, lvl);
+  },
+
+  async _cpsReloadAndPlay(idx, lvl){
+    const filename = this._cpsSounds[idx];
+    if (!filename) return;
+    try {
+      const ctx = this._getCpsCtx();
+      const resp = await fetch('/' + encodeURIComponent(filename));
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const ab = await resp.arrayBuffer();
+      const buf = await ctx.decodeAudioData(ab.slice(0));
+      // Only keep if this slot still wants the same file (user may have changed again)
+      if (this._cpsSounds[idx] !== filename) return;
+      this._cpsPreloaded[idx] = buf;
+      this._cpsSoundBuffers[idx] = null;
+      // Immediate hear-it-now
+      this._playCpsSound(lvl >= 11 ? 11 : lvl);
+    } catch (e) {
+      console.warn('CPS sound reload failed:', filename, e);
+      // Fallback: one-shot HTML Audio so change still produces sound
+      try {
+        const a = new Audio('/' + filename);
+        a.volume = this._cpsVolumes[idx] ?? 1;
+        a.play().catch(() => {});
+      } catch (_) {}
+    }
   },
 
   // Load a custom WAV/MP3 for the currently selected CPS slot
@@ -2687,8 +2723,10 @@ _playCpsSound(cps){
         actx.close();
         this._cpsSoundBuffers[idx]     = buf;
         this._cpsSoundCustomNames[idx] = file.name;
+        this._cpsPreloaded[idx]        = null; // prefer custom buffer
         document.getElementById('gp-cps-custom-filename').textContent = file.name;
         this._cpsUpdateLabel(lvl, idx);
+        this._playCpsSound(lvl >= 11 ? 11 : lvl);
       } catch(e) {
         alert('Failed to decode audio file: ' + e.message);
       }
