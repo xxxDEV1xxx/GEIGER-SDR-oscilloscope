@@ -5066,16 +5066,16 @@ async def dl_scanusb():
 # GEIGER ALARM WAVS (bundled in /app root on Railway)
 # Frontend plays these via new Audio('/661steamsiren.wav') etc.
 # ──────────────────────────────────────────────────────────────
-@app.get("/MissileLock2.wav")
+@app.get("/chemalm.wav")
 async def serve_chemalm():
-    for p in (Path(__file__).parent / "MissileLock2.wav", Path("/app/MissileLock2.wav")):
+    for p in (Path(__file__).parent / "chemalm.wav", Path("/app/chemalm.wav")):
         if p.exists():
             return FileResponse(
                 str(p),
                 media_type="audio/wav",
                 headers={"Cache-Control": "public, max-age=86400"},
             )
-    raise HTTPException(404, "MissileLock2.wav not found")
+    raise HTTPException(404, "chemalm.wav not found")
 @app.get("/661steamsiren.wav")
 async def serve_siren_l1():
     p = Path(__file__).parent / "661steamsiren.wav"
@@ -5210,7 +5210,96 @@ def _audio_file_response(filename: str):
         media_type=media,
         headers={"Cache-Control": "public,max-age=86400"},
     )
+# ── Siren / alarm bank (L1–L3 dropdown) ──────────────────────────
 
+@app.get("/661steamsiren.wav")
+async def serve_siren_661():
+    return _audio_file_response("661steamsiren.wav")
+
+
+@app.get("/HMSIllustriousActionStations.wav")
+async def serve_siren_hms():
+    return _audio_file_response("HMSIllustriousActionStations.wav")
+
+
+@app.get("/chemalm.wav")
+async def serve_siren_chem():
+    return _audio_file_response("chemalm.wav")
+
+
+@app.get("/Alarm 1.wav")
+async def serve_alarm_1():
+    return _audio_file_response("Alarm 1.wav")
+
+
+@app.get("/Alarm 2.wav")
+async def serve_alarm_2():
+    return _audio_file_response("Alarm 2.wav")
+
+
+@app.get("/Alarm 3.wav")
+async def serve_alarm_3():
+    return _audio_file_response("Alarm 3.wav")
+
+
+@app.get("/Alarm 4.wav")
+async def serve_alarm_4():
+    return _audio_file_response("Alarm 4.wav")
+
+
+@app.get("/Beep 1.wav")
+async def serve_beep_1():
+    return _audio_file_response("Beep 1.wav")
+
+
+@app.get("/Beep 2.wav")
+async def serve_beep_2():
+    return _audio_file_response("Beep 2.wav")
+
+
+@app.get("/Beep 3.wav")
+async def serve_beep_3():
+    return _audio_file_response("Beep 3.wav")
+
+
+@app.get("/MissileLock2.wav")
+async def serve_missile_lock_2():
+    return _audio_file_response("MissileLock2.wav")
+
+
+@app.get("/R2 1.wav")
+async def serve_r2_1():
+    return _audio_file_response("R2 1.wav")
+
+
+@app.get("/R2 2.wav")
+async def serve_r2_2():
+    return _audio_file_response("R2 2.wav")
+
+
+@app.get("/R2 3.wav")
+async def serve_r2_3():
+    return _audio_file_response("R2 3.wav")
+
+
+@app.get("/R2 4.wav")
+async def serve_r2_4():
+    return _audio_file_response("R2 4.wav")
+
+
+@app.get("/R2 5.wav")
+async def serve_r2_5():
+    return _audio_file_response("R2 5.wav")
+
+
+@app.get("/R2 6.wav")
+async def serve_r2_6():
+    return _audio_file_response("R2 6.wav")
+
+
+@app.get("/R2 7.wav")
+async def serve_r2_7():
+    return _audio_file_response("R2 7.wav")
 
 @app.get("/Besa_Shot_Body-007.ogg")
 async def serve_gun_besa_body():
