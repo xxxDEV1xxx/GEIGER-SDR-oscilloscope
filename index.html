@@ -2226,21 +2226,61 @@ const _gp = {
     const max = this._viewMax;
     const min = this._viewMin;
 
-    // Waveform — live mode right-aligns; Math.round locks pixels (no shimmer)
-    ctx.strokeStyle = '#00FF88';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    smoothed.forEach((v, i) => {
-      const x = Math.round(
-        this._panorama
-          ? i * xStep
-          : (LIVE_WIN - data.length + i) * xStep
-      );
-      const y = h - ((v - min) / (max - min || 1)) * h;
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    });
-    ctx.stroke();
+// ── Waveform: Catmull-Rom spline + phosphor glow + gradient fill ──
+    const _yOf = v => h - ((v - min) / (max - min || 1)) * h;
+    const _xOf = i => this._panorama
+      ? i * xStep
+      : (LIVE_WIN - data.length + i) * xStep;
 
+    // Dense panorama: extra smooth pass so the overview shows trend, not noise
+    let wRender = smoothed;
+    if (this._panorama && !this._panZoomed && smoothed.length > w / 2) {
+      const extraWin = Math.max(3, Math.ceil(smoothed.length / (w / 2)));
+      wRender = smooth(smoothed, extraWin);
+    }
+
+    const wPts = wRender.map((v, i) => ({ x: _xOf(i), y: _yOf(v) }));
+
+    // Catmull-Rom cubic spline — passes through every sample point
+    const catmull = (p) => {
+      if (p.length < 2) return;
+      ctx.moveTo(p[0].x, p[0].y);
+      for (let i = 0; i < p.length - 1; i++) {
+        const a = p[Math.max(0, i - 1)], b = p[i];
+        const c = p[i + 1],              d = p[Math.min(p.length - 1, i + 2)];
+        ctx.bezierCurveTo(
+          b.x + (c.x - a.x) / 6, b.y + (c.y - a.y) / 6,
+          c.x - (d.x - b.x) / 6, c.y - (d.y - b.y) / 6,
+          c.x, c.y
+        );
+      }
+    };
+
+    // Gradient fill under the curve
+    const wGrad = ctx.createLinearGradient(0, 0, 0, h);
+    wGrad.addColorStop(0,    'rgba(0,255,136,0.22)');
+    wGrad.addColorStop(0.45, 'rgba(0,255,136,0.07)');
+    wGrad.addColorStop(1,    'rgba(0,255,136,0.00)');
+    ctx.beginPath();
+    catmull(wPts);
+    ctx.lineTo(wPts[wPts.length - 1].x, h);
+    ctx.lineTo(wPts[0].x, h);
+    ctx.closePath();
+    ctx.fillStyle = wGrad;
+    ctx.fill();
+
+    // Phosphor glow stack: diffuse → bloom → inner → core
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    [
+      [12,  'rgba(0,255,136,0.025)'],
+      [5,   'rgba(0,255,136,0.07)' ],
+      [2.5, 'rgba(0,255,136,0.18)' ],
+      [1.4, '#00FF88'              ],
+    ].forEach(([lw, col]) => {
+      ctx.beginPath(); catmull(wPts);
+      ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.stroke();
+    });
+    
     [[0.20,'#FF4444'],[0.15,'#FFAA00'],[0.10,'#FFFF00']].forEach(([val,col])=>{
       const y = h - ((val - min) / (max - min || 1)) * h;
       ctx.strokeStyle = col;
@@ -3315,8 +3355,8 @@ _playCpsSound(cps){
       dr,
       d.wall_ns ? d.wall_ns / 1e6 : Date.now()
     );
-    if (_cps > 0 || this.sigBuf.length > 0) {
-      this.sigBuf.push(_cps);
+    if ((d.cps||0) > 0 || this.sigBuf.length > 0) {
+      this.sigBuf.push(d.cps||0);
       if (_cps === 0) {
         this.sigGapCount++;
       } else {
