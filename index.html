@@ -41,7 +41,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
   background:linear-gradient(90deg,#1a1a1a 25%,#222 50%,#1a1a1a 75%);
   background-size:200%; animation:shimmer 1.4s infinite; border-radius:6px;
 }
-@@media (max-width: 768px) {
+@media (max-width: 768px) {
   #geiger-feed-panel { touch-action:pan-x pan-y pinch-zoom; }
 }
 @keyframes shimmer { 0%{background-position:200%}100%{background-position:-200%} }
@@ -1966,6 +1966,17 @@ const _gp = {
   _alarmVolume: 0.85,
   _gainL1: null,
   _gainL2: null,
+  // ── Floor→Peak three-column metrics (ported from MainWindow.xaml.cs) ──
+  _fpPairs: [],          // {fVal, pVal, dtSec, peakHrEq, floorIdx, peakIdx, t}
+  _fpFloorDr: null,      // current arm floor
+  _fpFloorIdx: -1,
+  _fpFloorTs: 0,
+  _fpHighDr: 0,
+  _fpHighIdx: -1,
+  _fpHighTs: 0,
+  _fpConfirmed: false,
+  _fpArmed: false,
+  _gainL2: null,
   _replay: {active:false},
   _zoomFreezeN: 0,
   _tlLines:[],
@@ -2193,6 +2204,105 @@ const _gp = {
       ctx.fillRect(2, floorY + 2, 90, 14);
       ctx.fillStyle = '#00FFFF';
       ctx.fillText('▼ FLOOR ' + floor.toFixed(4) + ' µSv/h', 4, floorY + 13);
+    }
+
+    // ── Green-box floor→peak markers + connector (ported from MainWindow green boxes) ──
+    {
+      const pairs = this._fpPairs || [];
+      const Nhist = this.drHistory.length;
+      pairs.forEach(p => {
+        // map absolute history indices into current view slice
+        const fi = p.floorIdx - startIdx;
+        const pi = p.peakIdx - startIdx;
+        if (fi < 0 && pi < 0) return;
+        if (fi >= data.length && pi >= data.length) return;
+
+        const xOf = (i) => Math.round(
+          this._panorama
+            ? i * xStep
+            : (LIVE_WIN - data.length + i) * xStep
+        );
+        const yOf = (v) => h - ((v - min) / (max - min || 1)) * h;
+
+        const fx = (fi >= 0 && fi < data.length) ? xOf(fi) : null;
+        const px = (pi >= 0 && pi < data.length) ? xOf(pi) : null;
+        const fy = yOf(p.fVal);
+        const py = yOf(p.pVal);
+
+        // connector line floor → peak
+        if (fx != null && px != null) {
+          ctx.strokeStyle = 'rgba(0,255,100,0.55)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([3, 3]);
+          ctx.beginPath();
+          ctx.moveTo(fx, fy);
+          ctx.lineTo(px, py);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        // floor green box
+        if (fx != null) {
+          ctx.fillStyle = 'rgba(0,40,0,0.85)';
+          ctx.strokeStyle = '#00FF66';
+          ctx.lineWidth = 1;
+          ctx.fillRect(fx - 22, fy - 8, 44, 14);
+          ctx.strokeRect(fx - 22, fy - 8, 44, 14);
+          ctx.fillStyle = '#00FF88';
+          ctx.font = 'bold 9px Consolas,monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(p.fVal.toFixed(4), fx, fy + 3);
+          ctx.textAlign = 'left';
+        }
+
+        // peak green box
+        if (px != null) {
+          ctx.fillStyle = 'rgba(0,40,0,0.85)';
+          ctx.strokeStyle = '#00FF66';
+          ctx.lineWidth = 1;
+          ctx.fillRect(px - 22, py - 8, 44, 14);
+          ctx.strokeRect(px - 22, py - 8, 44, 14);
+          ctx.fillStyle = '#00FF88';
+          ctx.font = 'bold 9px Consolas,monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(p.pVal.toFixed(4), px, py + 3);
+          ctx.textAlign = 'left';
+        }
+      });
+    }
+
+    // ── Three-column table (top-right): Δt | floor→peak | peak·hr eq ──
+    {
+      const pairs = (this._fpPairs || []).slice(-8).reverse();
+      if (pairs.length) {
+        const rowH = 12;
+        const headerH = 14;
+        const boxW = 268;
+        const boxH = headerH + pairs.length * rowH + 6;
+        const bx = w - boxW - 6;
+        const by = 6;
+
+        ctx.fillStyle = 'rgba(0,12,0,0.88)';
+        ctx.strokeStyle = '#00AA44';
+        ctx.lineWidth = 1;
+        ctx.fillRect(bx, by, boxW, boxH);
+        ctx.strokeRect(bx, by, boxW, boxH);
+
+        ctx.font = 'bold 10px Consolas,monospace';
+        ctx.fillStyle = '#00FF88';
+        ctx.fillText('   Δt(s)     floor → peak      peak·hr', bx + 6, by + 11);
+
+        ctx.font = '10px Consolas,monospace';
+        pairs.forEach((p, i) => {
+          const y = by + headerH + 2 + (i + 1) * rowH - 2;
+          const line =
+            String(p.dtSec.toFixed(1)).padStart(7) + 's  ' +
+            p.fVal.toFixed(4) + '→' + p.pVal.toFixed(4) + '  ' +
+            String(p.peakHrEq.toFixed(2)).padStart(9);
+          ctx.fillStyle = i === 0 ? '#00FF88' : '#66AA66';
+          ctx.fillText(line, bx + 6, y);
+        });
+      }
     }
 
     if (this.cpsHistory && this.cpsHistory.length > 1) {
@@ -2933,7 +3043,12 @@ const _gp = {
       }
     }
 
-    const _cps = d.cps || 0;
+    // ── FLOOR → PEAK processing ───────────────────────────────
+    // Record ONLY when peak - floor >= 0.10 µSv/h.
+    this._fpProcessReading(
+      dr,
+      d.wall_ns ? d.wall_ns / 1e6 : Date.now()
+    );
     if (_cps > 0 || this.sigBuf.length > 0) {
       this.sigBuf.push(_cps);
       if (_cps === 0) {
@@ -2974,6 +3089,316 @@ const _gp = {
       }
     }
   },
+    },
+
+  // ═══════════════════════════════════════════════════════════════
+  // FLOOR → PEAK STATE MACHINE
+  // Valid measurement ONLY when peak - floor >= 0.10 µSv/h.
+  // Newest 3 valid pairs retained.
+  // ═══════════════════════════════════════════════════════════════
+  _fpProcessReading(dr, wallMs) {
+    if (!Array.isArray(this._fpPairs)) this._fpPairs = [];
+    if (typeof this._fpArmed !== 'boolean') this._fpArmed = false;
+    if (typeof this._fpConfirmed !== 'boolean') this._fpConfirmed = false;
+    if (typeof this._fpFloorDr !== 'number') this._fpFloorDr = 0;
+    if (typeof this._fpHighDr !== 'number') this._fpHighDr = 0;
+    if (typeof this._fpFloorIdx !== 'number') this._fpFloorIdx = 0;
+    if (typeof this._fpHighIdx !== 'number') this._fpHighIdx = 0;
+    if (typeof this._fpFloorTs !== 'number') this._fpFloorTs = 0;
+    if (typeof this._fpHighTs !== 'number') this._fpHighTs = 0;
+    if (typeof this._fpSampleIdx !== 'number') this._fpSampleIdx = 0;
+
+    const FLOOR_BAND = 0.10;
+    const DROP_CONFIRM = 0.02;
+    const MIN_HILL = 0.10;
+
+    const ts = Number.isFinite(wallMs) ? wallMs : Date.now();
+
+    this._fpSampleIdx++;
+    const idx = this._fpSampleIdx;
+
+    // ── Arm on a clean floor ──────────────────────────────────
+    if (
+      !this._fpArmed &&
+      !this._fpConfirmed &&
+      dr <= FLOOR_BAND
+    ) {
+      this._fpArmed = true;
+      this._fpFloorDr = dr;
+      this._fpFloorIdx = idx;
+      this._fpFloorTs = ts;
+
+      this._fpHighDr = dr;
+      this._fpHighIdx = idx;
+      this._fpHighTs = ts;
+
+      this._fpConfirmed = false;
+    }
+
+    if (this._fpArmed && !this._fpConfirmed) {
+
+      // ── Track rising high ──────────────────────────────────
+      if (dr > this._fpHighDr) {
+        this._fpHighDr = dr;
+        this._fpHighIdx = idx;
+        this._fpHighTs = ts;
+      }
+
+      // ── Let floor settle lower while still flat ────────────
+      if (
+        dr < this._fpFloorDr &&
+        (this._fpHighDr - this._fpFloorDr) < 0.015
+      ) {
+        this._fpFloorDr = dr;
+        this._fpFloorIdx = idx;
+        this._fpFloorTs = ts;
+
+        this._fpHighDr = dr;
+        this._fpHighIdx = idx;
+        this._fpHighTs = ts;
+      }
+
+      // ── Drop from high → candidate peak ────────────────────
+      if (
+        this._fpHighDr > 0.001 &&
+        (this._fpHighDr - dr) >= DROP_CONFIRM
+      ) {
+        const hill = this._fpHighDr - this._fpFloorDr;
+
+        // ── VALID ONLY when hill >= 0.10 ─────────────────────
+        if (hill >= MIN_HILL) {
+          const dtSec = Math.max(
+            0,
+            (this._fpHighTs - this._fpFloorTs) / 1000
+          );
+
+          const peakHrEq =
+            dtSec > 0.1
+              ? this._fpHighDr * (3600.0 / dtSec)
+              : 0.0;
+
+          const pair = {
+            fVal: this._fpFloorDr,
+            pVal: this._fpHighDr,
+            dtSec: Number(dtSec.toFixed(3)),
+            peakHrEq: Number(peakHrEq.toFixed(2)),
+            hill: Number(hill.toFixed(4)),
+
+            floorIdx: this._fpFloorIdx,
+            peakIdx: this._fpHighIdx,
+
+            floorTs: this._fpFloorTs,
+            peakTs: this._fpHighTs,
+
+            t: new Date().toLocaleTimeString(),
+            ts: Date.now()
+          };
+
+          this._fpPairs.push(pair);
+
+          // Keep newest 3 only.
+          while (this._fpPairs.length > 3) {
+            this._fpPairs.shift();
+          }
+
+          // Reset for next cycle.
+          this._fpArmed = false;
+          this._fpConfirmed = false;
+          this._fpFloorDr = 0;
+          this._fpHighDr = 0;
+        }
+
+        else {
+          // ── Sub-threshold noise: discard ───────────────────
+          this._fpArmed = false;
+          this._fpConfirmed = false;
+          this._fpFloorDr = 0;
+          this._fpHighDr = 0;
+
+          // Re-arm immediately if still on the floor.
+          if (dr <= FLOOR_BAND) {
+            this._fpArmed = true;
+
+            this._fpFloorDr = dr;
+            this._fpFloorIdx = idx;
+            this._fpFloorTs = ts;
+
+            this._fpHighDr = dr;
+            this._fpHighIdx = idx;
+            this._fpHighTs = ts;
+          }
+        }
+      }
+    }
+
+    // ── Hard disarm if we crash far below tracked floor ──────
+    if (
+      this._fpArmed &&
+      dr < this._fpFloorDr - 0.05
+    ) {
+      this._fpArmed = false;
+      this._fpConfirmed = false;
+      this._fpFloorDr = 0;
+      this._fpHighDr = 0;
+    }
+  },
+    _drawFpMarkersAndTable(canvas, canvasW, canvasH, idxToX, drToY) {
+    if (!canvas) return;
+
+    // Remove previous FP overlays.
+    [...canvas.children].forEach(child => {
+      if (
+        child.dataset &&
+        (
+          child.dataset.fpMarker === '1' ||
+          child.dataset.fpTable === '1'
+        )
+      ) {
+        child.remove();
+      }
+    });
+
+    const pairs = Array.isArray(this._fpPairs)
+      ? this._fpPairs.slice(-3)
+      : [];
+
+    // ── Green floor + peak boxes + connector ─────────────────
+    for (const p of pairs) {
+      const fx = idxToX(p.floorIdx);
+      const fy = drToY(p.fVal);
+      const px = idxToX(p.peakIdx);
+      const py = drToY(p.pVal);
+
+      // Floor box
+      const floorBox = document.createElement('div');
+      floorBox.dataset.fpMarker = '1';
+
+      floorBox.style.cssText = `
+        position:absolute;
+        width:52px;
+        height:16px;
+        left:${fx - 26}px;
+        top:${fy - 8}px;
+        box-sizing:border-box;
+        background:rgba(0,40,0,.70);
+        border:1px solid #00FF00;
+        color:#00FF00;
+        font-family:Consolas,monospace;
+        font-size:10px;
+        line-height:14px;
+        text-align:center;
+        z-index:20;
+        pointer-events:none;
+      `;
+
+      floorBox.textContent = Number(p.fVal).toFixed(4);
+      canvas.appendChild(floorBox);
+
+      // Peak box
+      const peakBox = document.createElement('div');
+      peakBox.dataset.fpMarker = '1';
+
+      peakBox.style.cssText = `
+        position:absolute;
+        width:52px;
+        height:16px;
+        left:${px - 26}px;
+        top:${py - 8}px;
+        box-sizing:border-box;
+        background:rgba(0,40,0,.70);
+        border:1px solid #00FF00;
+        color:#00FF00;
+        font-family:Consolas,monospace;
+        font-size:10px;
+        line-height:14px;
+        text-align:center;
+        z-index:20;
+        pointer-events:none;
+      `;
+
+      peakBox.textContent = Number(p.pVal).toFixed(4);
+      canvas.appendChild(peakBox);
+
+      // Connector line
+      const svg = document.createElementNS(
+        'http://www.w3.org/2000/svg',
+        'svg'
+      );
+
+      svg.dataset.fpMarker = '1';
+
+      svg.style.cssText = `
+        position:absolute;
+        left:0;
+        top:0;
+        width:${canvasW}px;
+        height:${canvasH}px;
+        pointer-events:none;
+        z-index:19;
+        overflow:visible;
+      `;
+
+      const line = document.createElementNS(
+        'http://www.w3.org/2000/svg',
+        'line'
+      );
+
+      line.setAttribute('x1', fx);
+      line.setAttribute('y1', fy);
+      line.setAttribute('x2', px);
+      line.setAttribute('y2', py);
+      line.setAttribute('stroke', '#00FF00');
+      line.setAttribute('stroke-width', '1');
+      line.setAttribute('opacity', '0.6');
+
+      svg.appendChild(line);
+      canvas.appendChild(svg);
+    }
+
+    // ── Top-right three-column table ─────────────────────────
+    if (!pairs.length) return;
+
+    const table = document.createElement('div');
+    table.dataset.fpTable = '1';
+
+    table.style.cssText = `
+      position:absolute;
+      right:0;
+      top:8px;
+      box-sizing:border-box;
+      padding:4px 6px;
+      background:rgba(0,20,0,.78);
+      border:1px solid #00FF00;
+      color:#00FF00;
+      font-family:Consolas,monospace;
+      font-size:11px;
+      line-height:15px;
+      z-index:21;
+      pointer-events:none;
+      white-space:nowrap;
+    `;
+
+    const header = document.createElement('div');
+    header.textContent =
+      '   Δt(s)     floor → peak      peak·hr';
+
+    header.style.marginBottom = '2px';
+    table.appendChild(header);
+
+    for (const p of pairs) {
+      const row = document.createElement('div');
+
+      row.textContent =
+        `  ${Number(p.dtSec).toFixed(2).padStart(6)}s   ` +
+        `${Number(p.fVal).toFixed(4)}→${Number(p.pVal).toFixed(4)}   ` +
+        `${Number(p.peakHrEq).toFixed(2).padStart(10)}`;
+
+      table.appendChild(row);
+    }
+
+    canvas.appendChild(table);
+  },
+
   _renderSig(entry) {
     this.sigLedger.unshift(entry);
     this._tlSig(entry);
