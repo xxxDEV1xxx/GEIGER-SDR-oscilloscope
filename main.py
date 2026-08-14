@@ -5055,13 +5055,13 @@ async def dl_gnss_ps1():
                           headers={"Content-Disposition":"attachment; filename=GNSS_AttackModel.ps1"})
     raise HTTPException(404, "GNSS_AttackModel.ps1 not found")
 
-@app.get("/downloads/SCANUSB.txt")
+@app.get("/downloads/fs5000_serial.py")
 async def dl_scanusb():
-    p = Path(__file__).parent / "SCANUSB.txt"
+    p = Path(__file__).parent / "fs5000_serial.py"
     if p.exists():
         return FileResponse(str(p), media_type="text/plain",
-                          headers={"Content-Disposition":"attachment; filename=SCANUSB.txt"})
-    raise HTTPException(404, "SCANUSB.txt not found")
+                          headers={"Content-Disposition":"attachment; filename=fs5000_serial.py"})
+    raise HTTPException(404, "fs5000_serial.py not found")
 # ──────────────────────────────────────────────────────────────
 # GEIGER ALARM WAVS (bundled in /app root on Railway)
 # Frontend plays these via new Audio('/661steamsiren.wav') etc.
