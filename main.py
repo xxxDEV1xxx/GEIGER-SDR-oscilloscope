@@ -5018,7 +5018,10 @@ async def gnss_map(
         "source": "csv",
         "points": len(rows)
     })
-
+@app.get("/chess.min.js")
+async def chess_js():
+    from fastapi.responses import FileResponse
+    return FileResponse("/app/chess.min.js", media_type="application/javascript")
 
 @app.get("/gnss")
 async def gnss_viewer():
@@ -5063,16 +5066,16 @@ async def dl_scanusb():
 # GEIGER ALARM WAVS (bundled in /app root on Railway)
 # Frontend plays these via new Audio('/661steamsiren.wav') etc.
 # ──────────────────────────────────────────────────────────────
-@app.get("/chemalm.wav")
+@app.get("/MissileLock2.wav")
 async def serve_chemalm():
-    for p in (Path(__file__).parent / "chemalm.wav", Path("/app/chemalm.wav")):
+    for p in (Path(__file__).parent / "MissileLock2.wav", Path("/app/MissileLock2.wav")):
         if p.exists():
             return FileResponse(
                 str(p),
                 media_type="audio/wav",
                 headers={"Cache-Control": "public, max-age=86400"},
             )
-    raise HTTPException(404, "chemalm.wav not found")
+    raise HTTPException(404, "MissileLock2.wav not found")
 @app.get("/661steamsiren.wav")
 async def serve_siren_l1():
     p = Path(__file__).parent / "661steamsiren.wav"
@@ -5098,29 +5101,29 @@ async def serve_siren_l2():
             headers={"Cache-Control": "public, max-age=86400"},
         )
     raise HTTPException(404, "HMSIllustriousActionStations.wav not found")
-@app.get("/Explosion Large 2.wav")
-async def serve_cps_5():
-    p = Path(__file__).parent / "Explosion Large 2.wav"
-    if not p.exists(): p = Path("/app/Explosion Large 2.wav")
-    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
-    raise HTTPException(404, "Explosion Large 2.wav not found")
-
 @app.get("/Imperial Laser 1.wav")
-async def serve_cps_2():
+async def serve_cps_1():
     p = Path(__file__).parent / "Imperial Laser 1.wav"
     if not p.exists(): p = Path("/app/Imperial Laser 1.wav")
     if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
     raise HTTPException(404, "Imperial Laser 1.wav not found")
 
-@app.get("/Imperial Laser 2.wav")
-async def serve_cps_3():
-    p = Path(__file__).parent / "Imperial Laser 2.wav"
-    if not p.exists(): p = Path("/app/Imperial Laser 2.wav")
+@app.get("/Ion Cannon 2.wav")
+async def serve_cps_2():
+    p = Path(__file__).parent / "Ion Cannon 2.wav"
+    if not p.exists(): p = Path("/app/Ion Cannon 2.wav")
     if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
-    raise HTTPException(404, "Imperial Laser 2.wav not found")
+    raise HTTPException(404, "Ion Cannon .wav not found")
+
+@app.get("/Ion Impact.wav")
+async def serve_cps_3():
+    p = Path(__file__).parent / "Ion Impact.wav"
+    if not p.exists(): p = Path("/app/Ion Impact.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Ion Impact.wav not found")
 
 @app.get("/Imperial Laser Turbo.wav")
-async def serve_cps_13():
+async def serve_cps_4():
     p = Path(__file__).parent / "Imperial Laser Turbo.wav"
     if not p.exists(): p = Path("/app/Imperial Laser Turbo.wav")
     if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
@@ -5133,12 +5136,12 @@ async def serve_cps_5():
     if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
     raise HTTPException(404, "Ion Cannon 1.wav not found")
 
-@app.get("/Ion Cannon 2.wav")
+@app.get("/Imperial Laser 1.wav")
 async def serve_cps_6():
-    p = Path(__file__).parent / "Ion Cannon 2.wav"
-    if not p.exists(): p = Path("/app/Ion Cannon 2.wav")
+    p = Path(__file__).parent / "Imperial Laser 1.wav"
+    if not p.exists(): p = Path("/app/Imperial Laser 1.wav")
     if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
-    raise HTTPException(404, "Ion Cannon 2.wav not found")
+    raise HTTPException(404, "Imperial Laser 1.wav not found")
 
 @app.get("/Ion Cannon Turbo.wav")
 async def serve_cps_7():
@@ -5183,11 +5186,65 @@ async def serve_cps_12():
     raise HTTPException(404, "Turbolaser 2.wav not found")
 
 @app.get("/StarWarsLaser.mp3")
-async def serve_cps_1():
+async def serve_cps_13():
     p = Path(__file__).parent / "StarWarsLaser.mp3"
     if not p.exists(): p = Path("/app/StarWarsLaser.mp3")
     if p.exists(): return FileResponse(str(p), media_type="audio/mpeg", headers={"Cache-Control":"public,max-age=86400"})
     raise HTTPException(404, "StarWarsLaser.mp3 not found")
+def _audio_file_response(filename: str):
+    """Serve wav/mp3/ogg from project root or /app (Railway)."""
+    p = Path(__file__).parent / filename
+    if not p.exists():
+        p = Path("/app") / filename
+    if not p.exists():
+        raise HTTPException(404, f"{filename} not found")
+    ext = p.suffix.lower()
+    media = {
+        ".wav": "audio/wav",
+        ".mp3": "audio/mpeg",
+        ".ogg": "audio/ogg",
+        ".oga": "audio/ogg",
+    }.get(ext, "application/octet-stream")
+    return FileResponse(
+        str(p),
+        media_type=media,
+        headers={"Cache-Control": "public,max-age=86400"},
+    )
+
+
+@app.get("/Besa_Shot_Body-007.ogg")
+async def serve_gun_besa_body():
+    return _audio_file_response("Besa_Shot_Body-007.ogg")
+
+
+@app.get("/Besa_Shot_HiFi-002.ogg")
+async def serve_gun_besa_hifi():
+    return _audio_file_response("Besa_Shot_HiFi-002.ogg")
+
+
+@app.get("/FG42_Shot_Body-008.ogg")
+async def serve_gun_fg42():
+    return _audio_file_response("FG42_Shot_Body-008.ogg")
+
+
+@app.get("/M2_Browning_Body_Test_02-003.ogg")
+async def serve_gun_m2_body():
+    return _audio_file_response("M2_Browning_Body_Test_02-003.ogg")
+
+
+@app.get("/M2_Browning_HiFi_Test_02-001.ogg")
+async def serve_gun_m2_hifi():
+    return _audio_file_response("M2_Browning_HiFi_Test_02-001.ogg")
+
+
+@app.get("/AK47ST_Fire01.wav")
+async def serve_gun_ak47():
+    return _audio_file_response("AK47ST_Fire01.wav")
+
+
+@app.get("/type99_mn.wav")
+async def serve_gun_type99():
+    return _audio_file_response("type99_mn.wav")
 # ══════════════════════════════════════════════════════════════
 # FRONTEND -- must be last
 # ══════════════════════════════════════════════════════════════
