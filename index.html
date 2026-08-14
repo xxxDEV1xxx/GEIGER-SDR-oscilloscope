@@ -854,7 +854,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
       <a href="/downloads/SCANUSB.txt" download style="background:#001100;border:1px solid #00FF41;color:#00FF41;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;text-decoration:none;">⬇ SCANUSB.ps1</a>
       <button id="gp-rec-btn" onclick="_gp.toggleRecord()" style="background:#1a0000;border:1px solid #FF4444;color:#FF4444;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⏺ RECORD</button>
       <button id="gp-alarm-btn" onclick="_gp.toggleAlarm()" style="background:#0a0a0a;border:1px solid #333;color:#555;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">🔇 ALARM</button>
-      <button onclick="toggleGeigerPanel()" style="background:none;border:1px solid #333;color:#aaa;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">✕ CLOSE</button>
+      <button id="gp-cps-mute-btn" onclick="_gp.toggleCpsMute()" style="background:#0a0a0a;border:1px solid #333;color:#555;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">🔇 CPS</button>      <button onclick="toggleGeigerPanel()" style="background:none;border:1px solid #333;color:#aaa;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">✕ CLOSE</button>
     </div>  </div>
   <!-- Main body -->
   <div style="display:flex;flex:1;overflow:hidden;" id="gp-main-body">
@@ -2554,7 +2554,8 @@ const _gp = {
       if(btn){btn.textContent='⏹ STOP REC';btn.style.borderColor='#FF0000';btn.style.color='#FF0000';btn.style.background='#330000';}
     }).catch(e=>{alert('Screen capture failed: '+e.message);});
   },
-  _alarmEnabled: false,
+    _alarmEnabled: false,   // starts muted
+  _cpsMuted: true,        // CPS event sounds start muted
   _alarmThreshold: 0.20,   // L1
   _alarmThreshold2: 0.27,  // L2
   _alarmThreshold3: 0.33,  // L3  (chemalm) — set to 33 if you meant absolute 33
@@ -2606,6 +2607,7 @@ const _gp = {
 
   // Fire a CPS sound — called from wherever CPS is dispatched
 _playCpsSound(cps){
+    if (this._cpsMuted) return;
     const idx = Math.min(Math.max(cps, 1), 11) - 1;
     if (idx < 0) return;
     const vol = this._cpsVolumes[idx] ?? 1;
@@ -2800,6 +2802,24 @@ _playCpsSound(cps){
     }
   },
 
+    toggleCpsMute(){
+    this._cpsMuted = !this._cpsMuted;
+    const btn = document.getElementById('gp-cps-mute-btn');
+    if (btn) {
+      if (this._cpsMuted) {
+        btn.textContent = '🔇 CPS';
+        btn.style.borderColor = '#333';
+        btn.style.color = '#555';
+        btn.style.background = '#0a0a0a';
+      } else {
+        btn.textContent = '🔊 CPS';
+        btn.style.borderColor = '#00FFFF';
+        btn.style.color = '#00FFFF';
+        btn.style.background = '#001a1a';
+      }
+    }
+  },
+  
   setAlarmVolume(level, v){
     const vol = Math.max(0, Math.min(1, Number(v) || 0));
     if (level === 1) {
