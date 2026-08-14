@@ -1183,8 +1183,8 @@ async def lifespan(app: FastAPI):
                     async for msg in ws:
                         try:
                             rec = json.loads(msg)
-                            async with _geiger_lock:
-                                _geiger_records.append(rec)
+                            if isinstance(rec, dict):
+                                await _geiger_publish(rec)
                         except Exception:
                             pass
             except Exception as e:
@@ -3619,13 +3619,175 @@ async def gnss_nmea_viewer():
     raise HTTPException(404, "gnss_nmea_viewer.html not found")
 
 # ──────────────────────────────────────────────────────────────
-# FS-5000 GEIGER BRIDGE
+# ──────────────────────────────────────────────────────────────
+# FS-5000 GEIGER BRIDGE + Floor→Peak three-column metrics
+# (ported from MainWindow.xaml.cs green-box state machine)
 # ──────────────────────────────────────────────────────────────
 
 _geiger_records: deque = deque(maxlen=7200)
 _geiger_subscribers: list = []
 _geiger_lock = asyncio.Lock()
 _geiger_session_meta: dict = {}
+
+# Floor→Peak state (same constants/logic as MainWindow.xaml.cs)
+_FP_FLOOR_BAND   = 0.10    # arm when DR ≤ this
+_FP_DROP_CONFIRM = 0.02    # peak confirmed when high − current ≥ this
+_FP_MAX_PAIRS    = 40
+
+_fp_pairs: deque = deque(maxlen=_FP_MAX_PAIRS)
+_fp_state: dict = {
+    "armed": False,
+    "confirmed": False,
+    "floor_dr": None,
+    "floor_idx": -1,
+    "floor_ts": 0.0,      # wall_ns or monotonic ns
+    "high_dr": 0.0,
+    "high_idx": -1,
+    "high_ts": 0.0,
+    "sample_idx": 0,
+}
+
+
+def _fp_process_reading(rec: dict) -> Optional[dict]:
+    """
+    Floor→peak state machine (MainWindow.xaml.cs green-box logic).
+    A measurement is recorded ONLY when (peak - floor) >= 0.1 µSv/h.
+    Smaller rises are noise and are discarded on the drop.
+    """
+    try:
+        dr = float(rec.get("dr") or 0.0)
+    except (TypeError, ValueError):
+        return None
+
+    wall_ns = rec.get("wall_ns")
+    if wall_ns is None:
+        wall_ns = int(time.time() * 1e9)
+    else:
+        try:
+            wall_ns = int(wall_ns)
+        except (TypeError, ValueError):
+            wall_ns = int(time.time() * 1e9)
+
+    st = _fp_state
+    st["sample_idx"] = int(st.get("sample_idx", 0)) + 1
+    idx = st["sample_idx"]
+
+    MIN_HILL = 0.1          # peak − floor must be ≥ this (µSv/h)
+    FLOOR_BAND = 0.10       # arm when DR ≤ this
+    DROP_CONFIRM = 0.02     # peak confirmed when high − current ≥ this
+
+    # Arm on a low floor
+    if not st["armed"] and not st["confirmed"] and dr <= FLOOR_BAND:
+        st["armed"] = True
+        st["floor_dr"] = dr
+        st["floor_idx"] = idx
+        st["floor_ts"] = wall_ns
+        st["high_dr"] = dr
+        st["high_idx"] = idx
+        st["high_ts"] = wall_ns
+        st["confirmed"] = False
+
+    if st["armed"] and not st["confirmed"]:
+        # Track rising high
+        if dr > st["high_dr"]:
+            st["high_dr"] = dr
+            st["high_idx"] = idx
+            st["high_ts"] = wall_ns
+
+        # Allow floor to settle lower while still near-flat
+        if (
+            st["floor_dr"] is not None
+            and dr < st["floor_dr"]
+            and (st["high_dr"] - st["floor_dr"]) < 0.015
+        ):
+            st["floor_dr"] = dr
+            st["floor_idx"] = idx
+            st["floor_ts"] = wall_ns
+            st["high_dr"] = dr
+            st["high_idx"] = idx
+            st["high_ts"] = wall_ns
+
+        # Drop from high → candidate peak
+        if st["high_dr"] > 0.001 and (st["high_dr"] - dr) >= DROP_CONFIRM:
+            hill = st["high_dr"] - (st["floor_dr"] if st["floor_dr"] is not None else 0.0)
+
+            if hill >= MIN_HILL:
+                # Valid hill — record measurement
+                st["confirmed"] = True
+                f_val = float(st["floor_dr"])
+                p_val = float(st["high_dr"])
+                dt_sec = max(0.0, (st["high_ts"] - st["floor_ts"]) / 1e9)
+                peak_hr_eq = p_val * (3600.0 / dt_sec) if dt_sec > 0.1 else 0.0
+                pair = {
+                    "fVal": f_val,
+                    "pVal": p_val,
+                    "dtSec": round(dt_sec, 3),
+                    "peakHrEq": round(peak_hr_eq, 2),
+                    "hill": round(hill, 4),
+                    "floorIdx": st["floor_idx"],
+                    "peakIdx": st["high_idx"],
+                    "floorTs": st["floor_ts"],
+                    "peakTs": st["high_ts"],
+                    "t": datetime.datetime.utcnow().strftime("%H:%M:%S"),
+                }
+                _fp_pairs.append(pair)
+                st["armed"] = False
+                st["confirmed"] = False
+                st["floor_dr"] = None
+                st["high_dr"] = 0.0
+                return pair
+            else:
+                # Sub-threshold rise — discard, re-arm from current level
+                st["armed"] = False
+                st["confirmed"] = False
+                st["floor_dr"] = None
+                st["high_dr"] = 0.0
+                if dr <= FLOOR_BAND:
+                    st["armed"] = True
+                    st["floor_dr"] = dr
+                    st["floor_idx"] = idx
+                    st["floor_ts"] = wall_ns
+                    st["high_dr"] = dr
+                    st["high_idx"] = idx
+                    st["high_ts"] = wall_ns
+
+    # Disarm if we crash far below tracked floor without a real peak
+    if (
+        st["armed"]
+        and st["floor_dr"] is not None
+        and dr < st["floor_dr"] - 0.05
+    ):
+        st["armed"] = False
+        st["confirmed"] = False
+        st["floor_dr"] = None
+        st["high_dr"] = 0.0
+
+    return None
+
+
+def _fp_snapshot() -> list:
+    return list(_fp_pairs)
+
+
+async def _geiger_publish(rec: dict) -> None:
+    """Append record, run FP machine, fan-out to SSE subscribers."""
+    pair = _fp_process_reading(rec)
+    # Attach current FP pairs so the client can render without local state
+    out = dict(rec)
+    out["fp_pairs"] = _fp_snapshot()
+    if pair is not None:
+        out["fp_new"] = pair
+
+    async with _geiger_lock:
+        _geiger_records.append(out)
+        msg = f"data: {_json.dumps(out)}\n\n"
+        _geiger_subscribers[:] = [q for q in _geiger_subscribers if not q.full()]
+        for q in _geiger_subscribers:
+            try:
+                q.put_nowait(msg)
+            except Exception:
+                pass
+
 
 @app.post("/api/geiger/ingest")
 async def geiger_ingest(request: Request):
@@ -3635,16 +3797,12 @@ async def geiger_ingest(request: Request):
         raise HTTPException(401)
     data = await request.json()
     records = data if isinstance(data, list) else [data]
-    async with _geiger_lock:
-        for rec in records:
-            if not isinstance(rec, dict): continue
-            _geiger_records.append(rec)
-            msg = f"data: {_json.dumps(rec)}\n\n"
-            _geiger_subscribers[:] = [q for q in _geiger_subscribers if not q.full()]
-            for q in _geiger_subscribers:
-                try: q.put_nowait(msg)
-                except: pass
+    for rec in records:
+        if not isinstance(rec, dict):
+            continue
+        await _geiger_publish(rec)
     return Response(status_code=204)
+
 
 @app.post("/api/geiger/session")
 async def geiger_session(request: Request):
@@ -3655,26 +3813,33 @@ async def geiger_session(request: Request):
             raise HTTPException(401)
     global _geiger_session_meta
     _geiger_session_meta = await request.json()
-    msg = f"data: {_json.dumps({'type':'log_found','path':_geiger_session_meta.get('serial_log','live')})}\n\n"
+    msg = f"data: {_json.dumps({'type': 'log_found', 'path': _geiger_session_meta.get('serial_log', 'live')})}\n\n"
     for q in _geiger_subscribers:
-        try: q.put_nowait(msg)
-        except: pass
+        try:
+            q.put_nowait(msg)
+        except Exception:
+            pass
     return Response(status_code=204)
+
 
 @app.get("/geiger")
 async def geiger_live():
     from fastapi.responses import HTMLResponse
     return HTMLResponse("<script>window.location.href='/';</script>")
 
+
 @app.get("/api/geiger/stream")
 async def geiger_stream(request: Request):
     queue: asyncio.Queue = asyncio.Queue(maxsize=500)
     _geiger_subscribers.append(queue)
+
     async def generate():
         async with _geiger_lock:
             recent = list(_geiger_records)
         for rec in recent:
             yield f"data: {_json.dumps(rec)}\n\n"
+        # Always push current FP pairs on connect
+        yield f"data: {_json.dumps({'type': 'fp_pairs', 'fp_pairs': _fp_snapshot()})}\n\n"
         try:
             while True:
                 if await request.is_disconnected():
@@ -3685,13 +3850,17 @@ async def geiger_stream(request: Request):
                 except asyncio.TimeoutError:
                     yield ": heartbeat\n\n"
         finally:
-            try: _geiger_subscribers.remove(queue)
-            except ValueError: pass
+            try:
+                _geiger_subscribers.remove(queue)
+            except ValueError:
+                pass
+
     return StreamingResponse(
         generate(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
 
 @app.get("/api/geiger/status")
 async def geiger_status():
@@ -3699,6 +3868,27 @@ async def geiger_status():
         "records": len(_geiger_records),
         "session": _geiger_session_meta,
         "live": len(_geiger_subscribers) > 0,
+        "fp_pairs": _fp_snapshot(),
+        "fp_state": {
+            "armed": _fp_state["armed"],
+            "floor_dr": _fp_state["floor_dr"],
+            "high_dr": _fp_state["high_dr"],
+            "sample_idx": _fp_state["sample_idx"],
+        },
+    }
+
+
+@app.get("/api/geiger/fp-pairs")
+async def geiger_fp_pairs():
+    """Three-column metrics: Δt | floor→peak | peak·hr eq."""
+    return {
+        "pairs": _fp_snapshot(),
+        "columns": ["dtSec", "fVal→pVal", "peakHrEq"],
+        "state": {
+            "armed": _fp_state["armed"],
+            "floor_dr": _fp_state["floor_dr"],
+            "high_dr": _fp_state["high_dr"],
+        },
     }
 
 # ──────────────────────────────────────────────────────────────
@@ -4908,7 +5098,96 @@ async def serve_siren_l2():
             headers={"Cache-Control": "public, max-age=86400"},
         )
     raise HTTPException(404, "HMSIllustriousActionStations.wav not found")
+@app.get("/Explosion Large 2.wav")
+async def serve_cps_5():
+    p = Path(__file__).parent / "Explosion Large 2.wav"
+    if not p.exists(): p = Path("/app/Explosion Large 2.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Explosion Large 2.wav not found")
 
+@app.get("/Imperial Laser 1.wav")
+async def serve_cps_2():
+    p = Path(__file__).parent / "Imperial Laser 1.wav"
+    if not p.exists(): p = Path("/app/Imperial Laser 1.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Imperial Laser 1.wav not found")
+
+@app.get("/Imperial Laser 2.wav")
+async def serve_cps_3():
+    p = Path(__file__).parent / "Imperial Laser 2.wav"
+    if not p.exists(): p = Path("/app/Imperial Laser 2.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Imperial Laser 2.wav not found")
+
+@app.get("/Imperial Laser Turbo.wav")
+async def serve_cps_13():
+    p = Path(__file__).parent / "Imperial Laser Turbo.wav"
+    if not p.exists(): p = Path("/app/Imperial Laser Turbo.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Imperial Laser Turbo.wav not found")
+
+@app.get("/Ion Cannon 1.wav")
+async def serve_cps_5():
+    p = Path(__file__).parent / "Ion Cannon 1.wav"
+    if not p.exists(): p = Path("/app/Ion Cannon 1.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Ion Cannon 1.wav not found")
+
+@app.get("/Ion Cannon 2.wav")
+async def serve_cps_6():
+    p = Path(__file__).parent / "Ion Cannon 2.wav"
+    if not p.exists(): p = Path("/app/Ion Cannon 2.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Ion Cannon 2.wav not found")
+
+@app.get("/Ion Cannon Turbo.wav")
+async def serve_cps_7():
+    p = Path(__file__).parent / "Ion Cannon Turbo.wav"
+    if not p.exists(): p = Path("/app/Ion Cannon Turbo.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Ion Cannon Turbo.wav not found")
+
+@app.get("/Shield Hit.wav")
+async def serve_cps_8():
+    p = Path(__file__).parent / "Shield Hit.wav"
+    if not p.exists(): p = Path("/app/Shield Hit.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Shield Hit.wav not found")
+
+@app.get("/Stormtrooper Blaster.wav")
+async def serve_cps_9():
+    p = Path(__file__).parent / "Stormtrooper Blaster.wav"
+    if not p.exists(): p = Path("/app/Stormtrooper Blaster.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Stormtrooper Blaster.wav not found")
+
+@app.get("/Torpedo Fire.wav")
+async def serve_cps_10():
+    p = Path(__file__).parent / "Torpedo Fire.wav"
+    if not p.exists(): p = Path("/app/Torpedo Fire.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Torpedo Fire.wav not found")
+
+@app.get("/Turbolaser 1.wav")
+async def serve_cps_11():
+    p = Path(__file__).parent / "Turbolaser 1.wav"
+    if not p.exists(): p = Path("/app/Turbolaser 1.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Turbolaser 1.wav not found")
+
+@app.get("/Turbolaser 2.wav")
+async def serve_cps_12():
+    p = Path(__file__).parent / "Turbolaser 2.wav"
+    if not p.exists(): p = Path("/app/Turbolaser 2.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Turbolaser 2.wav not found")
+
+@app.get("/StarWarsLaser.mp3")
+async def serve_cps_1():
+    p = Path(__file__).parent / "StarWarsLaser.mp3"
+    if not p.exists(): p = Path("/app/StarWarsLaser.mp3")
+    if p.exists(): return FileResponse(str(p), media_type="audio/mpeg", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "StarWarsLaser.mp3 not found")
 # ══════════════════════════════════════════════════════════════
 # FRONTEND -- must be last
 # ══════════════════════════════════════════════════════════════
