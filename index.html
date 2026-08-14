@@ -3250,7 +3250,6 @@ _playCpsSound(cps){
     let count=0;
     for(let i=0;i<this.sigLedger.length;i++){
       if((this.sigLedger[i].seq||[]).join('').includes(matched)) count++;
-      else break;
     }
     if(count>=3) this._emitRecur(matched,count,entry.t,peak);
   },
