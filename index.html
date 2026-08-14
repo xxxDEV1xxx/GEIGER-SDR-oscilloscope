@@ -854,7 +854,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
       <a href="/downloads/SCANUSB.txt" download style="background:#001100;border:1px solid #00FF41;color:#00FF41;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;text-decoration:none;">⬇ SCANUSB.ps1</a>
       <button id="gp-rec-btn" onclick="_gp.toggleRecord()" style="background:#1a0000;border:1px solid #FF4444;color:#FF4444;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⏺ RECORD</button>
       <button id="gp-alarm-btn" onclick="_gp.toggleAlarm()" style="background:#0a0a0a;border:1px solid #333;color:#555;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">🔇 ALARM</button>
-      <button id="gp-cps-mute-btn" onclick="_gp.toggleCpsMute()" style="background:#0a0a0a;border:1px solid #333;color:#555;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">🔇 CPS</button>      <button onclick="toggleGeigerPanel()" style="background:none;border:1px solid #333;color:#aaa;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">✕ CLOSE</button>
+      <button onclick="toggleGeigerPanel()" style="background:none;border:1px solid #333;color:#aaa;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">✕ CLOSE</button>
     </div>  </div>
   <!-- Main body -->
   <div style="display:flex;flex:1;overflow:hidden;" id="gp-main-body">
@@ -1051,23 +1051,35 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
           <select id="gp-cps-sound-select"
             style="background:#111;border:1px solid #444;color:#ccc;padding:3px 6px;font-family:Consolas,monospace;font-size:.65rem;cursor:pointer;width:100%;"
             onchange="_gp._cpsSoundSelectChanged()">
-            <option value="Explosion Large 2.wav">Explosion Large 2</option>
-            <option value="Imperial Laser 1.wav">Imperial Laser 1</option>
-            <option value="Imperial Laser 2.wav">Imperial Laser 2</option>
-            <option value="Imperial Laser Turbo.wav">Imperial Laser Turbo</option>
-            <option value="Ion Cannon 1.wav">Ion Cannon 1</option>
-            <option value="Ion Cannon 2.wav">Ion Cannon 2</option>
-            <option value="Ion Cannon Turbo.wav">Ion Cannon Turbo</option>
-            <option value="Shield Hit.wav">Shield Hit</option>
-            <option value="Stormtrooper Blaster.wav">Stormtrooper Blaster</option>
-            <option value="Torpedo Fire.wav">Torpedo Fire</option>
-            <option value="Turbolaser 1.wav">Turbolaser 1</option>
-            <option value="Turbolaser 2.wav">Turbolaser 2</option>
-            <option value="chemalm.wav">Chemical Alarm</option>
-            <option value="starwarslaser.mp3">Star Wars Laser</option>
+            <optgroup label="── Sci-Fi / Lasers ──">
+              <option value="Explosion Large 2.wav">Explosion Large 2</option>
+              <option value="Imperial Laser 1.wav">Imperial Laser 1</option>
+              <option value="Imperial Laser 2.wav">Imperial Laser 2</option>
+              <option value="Imperial Laser Turbo.wav">Imperial Laser Turbo</option>
+              <option value="Ion Cannon 1.wav">Ion Cannon 1</option>
+              <option value="Ion Cannon 2.wav">Ion Cannon 2</option>
+              <option value="Ion Cannon Turbo.wav">Ion Cannon Turbo</option>
+              <option value="Ion Impact.wav">Ion Impact</option>
+              <option value="Shield Hit.wav">Shield Hit</option>
+              <option value="Stormtrooper Blaster.wav">Stormtrooper Blaster</option>
+              <option value="Torpedo Fire.wav">Torpedo Fire</option>
+              <option value="Turbolaser 1.wav">Turbolaser 1</option>
+              <option value="Turbolaser 2.wav">Turbolaser 2</option>
+              <option value="chemalm.wav">Chemical Alarm</option>
+              <option value="starwarslaser.mp3">Star Wars Laser</option>
+              <option value="StarWarsLaser.mp3">StarWarsLaser (mp3)</option>
+            </optgroup>
+            <optgroup label="── Guns ──">
+              <option value="Besa_Shot_Body-007.ogg">Besa Shot Body</option>
+              <option value="Besa_Shot_HiFi-002.ogg">Besa Shot HiFi</option>
+              <option value="FG42_Shot_Body-008.ogg">FG42 Shot Body</option>
+              <option value="M2_Browning_Body_Test_02-003.ogg">M2 Browning Body</option>
+              <option value="M2_Browning_HiFi_Test_02-001.ogg">M2 Browning HiFi</option>
+              <option value="AK47ST_Fire01.wav">AK47 Fire</option>
+              <option value="type99_mn.wav">Type 99</option>
+            </optgroup>
             <option value="__custom__">📂 Use custom file…</option>
           </select>
-
           <!-- custom file row — shown only when __custom__ selected -->
           <div id="gp-cps-custom-row" style="display:none;flex-direction:column;gap:4px;">
             <div style="display:flex;gap:8px;align-items:center;">
@@ -1097,8 +1109,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
       </div>
     </div>
   </div>
-  <input type="file" id="gp-siren-file-input" accept=".wav,.mp3" style="display:none;">
-
+  <input type="file" id="gp-siren-file-input" accept=".wav,.mp3,.ogg,audio/wav,audio/mpeg,audio/ogg" style="display:none;">
   <!-- REMOTE CONNECT MODAL -->
   <div id="gp-remote-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:999999;align-items:center;justify-content:center;">
     <div style="background:#0a0a0a;border:1px solid #00CCFF;border-radius:8px;padding:20px;width:460px;font-family:Consolas,monospace;color:#aaa;">
@@ -2554,8 +2565,7 @@ const _gp = {
       if(btn){btn.textContent='⏹ STOP REC';btn.style.borderColor='#FF0000';btn.style.color='#FF0000';btn.style.background='#330000';}
     }).catch(e=>{alert('Screen capture failed: '+e.message);});
   },
-    _alarmEnabled: false,   // starts muted
-  _cpsMuted: true,        // CPS event sounds start muted
+  _alarmEnabled: false,
   _alarmThreshold: 0.20,   // L1
   _alarmThreshold2: 0.27,  // L2
   _alarmThreshold3: 0.33,  // L3  (chemalm) — set to 33 if you meant absolute 33
@@ -2607,7 +2617,6 @@ const _gp = {
 
   // Fire a CPS sound — called from wherever CPS is dispatched
 _playCpsSound(cps){
-    if (this._cpsMuted) return;
     const idx = Math.min(Math.max(cps, 1), 11) - 1;
     if (idx < 0) return;
     const vol = this._cpsVolumes[idx] ?? 1;
@@ -2712,7 +2721,7 @@ _playCpsSound(cps){
   _cpsLoadCustomFile(){
     const inp = document.createElement('input');
     inp.type = 'file';
-    inp.accept = '.wav,.mp3';
+    inp.accept = '.wav,.mp3,.ogg,audio/*';
     inp.onchange = async () => {
       const file = inp.files[0];
       if (!file) return;
@@ -2802,24 +2811,6 @@ _playCpsSound(cps){
     }
   },
 
-    toggleCpsMute(){
-    this._cpsMuted = !this._cpsMuted;
-    const btn = document.getElementById('gp-cps-mute-btn');
-    if (btn) {
-      if (this._cpsMuted) {
-        btn.textContent = '🔇 CPS';
-        btn.style.borderColor = '#333';
-        btn.style.color = '#555';
-        btn.style.background = '#0a0a0a';
-      } else {
-        btn.textContent = '🔊 CPS';
-        btn.style.borderColor = '#00FFFF';
-        btn.style.color = '#00FFFF';
-        btn.style.background = '#001a1a';
-      }
-    }
-  },
-  
   setAlarmVolume(level, v){
     const vol = Math.max(0, Math.min(1, Number(v) || 0));
     if (level === 1) {
