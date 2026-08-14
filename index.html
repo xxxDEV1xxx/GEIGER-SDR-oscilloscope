@@ -1064,6 +1064,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
             <option value="Turbolaser 1.wav">Turbolaser 1</option>
             <option value="Turbolaser 2.wav">Turbolaser 2</option>
             <option value="chemalm.wav">Chemical Alarm</option>
+            <option value="starwarslaser.mp3">Star Wars Laser</option>
             <option value="__custom__">📂 Use custom file…</option>
           </select>
 
@@ -2561,7 +2562,7 @@ const _gp = {
       src.start(0);
       src.onended = () => { try { actx.close(); } catch(e){} };
     } else if (filename) {
-      const a = new Audio('/' + encodeURIComponent(filename));
+      const a = new Audio('/' + filename.split(' ').join('%20'));
       a.volume = vol;
       a.play().catch(() => {});
     }
@@ -3237,7 +3238,7 @@ const _gp = {
   onReading(d){
     const dr = d.dr || 0;
     this._checkAlarm(dr);
-    if (typeof cps === 'number' && cps > 0) this._playCpsSound(cps);
+    if (d.cps > 0) this._playCpsSound(d.cps);
     this.drHistory.push(dr);
     if(this.drHistory.length > 3000) this.drHistory.shift();
     this.cpsHistory.push(d.cps||0);
