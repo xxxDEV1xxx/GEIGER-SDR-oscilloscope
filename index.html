@@ -1891,7 +1891,6 @@ function mean(arr){return arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:0;}
 const DS={beatEnvPeaks:[],beatLastPeak:0,beatRising:false,beatLastFireNs:0,pbConsecutive:0,pbTotalCounts:0,pbLastFireNs:0,stairBuf:[],stairLastFireNs:0,ookInBurst:false,ookCurrentCps:0,ookCurrentRun:0,ookCurrentGap:0,ookBursts:[],ookLastFireNs:0,cpsLastVal:-1,cpsLockCount:0,cpsLockFireNs:0,cpsLog:[],cpsAlertLastNs:0,uniBuf:[],uniLastFireNs:0,ccsRunLen:0,ccsRunTotal:0,ccsRunStartNs:0,ccsLastFireNs:0,ccsInRun:false,pfBuf:[],pfPairNs:[],pfLastFireNs:0,eqBurstNs:[],eqLastFireNs:0,lastState:'FLAT',lastStateNs:0,lastPeakEvent:0,peakDr:0,floorDr:99,peakLog:[],floorLog:[],recurLastFireNs:0,floorRecurLastFireNs:0,pwrBuckets:{},pwrLastFireNs:0,fpLastFireNs:0,sessionStartNs:0,currentMinuteIdx:0,cpmBaseCount:0,cpsDistribution:{},drWindow:[]};
 function fireEvent(msg,color){const log=document.getElementById('gp-events');if(!log)return;const row=document.createElement('div');row.style.cssText='padding:2px 0;border-bottom:1px solid #111;color:'+color+';font-size:.65rem;';row.textContent=msg;log.insertBefore(row,log.firstChild);if(log.children.length>500)log.removeChild(log.lastChild);if(typeof _gp!=='undefined')_gp._tlEvt(msg);}
 function runDetectors(wallNs,dr,cps,dose){
-  if(typeof _gp!=='undefined' && cps>0) _gp._playCpsSound(cps);
   if(!DS.sessionStartNs)DS.sessionStartNs=wallNs;
   const minuteIdx=Math.floor((wallNs-DS.sessionStartNs)/60e9);
   DS.cpsDistribution[cps]=(DS.cpsDistribution[cps]||0)+1;
@@ -2543,31 +2542,55 @@ const _gp = {
   _cpsSoundBuffers: new Array(11).fill(null),
   _cpsSoundCustomNames: new Array(11).fill(null),
   _cpsVolumes: new Array(11).fill(1.0),
+  _cpsAudioCtx: null,
+  _getCpsCtx(){
+    if (!this._cpsAudioCtx || this._cpsAudioCtx.state === 'closed') {
+      this._cpsAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (this._cpsAudioCtx.state === 'suspended') this._cpsAudioCtx.resume();
+    return this._cpsAudioCtx;
+  },
+  _cpsPreloaded: new Array(11).fill(null),  // decoded AudioBuffers for all slots
+  async _cpsPreloadAll(){
+    const ctx = this._getCpsCtx();
+    for (let i = 0; i < 11; i++) {
+      if (this._cpsSoundBuffers[i]) continue;  // custom loaded — skip
+      const filename = this._cpsSounds[i];
+      if (!filename) continue;
+      try {
+        const resp = await fetch('/' + filename);
+        const ab   = await resp.arrayBuffer();
+        this._cpsPreloaded[i] = await ctx.decodeAudioData(ab);
+      } catch(e) {}
+    }
+  },
 
   // Fire a CPS sound — called from wherever CPS is dispatched
- _playCpsSound(cps){
+_playCpsSound(cps){
     const idx = Math.min(cps, 11) - 1;
     if (idx < 0) return;
     const vol = this._cpsVolumes[idx];
-    const buf = this._cpsSoundBuffers[idx];
-    const filename = this._cpsSounds[idx];
+    // custom loaded buffer takes priority
+    const buf = this._cpsSoundBuffers[idx] || this._cpsPreloaded[idx];
     if (buf) {
-      const actx = new (window.AudioContext || window.webkitAudioContext)();
-      const gain = actx.createGain();
+      const ctx = this._getCpsCtx();
+      const gain = ctx.createGain();
       gain.gain.value = vol;
-      const src = actx.createBufferSource();
+      const src = ctx.createBufferSource();
       src.buffer = buf;
       src.connect(gain);
-      gain.connect(actx.destination);
+      gain.connect(ctx.destination);
       src.start(0);
-      src.onended = () => { try { actx.close(); } catch(e){} };
-    } else if (filename) {
-      const a = new Audio('/' + filename.split(' ').join('%20'));
+      // src auto-disconnects when done — no cleanup needed
+    } else {
+      // fallback: file not preloaded yet, spin up a one-shot Audio
+      const filename = this._cpsSounds[idx];
+      if (!filename) return;
+      const a = new Audio('/' + filename);
       a.volume = vol;
       a.play().catch(() => {});
     }
   },
-
   // Dropdown: CPS level changed — update sound picker to reflect stored choice
   _cpsLevelSelectChanged(){
     const lvl  = parseInt(document.getElementById('gp-cps-level-select').value, 10);
@@ -3235,9 +3258,11 @@ const _gp = {
   _tlEvt(msg){
     this._tlEvtCol.push(msg);
   },
+  _cpsReady: false,
   onReading(d){
     const dr = d.dr || 0;
     this._checkAlarm(dr);
+    if (!this._cpsReady) { this._cpsReady = true; this._cpsPreloadAll(); }
     if (d.cps > 0) this._playCpsSound(d.cps);
     this.drHistory.push(dr);
     if(this.drHistory.length > 3000) this.drHistory.shift();
