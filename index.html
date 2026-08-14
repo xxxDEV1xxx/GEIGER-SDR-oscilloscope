@@ -3357,7 +3357,7 @@ _playCpsSound(cps){
     );
     if ((d.cps||0) > 0 || this.sigBuf.length > 0) {
       this.sigBuf.push(d.cps||0);
-      if (_cps === 0) {
+      if ((d.cps||0) === 0) {
         this.sigGapCount++;
       } else {
         this.sigGapCount = 0;
