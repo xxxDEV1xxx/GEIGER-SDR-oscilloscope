@@ -1020,6 +1020,76 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
         </div>
       </div>
 
+      <!-- ═══ CPS SOUNDS ═══ -->
+      <div style="border:1px solid #003333;border-radius:6px;padding:10px;margin-bottom:14px;">
+        <div style="color:#00FFFF;font-weight:700;font-size:.7rem;margin-bottom:8px;">⚡ CPS EVENT SOUNDS</div>
+        <div style="color:#555;font-size:.6rem;margin-bottom:8px;">Assign a sound to each CPS count level. 11+ share one sound.</div>
+
+        <!-- CPS selector dropdown -->
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <div style="color:#555;font-size:.65rem;">CPS LEVEL</div>
+          <select id="gp-cps-level-select"
+            style="background:#111;border:1px solid #00FFFF;color:#00FFFF;padding:3px 6px;font-family:Consolas,monospace;font-size:.65rem;cursor:pointer;"
+            onchange="_gp._cpsLevelSelectChanged()">
+            <option value="1">CPS 1</option>
+            <option value="2">CPS 2</option>
+            <option value="3">CPS 3</option>
+            <option value="4">CPS 4</option>
+            <option value="5">CPS 5</option>
+            <option value="6">CPS 6</option>
+            <option value="7">CPS 7</option>
+            <option value="8">CPS 8</option>
+            <option value="9">CPS 9</option>
+            <option value="10">CPS 10</option>
+            <option value="11">CPS 11+</option>
+          </select>
+        </div>
+
+        <!-- Per-CPS sound picker -->
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <div style="color:#555;font-size:.65rem;">SOUND FOR SELECTED LEVEL</div>
+          <select id="gp-cps-sound-select"
+            style="background:#111;border:1px solid #444;color:#ccc;padding:3px 6px;font-family:Consolas,monospace;font-size:.65rem;cursor:pointer;width:100%;"
+            onchange="_gp._cpsSoundSelectChanged()">
+            <option value="Explosion Large 2.wav">Explosion Large 2</option>
+            <option value="Imperial Laser 1.wav">Imperial Laser 1</option>
+            <option value="Imperial Laser 2.wav">Imperial Laser 2</option>
+            <option value="Imperial Laser Turbo.wav">Imperial Laser Turbo</option>
+            <option value="Ion Cannon 1.wav">Ion Cannon 1</option>
+            <option value="Ion Cannon 2.wav">Ion Cannon 2</option>
+            <option value="Ion Cannon Turbo.wav">Ion Cannon Turbo</option>
+            <option value="Shield Hit.wav">Shield Hit</option>
+            <option value="Stormtrooper Blaster.wav">Stormtrooper Blaster</option>
+            <option value="Torpedo Fire.wav">Torpedo Fire</option>
+            <option value="Turbolaser 1.wav">Turbolaser 1</option>
+            <option value="Turbolaser 2.wav">Turbolaser 2</option>
+            <option value="chemalm.wav">Chemical Alarm</option>
+            <option value="__custom__">📂 Use custom file…</option>
+          </select>
+
+          <!-- custom file row — shown only when __custom__ selected -->
+          <div id="gp-cps-custom-row" style="display:none;flex-direction:column;gap:4px;">
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button type="button" onclick="_gp._cpsLoadCustomFile()"
+                style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">📂 LOAD FILE</button>
+              <span id="gp-cps-custom-filename" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;">no file loaded</span>
+            </div>
+          </div>
+
+          <div style="margin-top:6px;">
+            <div style="color:#555;font-size:.65rem;margin-bottom:4px;">VOLUME <span id="gp-cps-vol-display" style="color:#00FFFF;">100%</span></div>
+            <input id="gp-cps-vol-slider" type="range" min="0" max="100" value="100"
+              style="width:100%;accent-color:#00FFFF;cursor:pointer;"
+              oninput="_gp._cpsVolumeChanged(this.value)">
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
+            <button type="button" onclick="_gp._cpsTestSound()"
+              style="background:#1a001a;border:1px solid #00FFFF;color:#00FFFF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">▶ TEST</button>
+            <span id="gp-cps-current-label" style="color:#555;font-size:.6rem;">CPS 1 → Explosion Large 2</span>
+          </div>
+        </div>
+      </div>
+
       <div style="display:flex;gap:8px;justify-content:flex-end;">
         <button type="button" onclick="_gp._sirenSave()" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:4px 16px;cursor:pointer;font-family:Consolas,monospace;font-size:.75rem;">SAVE</button>
         <button type="button" onclick="document.getElementById('gp-siren-modal').style.display='none'" style="background:#111;border:1px solid #444;color:#888;padding:4px 16px;cursor:pointer;font-family:Consolas,monospace;font-size:.75rem;">CLOSE</button>
@@ -1820,6 +1890,7 @@ function mean(arr){return arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:0;}
 const DS={beatEnvPeaks:[],beatLastPeak:0,beatRising:false,beatLastFireNs:0,pbConsecutive:0,pbTotalCounts:0,pbLastFireNs:0,stairBuf:[],stairLastFireNs:0,ookInBurst:false,ookCurrentCps:0,ookCurrentRun:0,ookCurrentGap:0,ookBursts:[],ookLastFireNs:0,cpsLastVal:-1,cpsLockCount:0,cpsLockFireNs:0,cpsLog:[],cpsAlertLastNs:0,uniBuf:[],uniLastFireNs:0,ccsRunLen:0,ccsRunTotal:0,ccsRunStartNs:0,ccsLastFireNs:0,ccsInRun:false,pfBuf:[],pfPairNs:[],pfLastFireNs:0,eqBurstNs:[],eqLastFireNs:0,lastState:'FLAT',lastStateNs:0,lastPeakEvent:0,peakDr:0,floorDr:99,peakLog:[],floorLog:[],recurLastFireNs:0,floorRecurLastFireNs:0,pwrBuckets:{},pwrLastFireNs:0,fpLastFireNs:0,sessionStartNs:0,currentMinuteIdx:0,cpmBaseCount:0,cpsDistribution:{},drWindow:[]};
 function fireEvent(msg,color){const log=document.getElementById('gp-events');if(!log)return;const row=document.createElement('div');row.style.cssText='padding:2px 0;border-bottom:1px solid #111;color:'+color+';font-size:.65rem;';row.textContent=msg;log.insertBefore(row,log.firstChild);if(log.children.length>500)log.removeChild(log.lastChild);if(typeof _gp!=='undefined')_gp._tlEvt(msg);}
 function runDetectors(wallNs,dr,cps,dose){
+  if(typeof _gp!=='undefined' && cps>0) _gp._playCpsSound(cps);
   if(!DS.sessionStartNs)DS.sessionStartNs=wallNs;
   const minuteIdx=Math.floor((wallNs-DS.sessionStartNs)/60e9);
   DS.cpsDistribution[cps]=(DS.cpsDistribution[cps]||0)+1;
@@ -2206,105 +2277,6 @@ const _gp = {
       ctx.fillText('▼ FLOOR ' + floor.toFixed(4) + ' µSv/h', 4, floorY + 13);
     }
 
-    // ── Green-box floor→peak markers + connector (ported from MainWindow green boxes) ──
-    {
-      const pairs = this._fpPairs || [];
-      const Nhist = this.drHistory.length;
-      pairs.forEach(p => {
-        // map absolute history indices into current view slice
-        const fi = p.floorIdx - startIdx;
-        const pi = p.peakIdx - startIdx;
-        if (fi < 0 && pi < 0) return;
-        if (fi >= data.length && pi >= data.length) return;
-
-        const xOf = (i) => Math.round(
-          this._panorama
-            ? i * xStep
-            : (LIVE_WIN - data.length + i) * xStep
-        );
-        const yOf = (v) => h - ((v - min) / (max - min || 1)) * h;
-
-        const fx = (fi >= 0 && fi < data.length) ? xOf(fi) : null;
-        const px = (pi >= 0 && pi < data.length) ? xOf(pi) : null;
-        const fy = yOf(p.fVal);
-        const py = yOf(p.pVal);
-
-        // connector line floor → peak
-        if (fx != null && px != null) {
-          ctx.strokeStyle = 'rgba(0,255,100,0.55)';
-          ctx.lineWidth = 1;
-          ctx.setLineDash([3, 3]);
-          ctx.beginPath();
-          ctx.moveTo(fx, fy);
-          ctx.lineTo(px, py);
-          ctx.stroke();
-          ctx.setLineDash([]);
-        }
-
-        // floor green box
-        if (fx != null) {
-          ctx.fillStyle = 'rgba(0,40,0,0.85)';
-          ctx.strokeStyle = '#00FF66';
-          ctx.lineWidth = 1;
-          ctx.fillRect(fx - 22, fy - 8, 44, 14);
-          ctx.strokeRect(fx - 22, fy - 8, 44, 14);
-          ctx.fillStyle = '#00FF88';
-          ctx.font = 'bold 9px Consolas,monospace';
-          ctx.textAlign = 'center';
-          ctx.fillText(p.fVal.toFixed(4), fx, fy + 3);
-          ctx.textAlign = 'left';
-        }
-
-        // peak green box
-        if (px != null) {
-          ctx.fillStyle = 'rgba(0,40,0,0.85)';
-          ctx.strokeStyle = '#00FF66';
-          ctx.lineWidth = 1;
-          ctx.fillRect(px - 22, py - 8, 44, 14);
-          ctx.strokeRect(px - 22, py - 8, 44, 14);
-          ctx.fillStyle = '#00FF88';
-          ctx.font = 'bold 9px Consolas,monospace';
-          ctx.textAlign = 'center';
-          ctx.fillText(p.pVal.toFixed(4), px, py + 3);
-          ctx.textAlign = 'left';
-        }
-      });
-    }
-
-    // ── Three-column table (top-right): Δt | floor→peak | peak·hr eq ──
-    {
-      const pairs = (this._fpPairs || []).slice(-8).reverse();
-      if (pairs.length) {
-        const rowH = 12;
-        const headerH = 14;
-        const boxW = 268;
-        const boxH = headerH + pairs.length * rowH + 6;
-        const bx = w - boxW - 6;
-        const by = 6;
-
-        ctx.fillStyle = 'rgba(0,12,0,0.88)';
-        ctx.strokeStyle = '#00AA44';
-        ctx.lineWidth = 1;
-        ctx.fillRect(bx, by, boxW, boxH);
-        ctx.strokeRect(bx, by, boxW, boxH);
-
-        ctx.font = 'bold 10px Consolas,monospace';
-        ctx.fillStyle = '#00FF88';
-        ctx.fillText('   Δt(s)     floor → peak      peak·hr', bx + 6, by + 11);
-
-        ctx.font = '10px Consolas,monospace';
-        pairs.forEach((p, i) => {
-          const y = by + headerH + 2 + (i + 1) * rowH - 2;
-          const line =
-            String(p.dtSec.toFixed(1)).padStart(7) + 's  ' +
-            p.fVal.toFixed(4) + '→' + p.pVal.toFixed(4) + '  ' +
-            String(p.peakHrEq.toFixed(2)).padStart(9);
-          ctx.fillStyle = i === 0 ? '#00FF88' : '#66AA66';
-          ctx.fillText(line, bx + 6, y);
-        });
-      }
-    }
-
     if (this.cpsHistory && this.cpsHistory.length > 1) {
       let cpsData;
       if (this._panorama && this._panZoomed) {
@@ -2352,7 +2324,142 @@ const _gp = {
         }
       });
     }
+    // ── FLOOR → PEAK green boxes + connector + 3-column table ──
+    {
+      const pairs = Array.isArray(this._fpPairs)
+        ? this._fpPairs.slice(-3)
+        : [];
 
+      if (pairs.length) {
+        const xOf = (absoluteIdx) => {
+          const local = absoluteIdx - startIdx;
+
+          if (local < 0 || local >= data.length) return null;
+
+          return Math.round(
+            this._panorama
+              ? local * xStep
+              : (LIVE_WIN - data.length + local) * xStep
+          );
+        };
+
+        const yOf = (value) =>
+          h - ((value - min) / (max - min || 1)) * h;
+
+        ctx.save();
+
+        for (const p of pairs) {
+          const fx = xOf(p.floorIdx);
+          const px = xOf(p.peakIdx);
+
+          const fy = yOf(p.fVal);
+          const py = yOf(p.pVal);
+
+          if (fx !== null && px !== null) {
+            ctx.strokeStyle = 'rgba(0,255,100,0.60)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3,3]);
+            ctx.beginPath();
+            ctx.moveTo(fx, fy);
+            ctx.lineTo(px, py);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+
+          if (fx !== null) {
+            ctx.fillStyle = 'rgba(0,40,0,0.88)';
+            ctx.strokeStyle = '#00FF66';
+            ctx.lineWidth = 1;
+
+            ctx.fillRect(fx - 26, fy - 8, 52, 16);
+            ctx.strokeRect(fx - 26, fy - 8, 52, 16);
+
+            ctx.fillStyle = '#00FF88';
+            ctx.font = 'bold 9px Consolas,monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            ctx.fillText(
+              Number(p.fVal).toFixed(4),
+              fx,
+              fy
+            );
+          }
+
+          if (px !== null) {
+            ctx.fillStyle = 'rgba(0,40,0,0.88)';
+            ctx.strokeStyle = '#00FF66';
+            ctx.lineWidth = 1;
+
+            ctx.fillRect(px - 26, py - 8, 52, 16);
+            ctx.strokeRect(px - 26, py - 8, 52, 16);
+
+            ctx.fillStyle = '#00FF88';
+            ctx.font = 'bold 9px Consolas,monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            ctx.fillText(
+              Number(p.pVal).toFixed(4),
+              px,
+              py
+            );
+          }
+        }
+
+        ctx.restore();
+
+        // ── Three-column table ───────────────────────────────
+        const rowH = 14;
+        const headerH = 16;
+        const boxW = 285;
+        const boxH = headerH + pairs.length * rowH + 8;
+        const bx = w - boxW - 6;
+        const by = 6;
+
+        ctx.save();
+
+        ctx.fillStyle = 'rgba(0,12,0,0.88)';
+        ctx.strokeStyle = '#00AA44';
+        ctx.lineWidth = 1;
+
+        ctx.fillRect(bx, by, boxW, boxH);
+        ctx.strokeRect(bx, by, boxW, boxH);
+
+        ctx.font = 'bold 10px Consolas,monospace';
+        ctx.fillStyle = '#00FF88';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
+
+        ctx.fillText(
+          '   Δt(s)     floor → peak      peak·hr',
+          bx + 6,
+          by + 12
+        );
+
+        ctx.font = '10px Consolas,monospace';
+
+        pairs.slice().reverse().forEach((p, i) => {
+          const y = by + headerH + 4 + i * rowH;
+
+          const line =
+            String(Number(p.dtSec).toFixed(2)).padStart(7) +
+            's  ' +
+            Number(p.fVal).toFixed(4) +
+            '→' +
+            Number(p.pVal).toFixed(4) +
+            '  ' +
+            String(Number(p.peakHrEq).toFixed(2)).padStart(9);
+
+          ctx.fillStyle =
+            i === 0 ? '#00FF88' : '#66AA66';
+
+          ctx.fillText(line, bx + 6, y);
+        });
+
+        ctx.restore();
+      }
+    }
     if (this._panorama && this._panZoomed) {
       ctx.save();
       ctx.strokeStyle = 'rgba(255,255,0,0.5)';
@@ -2416,7 +2523,139 @@ const _gp = {
   _alarmL1Wanted: false,
   _alarmL2Wanted: false,
   _alarmL3Wanted: false,
+// ── CPS EVENT SOUNDS ──────────────────────────────────────────────────────
+  // Index 0 = CPS 1, index 1 = CPS 2 … index 9 = CPS 10, index 10 = CPS 11+
+  _cpsSounds: [
+    'Explosion Large 2.wav',
+    'Imperial Laser 1.wav',
+    'Imperial Laser 2.wav',
+    'Imperial Laser Turbo.wav',
+    'Ion Cannon 1.wav',
+    'Ion Cannon 2.wav',
+    'Ion Cannon Turbo.wav',
+    'Shield Hit.wav',
+    'Stormtrooper Blaster.wav',
+    'Torpedo Fire.wav',
+    'Turbolaser 1.wav',   // index 10 = CPS 11+
+  ],
+  // Custom AudioBuffers loaded via file picker, parallel array (null = use filename)
+  _cpsSoundBuffers: new Array(11).fill(null),
+  _cpsSoundCustomNames: new Array(11).fill(null),
+  _cpsVolumes: new Array(11).fill(1.0),
 
+  // Fire a CPS sound — called from wherever CPS is dispatched
+ _playCpsSound(cps){
+    const idx = Math.min(cps, 11) - 1;
+    if (idx < 0) return;
+    const vol = this._cpsVolumes[idx];
+    const buf = this._cpsSoundBuffers[idx];
+    const filename = this._cpsSounds[idx];
+    if (buf) {
+      const actx = new (window.AudioContext || window.webkitAudioContext)();
+      const gain = actx.createGain();
+      gain.gain.value = vol;
+      const src = actx.createBufferSource();
+      src.buffer = buf;
+      src.connect(gain);
+      gain.connect(actx.destination);
+      src.start(0);
+      src.onended = () => { try { actx.close(); } catch(e){} };
+    } else if (filename) {
+      const a = new Audio('/' + encodeURIComponent(filename));
+      a.volume = vol;
+      a.play().catch(() => {});
+    }
+  },
+
+  // Dropdown: CPS level changed — update sound picker to reflect stored choice
+  _cpsLevelSelectChanged(){
+    const lvl  = parseInt(document.getElementById('gp-cps-level-select').value, 10);
+    const idx  = Math.min(lvl, 11) - 1;
+    const sel  = document.getElementById('gp-cps-sound-select');
+    const customNames = this._cpsSoundCustomNames[idx];
+    if (customNames) {
+      sel.value = '__custom__';
+    } else {
+      sel.value = this._cpsSounds[idx] || 'Explosion Large 2.wav';
+    }
+    // restore this slot's saved volume — does not touch other slots
+    const vol = this._cpsVolumes[idx];
+    const slider = document.getElementById('gp-cps-vol-slider');
+    const display = document.getElementById('gp-cps-vol-display');
+    if (slider)  slider.value = Math.round(vol * 100);
+    if (display) display.textContent = Math.round(vol * 100) + '%';
+    this._cpsSoundSelectChanged();
+  },
+
+  // Dropdown: sound file selection changed
+  _cpsSoundSelectChanged(){
+    const lvl  = parseInt(document.getElementById('gp-cps-level-select').value, 10);
+    const idx  = Math.min(lvl, 11) - 1;
+    const sel  = document.getElementById('gp-cps-sound-select');
+    const val  = sel.value;
+    const customRow = document.getElementById('gp-cps-custom-row');
+
+    if (val === '__custom__') {
+      customRow.style.display = 'flex';
+    } else {
+      customRow.style.display = 'none';
+      // Save choice, clear any custom buffer for this slot
+      this._cpsSounds[idx] = val;
+      this._cpsSoundBuffers[idx] = null;
+      this._cpsSoundCustomNames[idx] = null;
+    }
+    this._cpsUpdateLabel(lvl, idx);
+  },
+
+  // Load a custom WAV/MP3 for the currently selected CPS slot
+  _cpsLoadCustomFile(){
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = '.wav,.mp3';
+    inp.onchange = async () => {
+      const file = inp.files[0];
+      if (!file) return;
+      const lvl = parseInt(document.getElementById('gp-cps-level-select').value, 10);
+      const idx = Math.min(lvl, 11) - 1;
+      try {
+        const ab   = await file.arrayBuffer();
+        const actx = new (window.AudioContext || window.webkitAudioContext)();
+        const buf  = await actx.decodeAudioData(ab);
+        actx.close();
+        this._cpsSoundBuffers[idx]     = buf;
+        this._cpsSoundCustomNames[idx] = file.name;
+        document.getElementById('gp-cps-custom-filename').textContent = file.name;
+        this._cpsUpdateLabel(lvl, idx);
+      } catch(e) {
+        alert('Failed to decode audio file: ' + e.message);
+      }
+    };
+    inp.click();
+  },
+
+  // Test the sound for the currently selected CPS slot
+  _cpsTestSound(){
+    const lvl = parseInt(document.getElementById('gp-cps-level-select').value, 10);
+    this._playCpsSound(lvl);
+  },
+// Volume slider moved — save to this slot only, display updates live
+  _cpsVolumeChanged(raw){
+    const lvl  = parseInt(document.getElementById('gp-cps-level-select').value, 10);
+    const idx  = Math.min(lvl, 11) - 1;
+    const vol  = parseInt(raw, 10) / 100;
+    this._cpsVolumes[idx] = vol;
+    const display = document.getElementById('gp-cps-vol-display');
+    if (display) display.textContent = Math.round(vol * 100) + '%';
+  },
+  // Update the summary label under the pickers
+  _cpsUpdateLabel(lvl, idx){
+    const lbl  = document.getElementById('gp-cps-current-label');
+    const name = this._cpsSoundCustomNames[idx]
+      || this._cpsSounds[idx]
+      || '(none)';
+    const lvlStr = lvl >= 11 ? '11+' : String(lvl);
+    lbl.textContent = `CPS ${lvlStr} → ${name.replace('.wav','').replace('.mp3','')}`;
+  },
   _alarmVol1: 0.85,
   _alarmVol2: 0.85,
   _alarmVol3: 0.85,
@@ -2998,6 +3237,7 @@ const _gp = {
   onReading(d){
     const dr = d.dr || 0;
     this._checkAlarm(dr);
+    if (typeof cps === 'number' && cps > 0) this._playCpsSound(cps);
     this.drHistory.push(dr);
     if(this.drHistory.length > 3000) this.drHistory.shift();
     this.cpsHistory.push(d.cps||0);
@@ -3089,7 +3329,6 @@ const _gp = {
       }
     }
   },
-    },
 
   // ═══════════════════════════════════════════════════════════════
   // FLOOR → PEAK STATE MACHINE
@@ -3098,32 +3337,39 @@ const _gp = {
   // ═══════════════════════════════════════════════════════════════
   _fpProcessReading(dr, wallMs) {
     if (!Array.isArray(this._fpPairs)) this._fpPairs = [];
+
     if (typeof this._fpArmed !== 'boolean') this._fpArmed = false;
     if (typeof this._fpConfirmed !== 'boolean') this._fpConfirmed = false;
+
     if (typeof this._fpFloorDr !== 'number') this._fpFloorDr = 0;
     if (typeof this._fpHighDr !== 'number') this._fpHighDr = 0;
+
     if (typeof this._fpFloorIdx !== 'number') this._fpFloorIdx = 0;
     if (typeof this._fpHighIdx !== 'number') this._fpHighIdx = 0;
+
     if (typeof this._fpFloorTs !== 'number') this._fpFloorTs = 0;
     if (typeof this._fpHighTs !== 'number') this._fpHighTs = 0;
+
     if (typeof this._fpSampleIdx !== 'number') this._fpSampleIdx = 0;
 
-    const FLOOR_BAND = 0.10;
-    const DROP_CONFIRM = 0.02;
-    const MIN_HILL = 0.10;
+    const FP_FLOOR_BAND = 0.10;
+    const FP_DROP_CONFIRM = 0.02;
+    const FP_MIN_HILL = 0.10;
 
     const ts = Number.isFinite(wallMs) ? wallMs : Date.now();
 
     this._fpSampleIdx++;
     const idx = this._fpSampleIdx;
 
-    // ── Arm on a clean floor ──────────────────────────────────
+    // EXACT C#:
+    // if (!_fpArmed && !_fpConfirmed && dr <= FP_FLOOR_BAND)
     if (
       !this._fpArmed &&
       !this._fpConfirmed &&
-      dr <= FLOOR_BAND
+      dr <= FP_FLOOR_BAND
     ) {
       this._fpArmed = true;
+
       this._fpFloorDr = dr;
       this._fpFloorIdx = idx;
       this._fpFloorTs = ts;
@@ -3135,16 +3381,18 @@ const _gp = {
       this._fpConfirmed = false;
     }
 
+    // EXACT C#:
+    // if (_fpArmed && !_fpConfirmed)
     if (this._fpArmed && !this._fpConfirmed) {
 
-      // ── Track rising high ──────────────────────────────────
+      // Track rising high.
       if (dr > this._fpHighDr) {
         this._fpHighDr = dr;
         this._fpHighIdx = idx;
         this._fpHighTs = ts;
       }
 
-      // ── Let floor settle lower while still flat ────────────
+      // Let floor settle lower while still flat.
       if (
         dr < this._fpFloorDr &&
         (this._fpHighDr - this._fpFloorDr) < 0.015
@@ -3158,20 +3406,26 @@ const _gp = {
         this._fpHighTs = ts;
       }
 
-      // ── Drop from high → candidate peak ────────────────────
+      // Drop from high -> candidate peak.
       if (
         this._fpHighDr > 0.001 &&
-        (this._fpHighDr - dr) >= DROP_CONFIRM
+        (this._fpHighDr - dr) >= FP_DROP_CONFIRM
       ) {
         const hill = this._fpHighDr - this._fpFloorDr;
 
-        // ── VALID ONLY when hill >= 0.10 ─────────────────────
-        if (hill >= MIN_HILL) {
+        if (hill >= FP_MIN_HILL) {
+
+          // EXACT C#:
+          // (_fpHighTs - _fpFloorTs) / 1000.0
           const dtSec = Math.max(
             0,
-            (this._fpHighTs - this._fpFloorTs) / 1000
+            (this._fpHighTs - this._fpFloorTs) / 1000.0
           );
 
+          // EXACT C#:
+          // dtSec > 0.1
+          // ? _fpHighDr * (3600.0 / dtSec)
+          // : 0.0
           const peakHrEq =
             dtSec > 0.1
               ? this._fpHighDr * (3600.0 / dtSec)
@@ -3180,6 +3434,7 @@ const _gp = {
           const pair = {
             fVal: this._fpFloorDr,
             pVal: this._fpHighDr,
+
             dtSec: Number(dtSec.toFixed(3)),
             peakHrEq: Number(peakHrEq.toFixed(2)),
             hill: Number(hill.toFixed(4)),
@@ -3190,33 +3445,32 @@ const _gp = {
             floorTs: this._fpFloorTs,
             peakTs: this._fpHighTs,
 
-            t: new Date().toLocaleTimeString(),
-            ts: Date.now()
+            t: new Date().toLocaleTimeString()
           };
 
           this._fpPairs.push(pair);
 
-          // Keep newest 3 only.
+          // EXACT C#: newest 3 only.
           while (this._fpPairs.length > 3) {
             this._fpPairs.shift();
           }
 
-          // Reset for next cycle.
-          this._fpArmed = false;
-          this._fpConfirmed = false;
-          this._fpFloorDr = 0;
-          this._fpHighDr = 0;
-        }
-
-        else {
-          // ── Sub-threshold noise: discard ───────────────────
+          // EXACT C# reset.
           this._fpArmed = false;
           this._fpConfirmed = false;
           this._fpFloorDr = 0;
           this._fpHighDr = 0;
 
-          // Re-arm immediately if still on the floor.
-          if (dr <= FLOOR_BAND) {
+        } else {
+
+          // EXACT C# sub-threshold discard.
+          this._fpArmed = false;
+          this._fpConfirmed = false;
+          this._fpFloorDr = 0;
+          this._fpHighDr = 0;
+
+          // EXACT C# immediate re-arm.
+          if (dr <= FP_FLOOR_BAND) {
             this._fpArmed = true;
 
             this._fpFloorDr = dr;
@@ -3231,7 +3485,7 @@ const _gp = {
       }
     }
 
-    // ── Hard disarm if we crash far below tracked floor ──────
+    // EXACT C# hard disarm.
     if (
       this._fpArmed &&
       dr < this._fpFloorDr - 0.05
@@ -3241,162 +3495,6 @@ const _gp = {
       this._fpFloorDr = 0;
       this._fpHighDr = 0;
     }
-  },
-    _drawFpMarkersAndTable(canvas, canvasW, canvasH, idxToX, drToY) {
-    if (!canvas) return;
-
-    // Remove previous FP overlays.
-    [...canvas.children].forEach(child => {
-      if (
-        child.dataset &&
-        (
-          child.dataset.fpMarker === '1' ||
-          child.dataset.fpTable === '1'
-        )
-      ) {
-        child.remove();
-      }
-    });
-
-    const pairs = Array.isArray(this._fpPairs)
-      ? this._fpPairs.slice(-3)
-      : [];
-
-    // ── Green floor + peak boxes + connector ─────────────────
-    for (const p of pairs) {
-      const fx = idxToX(p.floorIdx);
-      const fy = drToY(p.fVal);
-      const px = idxToX(p.peakIdx);
-      const py = drToY(p.pVal);
-
-      // Floor box
-      const floorBox = document.createElement('div');
-      floorBox.dataset.fpMarker = '1';
-
-      floorBox.style.cssText = `
-        position:absolute;
-        width:52px;
-        height:16px;
-        left:${fx - 26}px;
-        top:${fy - 8}px;
-        box-sizing:border-box;
-        background:rgba(0,40,0,.70);
-        border:1px solid #00FF00;
-        color:#00FF00;
-        font-family:Consolas,monospace;
-        font-size:10px;
-        line-height:14px;
-        text-align:center;
-        z-index:20;
-        pointer-events:none;
-      `;
-
-      floorBox.textContent = Number(p.fVal).toFixed(4);
-      canvas.appendChild(floorBox);
-
-      // Peak box
-      const peakBox = document.createElement('div');
-      peakBox.dataset.fpMarker = '1';
-
-      peakBox.style.cssText = `
-        position:absolute;
-        width:52px;
-        height:16px;
-        left:${px - 26}px;
-        top:${py - 8}px;
-        box-sizing:border-box;
-        background:rgba(0,40,0,.70);
-        border:1px solid #00FF00;
-        color:#00FF00;
-        font-family:Consolas,monospace;
-        font-size:10px;
-        line-height:14px;
-        text-align:center;
-        z-index:20;
-        pointer-events:none;
-      `;
-
-      peakBox.textContent = Number(p.pVal).toFixed(4);
-      canvas.appendChild(peakBox);
-
-      // Connector line
-      const svg = document.createElementNS(
-        'http://www.w3.org/2000/svg',
-        'svg'
-      );
-
-      svg.dataset.fpMarker = '1';
-
-      svg.style.cssText = `
-        position:absolute;
-        left:0;
-        top:0;
-        width:${canvasW}px;
-        height:${canvasH}px;
-        pointer-events:none;
-        z-index:19;
-        overflow:visible;
-      `;
-
-      const line = document.createElementNS(
-        'http://www.w3.org/2000/svg',
-        'line'
-      );
-
-      line.setAttribute('x1', fx);
-      line.setAttribute('y1', fy);
-      line.setAttribute('x2', px);
-      line.setAttribute('y2', py);
-      line.setAttribute('stroke', '#00FF00');
-      line.setAttribute('stroke-width', '1');
-      line.setAttribute('opacity', '0.6');
-
-      svg.appendChild(line);
-      canvas.appendChild(svg);
-    }
-
-    // ── Top-right three-column table ─────────────────────────
-    if (!pairs.length) return;
-
-    const table = document.createElement('div');
-    table.dataset.fpTable = '1';
-
-    table.style.cssText = `
-      position:absolute;
-      right:0;
-      top:8px;
-      box-sizing:border-box;
-      padding:4px 6px;
-      background:rgba(0,20,0,.78);
-      border:1px solid #00FF00;
-      color:#00FF00;
-      font-family:Consolas,monospace;
-      font-size:11px;
-      line-height:15px;
-      z-index:21;
-      pointer-events:none;
-      white-space:nowrap;
-    `;
-
-    const header = document.createElement('div');
-    header.textContent =
-      '   Δt(s)     floor → peak      peak·hr';
-
-    header.style.marginBottom = '2px';
-    table.appendChild(header);
-
-    for (const p of pairs) {
-      const row = document.createElement('div');
-
-      row.textContent =
-        `  ${Number(p.dtSec).toFixed(2).padStart(6)}s   ` +
-        `${Number(p.fVal).toFixed(4)}→${Number(p.pVal).toFixed(4)}   ` +
-        `${Number(p.peakHrEq).toFixed(2).padStart(10)}`;
-
-      table.appendChild(row);
-    }
-
-    canvas.appendChild(table);
   },
 
   _renderSig(entry) {
