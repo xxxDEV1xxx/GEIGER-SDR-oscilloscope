@@ -5334,6 +5334,38 @@ async def serve_gun_ak47():
 @app.get("/type99_mn.wav")
 async def serve_gun_type99():
     return _audio_file_response("type99_mn.wav")
+def _image_file_response(filename: str):
+    p = Path(__file__).parent / filename
+    if not p.exists():
+        p = Path("/app") / filename
+    if not p.exists():
+        raise HTTPException(status_code=404, detail=f"{filename} not found")
+    ext = p.suffix.lower()
+    media = {
+        ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".png": "image/png", ".gif": "image/gif",
+        ".webp": "image/webp",
+    }.get(ext, "application/octet-stream")
+    return FileResponse(
+        str(p),
+        media_type=media,
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+@app.get("/alarm1.jpeg")
+async def serve_alarm_img_1():
+    return _image_file_response("alarm1.jpeg")
+
+
+@app.get("/alarm2.jpeg")
+async def serve_alarm_img_2():
+    return _image_file_response("alarm2.jpeg")
+
+
+@app.get("/alarm3.jpeg")
+async def serve_alarm_img_3():
+    return _image_file_response("alarm3.jpeg")
 # ══════════════════════════════════════════════════════════════
 # FRONTEND -- must be last
 # ══════════════════════════════════════════════════════════════
