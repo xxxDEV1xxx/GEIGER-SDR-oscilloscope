@@ -32,6 +32,24 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
 .btn-blue { background:var(--blue); transition:background .15s,transform .1s; }
 .btn-blue:hover { background:#1a8cd8; }
 .btn-blue:active { transform:scale(.97); }
+#gp-alarm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99990;
+  pointer-events: none;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+#gp-alarm-overlay img {
+  display: block;
+  max-width: none;
+  max-height: none;
+  object-fit: contain;
+  transform-origin: center center;
+  will-change: opacity, transform;
+}
 .btn-blue:disabled { opacity:.4; cursor:not-allowed; }
 .sidebar-item:hover { background:#111; }
 .sidebar-item.active { font-weight:700; }
@@ -946,6 +964,9 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
     </div>
   </div>
   <div id="gp-status" style="display:none;">OFFLINE</div>
+  <div id="gp-alarm-overlay" aria-hidden="true"></div>
+<input type="file" id="gp-siren-img-file" accept="image/png,image/jpeg,image/gif,image/webp,.png,.jpg,.jpeg,.gif,.webp"
+  style="display:none" onchange="_gp._sirenImgFileChosen(event)">
   <!-- SIREN CONFIG MODAL -->
   <div id="gp-siren-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:999999;align-items:center;justify-content:center;">
     <div style="background:#0a0a0a;border:1px solid #8844FF;border-radius:8px;padding:20px;width:420px;max-height:90vh;overflow-y:auto;font-family:Consolas,monospace;color:#aaa;">
@@ -995,6 +1016,39 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
           <span id="gp-siren-file1" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">661steamsiren.wav</span>
           <button type="button" id="gp-siren-clear1" onclick="_gp._sirenClear(1)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">✕</button>
         </div>
+                <div style="margin-top:10px;margin-bottom:4px;color:#555;font-size:.65rem;">OVERLAY IMAGE</div>
+        <select id="gp-siren-img1"
+          style="background:#111;border:1px solid #444;color:#ccc;padding:3px 6px;font-family:Consolas,monospace;font-size:.65rem;cursor:pointer;width:100%;margin-bottom:6px;"
+          onchange="_gp._sirenImgSelectChanged(1)">
+          <option value="alarm1.jpeg" selected>alarm1.jpeg (default)</option>
+          <option value="alarm2.jpeg">alarm2.jpeg</option>
+          <option value="alarm3.jpeg">alarm3.jpeg</option>
+          <option value="__custom__">📂 Custom PNG/JPEG/GIF/WebP…</option>
+          <option value="__none__">— None —</option>
+        </select>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+          <button type="button" onclick="_gp._sirenLoadImage(1)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">📂 LOAD IMAGE</button>
+          <span id="gp-siren-imgname1" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">alarm1.jpeg</span>
+          <button type="button" id="gp-siren-imgclear1" onclick="_gp._sirenClearImage(1)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">✕</button>
+        </div>
+        <div style="margin-bottom:6px;">
+          <div style="color:#555;font-size:.6rem;margin-bottom:2px;">OPACITY <span id="gp-siren-imgop1-val">55%</span></div>
+          <input id="gp-siren-imgop1" type="range" min="5" max="100" value="55"
+            style="width:100%;accent-color:#8844FF;"
+            oninput="_gp._sirenImgSlider(1,'op',this.value)">
+        </div>
+        <div style="margin-bottom:6px;">
+          <div style="color:#555;font-size:.6rem;margin-bottom:2px;">SIZE <span id="gp-siren-imgsize1-val">70%</span></div>
+          <input id="gp-siren-imgsize1" type="range" min="15" max="100" value="70"
+            style="width:100%;accent-color:#8844FF;"
+            oninput="_gp._sirenImgSlider(1,'size',this.value)">
+        </div>
+        <div style="margin-bottom:4px;">
+          <div style="color:#555;font-size:.6rem;margin-bottom:2px;">PULSE SPEED <span id="gp-siren-imgpulse1-val">1.2s</span></div>
+          <input id="gp-siren-imgpulse1" type="range" min="2" max="40" value="12"
+            style="width:100%;accent-color:#8844FF;"
+            oninput="_gp._sirenImgSlider(1,'pulse',this.value)">
+        </div>
       </div>
 
       <!-- ═══ LEVEL 2 ═══ -->
@@ -1041,6 +1095,39 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
           <span id="gp-siren-file2" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">HMSIllustriousActionStations.wav</span>
           <button type="button" id="gp-siren-clear2" onclick="_gp._sirenClear(2)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">✕</button>
         </div>
+                <div style="margin-top:10px;margin-bottom:4px;color:#555;font-size:.65rem;">OVERLAY IMAGE</div>
+        <select id="gp-siren-img2"
+          style="background:#111;border:1px solid #444;color:#ccc;padding:3px 6px;font-family:Consolas,monospace;font-size:.65rem;cursor:pointer;width:100%;margin-bottom:6px;"
+          onchange="_gp._sirenImgSelectChanged(2)">
+          <option value="alarm1.jpeg">alarm1.jpeg</option>
+          <option value="alarm2.jpeg" selected>alarm2.jpeg (default)</option>
+          <option value="alarm3.jpeg">alarm3.jpeg</option>
+          <option value="__custom__">📂 Custom PNG/JPEG/GIF…</option>
+          <option value="__none__">— None —</option>
+        </select>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+          <button type="button" onclick="_gp._sirenLoadImage(2)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">📂 LOAD IMAGE</button>
+          <span id="gp-siren-imgname2" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">alarm2.jpeg</span>
+          <button type="button" id="gp-siren-imgclear2" onclick="_gp._sirenClearImage(2)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">✕</button>
+        </div>
+        <div style="margin-bottom:6px;">
+          <div style="color:#555;font-size:.6rem;margin-bottom:2px;">OPACITY <span id="gp-siren-imgop2-val">55%</span></div>
+          <input id="gp-siren-imgop2" type="range" min="5" max="100" value="55"
+            style="width:100%;accent-color:#8844FF;"
+            oninput="_gp._sirenImgSlider(2,'op',this.value)">
+        </div>
+        <div style="margin-bottom:6px;">
+          <div style="color:#555;font-size:.6rem;margin-bottom:2px;">SIZE <span id="gp-siren-imgsize2-val">70%</span></div>
+          <input id="gp-siren-imgsize2" type="range" min="15" max="100" value="70"
+            style="width:100%;accent-color:#8844FF;"
+            oninput="_gp._sirenImgSlider(2,'size',this.value)">
+        </div>
+        <div style="margin-bottom:4px;">
+          <div style="color:#555;font-size:.6rem;margin-bottom:2px;">PULSE SPEED <span id="gp-siren-imgpulse2-val">1.2s</span></div>
+          <input id="gp-siren-imgpulse2" type="range" min="2" max="40" value="12"
+            style="width:100%;accent-color:#8844FF;"
+            oninput="_gp._sirenImgSlider(2,'pulse',this.value)">
+        </div>
       </div>
 
       <!-- ═══ LEVEL 3 ═══ -->
@@ -1086,6 +1173,39 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
           <button type="button" onclick="_gp._sirenLoadFile(3)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">📂 LOAD</button>
           <span id="gp-siren-file3" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">chemalm.wav</span>
           <button type="button" id="gp-siren-clear3" onclick="_gp._sirenClear(3)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">✕</button>
+        </div>
+                <div style="margin-top:10px;margin-bottom:4px;color:#555;font-size:.65rem;">OVERLAY IMAGE</div>
+        <select id="gp-siren-img3"
+          style="background:#111;border:1px solid #444;color:#ccc;padding:3px 6px;font-family:Consolas,monospace;font-size:.65rem;cursor:pointer;width:100%;margin-bottom:6px;"
+          onchange="_gp._sirenImgSelectChanged(3)">
+          <option value="alarm1.jpeg">alarm1.jpeg</option>
+          <option value="alarm2.jpeg">alarm2.jpeg</option>
+          <option value="alarm3.jpeg" selected>alarm3.jpeg (default)</option>
+          <option value="__custom__">📂 Custom PNG/JPEG/GIF…</option>
+          <option value="__none__">— None —</option>
+        </select>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+          <button type="button" onclick="_gp._sirenLoadImage(3)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">📂 LOAD IMAGE</button>
+          <span id="gp-siren-imgname3" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">alarm3.jpeg</span>
+          <button type="button" id="gp-siren-imgclear3" onclick="_gp._sirenClearImage(3)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">✕</button>
+        </div>
+        <div style="margin-bottom:6px;">
+          <div style="color:#555;font-size:.6rem;margin-bottom:2px;">OPACITY <span id="gp-siren-imgop3-val">55%</span></div>
+          <input id="gp-siren-imgop3" type="range" min="5" max="100" value="55"
+            style="width:100%;accent-color:#8844FF;"
+            oninput="_gp._sirenImgSlider(3,'op',this.value)">
+        </div>
+        <div style="margin-bottom:6px;">
+          <div style="color:#555;font-size:.6rem;margin-bottom:2px;">SIZE <span id="gp-siren-imgsize3-val">70%</span></div>
+          <input id="gp-siren-imgsize3" type="range" min="15" max="100" value="70"
+            style="width:100%;accent-color:#8844FF;"
+            oninput="_gp._sirenImgSlider(3,'size',this.value)">
+        </div>
+        <div style="margin-bottom:4px;">
+          <div style="color:#555;font-size:.6rem;margin-bottom:2px;">PULSE SPEED <span id="gp-siren-imgpulse3-val">1.2s</span></div>
+          <input id="gp-siren-imgpulse3" type="range" min="2" max="40" value="12"
+            style="width:100%;accent-color:#8844FF;"
+            oninput="_gp._sirenImgSlider(3,'pulse',this.value)">
         </div>
       </div>
 
@@ -2852,7 +2972,18 @@ _playCpsSound(cps){
   _sirenFileL1: '661steamsiren.wav',
   _sirenFileL2: 'HMSIllustriousActionStations.wav',
   _sirenFileL3: 'chemalm.wav',
-
+  _sirenImgL1: 'alarm1.jpeg',
+  _sirenImgL2: 'alarm2.jpeg',
+  _sirenImgL3: 'alarm3.jpeg',
+  _sirenImgCustomL1: null,
+  _sirenImgCustomL2: null,
+  _sirenImgCustomL3: null,
+  _sirenImgOp1: 0.55, _sirenImgSize1: 0.70, _sirenImgPulse1: 1.2,
+  _sirenImgOp2: 0.55, _sirenImgSize2: 0.70, _sirenImgPulse2: 1.2,
+  _sirenImgOp3: 0.55, _sirenImgSize3: 0.70, _sirenImgPulse3: 1.2,
+  _sirenImgLoadTarget: 0,
+  _alarmOverlayRaf: 0,
+  _alarmOverlayEls: { 1: null, 2: null, 3: null },
   _customAlarmCtxL1: null,
   _customAlarmSrcL1: null,
   _gainL1: null,
@@ -2941,6 +3072,7 @@ _playCpsSound(cps){
     } else if (!want1) {
       this._alarmL1Wanted = false;
     }
+      this._syncAlarmOverlay();
   },
   _sirenDefaultFile(level){
     if (level === 1) return '661steamsiren.wav';
@@ -2983,6 +3115,246 @@ _playCpsSound(cps){
     if (level === 1) this._sirenTestL1();
     else if (level === 2) this._sirenTestL2();
     else this._sirenTestL3();
+  },
+  _sirenImgDefault(level){
+    return level === 1 ? 'alarm1.jpeg' : level === 2 ? 'alarm2.jpeg' : 'alarm3.jpeg';
+  },
+
+  _sirenImgUrl(level){
+    const custom = level === 1 ? this._sirenImgCustomL1
+      : level === 2 ? this._sirenImgCustomL2
+      : this._sirenImgCustomL3;
+    if (custom) return custom;
+    const name = level === 1 ? this._sirenImgL1
+      : level === 2 ? this._sirenImgL2
+      : this._sirenImgL3;
+    if (!name || name === '__none__') return null;
+    return '/' + encodeURIComponent(name);
+  },
+
+  _alarmLevelWanted(level){
+    if (level === 1) {
+      return !!(this._alarmL1Wanted || this._alarmWantedL1 || this._sirenWanted1);
+    }
+    if (level === 2) {
+      return !!(this._alarmL2Wanted || this._alarmWantedL2 || this._sirenWanted2);
+    }
+    return !!(this._alarmL3Wanted || this._alarmWantedL3 || this._sirenWanted3);
+  },
+
+  _sirenImgSelectChanged(level){
+    const sel = document.getElementById('gp-siren-img' + level);
+    if (!sel) return;
+    const val = sel.value;
+    const nameEl = document.getElementById('gp-siren-imgname' + level);
+    const clearBtn = document.getElementById('gp-siren-imgclear' + level);
+
+    if (val === '__custom__') {
+      this._sirenLoadImage(level);
+      return;
+    }
+    if (val === '__none__') {
+      if (level === 1) {
+        this._sirenImgL1 = null;
+        if (this._sirenImgCustomL1) { URL.revokeObjectURL(this._sirenImgCustomL1); this._sirenImgCustomL1 = null; }
+      } else if (level === 2) {
+        this._sirenImgL2 = null;
+        if (this._sirenImgCustomL2) { URL.revokeObjectURL(this._sirenImgCustomL2); this._sirenImgCustomL2 = null; }
+      } else {
+        this._sirenImgL3 = null;
+        if (this._sirenImgCustomL3) { URL.revokeObjectURL(this._sirenImgCustomL3); this._sirenImgCustomL3 = null; }
+      }
+      if (nameEl) nameEl.textContent = '— none —';
+      if (clearBtn) clearBtn.style.display = 'none';
+      this._syncAlarmOverlay();
+      return;
+    }
+
+    if (level === 1) {
+      if (this._sirenImgCustomL1) { URL.revokeObjectURL(this._sirenImgCustomL1); this._sirenImgCustomL1 = null; }
+      this._sirenImgL1 = val;
+    } else if (level === 2) {
+      if (this._sirenImgCustomL2) { URL.revokeObjectURL(this._sirenImgCustomL2); this._sirenImgCustomL2 = null; }
+      this._sirenImgL2 = val;
+    } else {
+      if (this._sirenImgCustomL3) { URL.revokeObjectURL(this._sirenImgCustomL3); this._sirenImgCustomL3 = null; }
+      this._sirenImgL3 = val;
+    }
+    if (nameEl) nameEl.textContent = val;
+    if (clearBtn) clearBtn.style.display = 'none';
+    this._syncAlarmOverlay();
+  },
+
+  _sirenLoadImage(level){
+    this._sirenImgLoadTarget = level;
+    const inp = document.getElementById('gp-siren-img-file');
+    if (!inp) { console.warn('[siren-img] missing #gp-siren-img-file'); return; }
+    inp.value = '';
+    inp.click();
+  },
+
+  _sirenImgFileChosen(ev){
+    const file = ev && ev.target && ev.target.files && ev.target.files[0];
+    const level = this._sirenImgLoadTarget || 1;
+    if (!file) return;
+    if (!/^image\/(png|jpeg|gif|webp)$/i.test(file.type) && !/\.(png|jpe?g|gif|webp)$/i.test(file.name)) {
+      alert('Please choose a PNG, JPEG, GIF, or WebP.');
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    if (level === 1) {
+      if (this._sirenImgCustomL1) URL.revokeObjectURL(this._sirenImgCustomL1);
+      this._sirenImgCustomL1 = url;
+      this._sirenImgL1 = file.name;
+    } else if (level === 2) {
+      if (this._sirenImgCustomL2) URL.revokeObjectURL(this._sirenImgCustomL2);
+      this._sirenImgCustomL2 = url;
+      this._sirenImgL2 = file.name;
+    } else {
+      if (this._sirenImgCustomL3) URL.revokeObjectURL(this._sirenImgCustomL3);
+      this._sirenImgCustomL3 = url;
+      this._sirenImgL3 = file.name;
+    }
+    const nameEl = document.getElementById('gp-siren-imgname' + level);
+    if (nameEl) nameEl.textContent = file.name;
+    const clearBtn = document.getElementById('gp-siren-imgclear' + level);
+    if (clearBtn) clearBtn.style.display = '';
+    const sel = document.getElementById('gp-siren-img' + level);
+    if (sel) sel.value = '__custom__';
+    console.info('[siren-img] loaded L' + level, file.name, url);
+    this._syncAlarmOverlay();
+  },
+
+  _sirenClearImage(level){
+    if (level === 1) {
+      if (this._sirenImgCustomL1) URL.revokeObjectURL(this._sirenImgCustomL1);
+      this._sirenImgCustomL1 = null;
+      this._sirenImgL1 = this._sirenImgDefault(1);
+    } else if (level === 2) {
+      if (this._sirenImgCustomL2) URL.revokeObjectURL(this._sirenImgCustomL2);
+      this._sirenImgCustomL2 = null;
+      this._sirenImgL2 = this._sirenImgDefault(2);
+    } else {
+      if (this._sirenImgCustomL3) URL.revokeObjectURL(this._sirenImgCustomL3);
+      this._sirenImgCustomL3 = null;
+      this._sirenImgL3 = this._sirenImgDefault(3);
+    }
+    const def = this._sirenImgDefault(level);
+    const nameEl = document.getElementById('gp-siren-imgname' + level);
+    if (nameEl) nameEl.textContent = def;
+    const sel = document.getElementById('gp-siren-img' + level);
+    if (sel) sel.value = def;
+    const clearBtn = document.getElementById('gp-siren-imgclear' + level);
+    if (clearBtn) clearBtn.style.display = 'none';
+    this._syncAlarmOverlay();
+  },
+
+  _sirenImgSlider(level, kind, raw){
+    const v = parseFloat(raw);
+    if (kind === 'op') {
+      const op = Math.max(0.05, Math.min(1, v / 100));
+      if (level === 1) this._sirenImgOp1 = op;
+      else if (level === 2) this._sirenImgOp2 = op;
+      else this._sirenImgOp3 = op;
+      const el = document.getElementById('gp-siren-imgop' + level + '-val');
+      if (el) el.textContent = Math.round(op * 100) + '%';
+    } else if (kind === 'size') {
+      const sz = Math.max(0.15, Math.min(1, v / 100));
+      if (level === 1) this._sirenImgSize1 = sz;
+      else if (level === 2) this._sirenImgSize2 = sz;
+      else this._sirenImgSize3 = sz;
+      const el = document.getElementById('gp-siren-imgsize' + level + '-val');
+      if (el) el.textContent = Math.round(sz * 100) + '%';
+    } else if (kind === 'pulse') {
+      const sec = Math.max(0.2, Math.min(4, v / 10));
+      if (level === 1) this._sirenImgPulse1 = sec;
+      else if (level === 2) this._sirenImgPulse2 = sec;
+      else this._sirenImgPulse3 = sec;
+      const el = document.getElementById('gp-siren-imgpulse' + level + '-val');
+      if (el) el.textContent = sec.toFixed(1) + 's';
+    }
+    this._syncAlarmOverlay();
+  },
+
+  _syncAlarmOverlay(){
+    const root = document.getElementById('gp-alarm-overlay');
+    if (!root) {
+      console.warn('[siren-img] #gp-alarm-overlay missing from DOM');
+      return;
+    }
+
+    let any = false;
+    for (let level = 1; level <= 3; level++) {
+      const on = this._alarmLevelWanted(level);
+      const url = this._sirenImgUrl(level);
+      let img = this._alarmOverlayEls[level];
+
+      if (on && url) {
+        any = true;
+        if (!img) {
+          img = document.createElement('img');
+          img.alt = '';
+          img.draggable = false;
+          img.style.position = 'absolute';
+          img.style.left = '50%';
+          img.style.top = '50%';
+          img.style.transform = 'translate(-50%, -50%)';
+          img.onerror = () => console.warn('[siren-img] failed to load L' + level, url);
+          root.appendChild(img);
+          this._alarmOverlayEls[level] = img;
+        }
+        if (img.dataset.src !== url) {
+          img.src = url;
+          img.dataset.src = url;
+        }
+        const op = level === 1 ? this._sirenImgOp1 : level === 2 ? this._sirenImgOp2 : this._sirenImgOp3;
+        const size = level === 1 ? this._sirenImgSize1 : level === 2 ? this._sirenImgSize2 : this._sirenImgSize3;
+        const pulse = level === 1 ? this._sirenImgPulse1 : level === 2 ? this._sirenImgPulse2 : this._sirenImgPulse3;
+        img.dataset.op = String(op);
+        img.dataset.size = String(size);
+        img.dataset.pulse = String(pulse);
+        img.style.display = 'block';
+      } else if (img) {
+        img.style.display = 'none';
+      }
+    }
+
+    root.style.display = any ? 'block' : 'none';
+
+    if (any && !this._alarmOverlayRaf) {
+      const tick = (t) => {
+        let still = false;
+        const minSide = Math.min(window.innerWidth, window.innerHeight);
+        for (let level = 1; level <= 3; level++) {
+          const on = this._alarmLevelWanted(level);
+          const url = this._sirenImgUrl(level);
+          const img = this._alarmOverlayEls[level];
+          if (!on || !url || !img) {
+            if (img) img.style.display = 'none';
+            continue;
+          }
+          still = true;
+          img.style.display = 'block';
+          const op = parseFloat(img.dataset.op) || 0.55;
+          const size = parseFloat(img.dataset.size) || 0.7;
+          const pulse = Math.max(0.2, parseFloat(img.dataset.pulse) || 1.2);
+          const phase = ((t / 1000) % pulse) / pulse;
+          const wave = 0.2 + 0.8 * Math.sin(phase * Math.PI);
+          const px = minSide * size;
+          img.style.width = px + 'px';
+          img.style.height = 'auto';
+          img.style.maxHeight = px + 'px';
+          img.style.opacity = String(op * wave);
+        }
+        if (!still) {
+          this._alarmOverlayRaf = 0;
+          root.style.display = 'none';
+          return;
+        }
+        this._alarmOverlayRaf = requestAnimationFrame(tick);
+      };
+      this._alarmOverlayRaf = requestAnimationFrame(tick);
+    }
   },
   _ensureSirenPlaying(level){
     if (level === 1) {
