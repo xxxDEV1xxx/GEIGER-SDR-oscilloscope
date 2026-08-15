@@ -14,3 +14,18 @@ Register-WmiEvent -Query "SELECT * FROM Win32_DeviceChangeEvent WHERE EventType 
 
 Write-Host "CTW USB Monitor active — Ctrl+C to stop"
 while($true){Start-Sleep -Seconds 1}
+
+###OR!!!!!!!! RUN INSTEAD TO LOG TO FILE.
+# If you want to save it going forward — run this instead of the current script
+# It writes to a file AND shows on screen simultaneously
+Register-WmiEvent -Query "SELECT * FROM Win32_DeviceChangeEvent WHERE EventType = 2 OR EventType = 3" -Action {
+    $ns = [System.Diagnostics.Stopwatch]::GetTimestamp()
+    $freq = [System.Diagnostics.Stopwatch]::Frequency
+    $wallNs = [long]([System.DateTime]::UtcNow.ToFileTime()) * 100
+    $type = if($Event.SourceEventArgs.NewEvent.EventType -eq 2){"CONNECT"}else{"DISCONNECT"}
+    $line = "$type wall_ns=$wallNs qpc_ticks=$ns qpc_freq=$freq $(Get-Date -Format 'HH:mm:ss.fffffff')"
+    Write-Host $line
+    Add-Content -Path "J:\true-sentinel\usb_events.log" -Value $line
+} | Out-Null
+Write-Host "CTW USB Monitor active — logging to J:\true-sentinel\usb_events.log"
+while($true){Start-Sleep -Seconds 1}
