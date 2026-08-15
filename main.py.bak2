@@ -1086,6 +1086,46 @@ CREATE TABLE IF NOT EXISTS users (
             value INTEGER DEFAULT 0
         );
         INSERT OR IGNORE INTO site_stats (key, value) VALUES ('visit_count', 1337);
+                CREATE TABLE IF NOT EXISTS geiger_source_signatures (
+            id                  TEXT PRIMARY KEY,
+            source_name         TEXT NOT NULL,
+            username            TEXT NOT NULL,
+            display_name        TEXT NOT NULL,
+
+            method              TEXT NOT NULL,
+            detector            TEXT NOT NULL,
+
+            reading_seconds     INTEGER NOT NULL,
+            reading_minutes     INTEGER NOT NULL,
+            n_readings          INTEGER NOT NULL,
+            independent_samples INTEGER NOT NULL,
+
+            started_at          TEXT,
+            completed_at        TEXT NOT NULL,
+
+            total_counts        INTEGER NOT NULL DEFAULT 0,
+
+            aggregate_json      TEXT NOT NULL,
+            readings_json       TEXT NOT NULL,
+
+            created_at          REAL NOT NULL,
+
+            FOREIGN KEY (username)
+                REFERENCES users(username)
+                ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS
+            idx_geiger_sig_user
+            ON geiger_source_signatures(username);
+
+        CREATE INDEX IF NOT EXISTS
+            idx_geiger_sig_source
+            ON geiger_source_signatures(source_name);
+
+        CREATE INDEX IF NOT EXISTS
+            idx_geiger_sig_completed
+            ON geiger_source_signatures(completed_at DESC);
         CREATE TABLE IF NOT EXISTS zb_ledger (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             ts           REAL    NOT NULL,
@@ -3788,7 +3828,231 @@ async def _geiger_publish(rec: dict) -> None:
             except Exception:
                 pass
 
+# ──────────────────────────────────────────────────────────────
+# GEIGER SOURCE REFERENCE SIGNATURES
+#
+# One completed record = three independent 10-minute samples.
+#
+# Ownership is determined ONLY from current_user().
+# The browser cannot choose the owning username.
+# ──────────────────────────────────────────────────────────────
 
+@app.post("/api/geiger/source-signatures")
+async def geiger_source_signature(
+    request: Request,
+    user: dict = Depends(current_user),
+):
+    body = await request.json()
+
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Source signature must be a JSON object")
+
+    source = str(body.get("source", "")).strip()
+
+    if not source:
+        raise HTTPException(400, "Source name required")
+
+    source = psn_scan(
+        _oob_clamp(source, "display_name", "geiger_source_signature"),
+        "geiger_source_name",
+        "geiger_source_signature",
+    ).strip()
+
+    readings = body.get("readings")
+
+    if not isinstance(readings, list):
+        raise HTTPException(400, "readings must be an array")
+
+    if len(readings) != 3:
+        raise HTTPException(
+            400,
+            "Exactly three completed independent samples are required"
+        )
+
+    # Every sample must be an actual ten-minute sample.
+    for idx, reading in enumerate(readings, start=1):
+
+        if not isinstance(reading, dict):
+            raise HTTPException(
+                400,
+                f"reading {idx} must be an object"
+            )
+
+        duration = int(reading.get("duration_s", 0))
+
+        if duration != 600:
+            raise HTTPException(
+                400,
+                f"reading {idx} must have duration_s=600"
+            )
+
+        n = int(reading.get("n", 0))
+
+        if n <= 0:
+            raise HTTPException(
+                400,
+                f"reading {idx} contains no detector samples"
+            )
+
+        sequence = reading.get("cps_sequence", [])
+
+        if not isinstance(sequence, list):
+            raise HTTPException(
+                400,
+                f"reading {idx} cps_sequence must be an array"
+            )
+
+    aggregate = body.get("aggregate")
+
+    if not isinstance(aggregate, dict):
+        raise HTTPException(
+            400,
+            "aggregate object required"
+        )
+
+    completed_at = str(
+        body.get("completed_at") or
+        datetime.datetime.now(datetime.timezone.utc).isoformat()
+    )
+
+    started_at = None
+
+    if readings:
+        started_at = readings[0].get("started_at")
+
+    signature_id = str(uuid.uuid4())
+
+    now = time.time()
+
+    username = str(user["username"])
+    display_name = str(
+        user.get("display_name") or username
+    )
+
+    method = str(
+        body.get(
+            "method",
+            "time-weighted-GM-statistical-envelope-plus-CPS-temporal-signature"
+        )
+    )
+
+    detector = str(
+        body.get("detector", "Geiger-Muller")
+    )
+
+    reading_seconds = int(
+        body.get("reading_seconds", 600)
+    )
+
+    reading_minutes = int(
+        body.get("reading_minutes", 10)
+    )
+
+    n_readings = int(
+        body.get("n_readings", 3)
+    )
+
+    independent_samples = bool(
+        body.get("independent_samples", True)
+    )
+
+    if (
+        reading_seconds != 600
+        or reading_minutes != 10
+        or n_readings != 3
+        or not independent_samples
+    ):
+        raise HTTPException(
+            400,
+            "Reference records must be 3 independent 10-minute samples"
+        )
+
+    total_counts = int(
+        aggregate.get("total_counts", 0)
+    )
+
+    if total_counts < 0:
+        raise HTTPException(
+            400,
+            "Invalid total count"
+        )
+
+    aggregate_json = json.dumps(
+        aggregate,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+    readings_json = json.dumps(
+        readings,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+    with get_db() as db:
+        db.execute(
+            """
+            INSERT INTO geiger_source_signatures (
+                id,
+                source_name,
+                username,
+                display_name,
+                method,
+                detector,
+                reading_seconds,
+                reading_minutes,
+                n_readings,
+                independent_samples,
+                started_at,
+                completed_at,
+                total_counts,
+                aggregate_json,
+                readings_json,
+                created_at
+            )
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                signature_id,
+                source,
+                username,
+                display_name,
+                method,
+                detector,
+                reading_seconds,
+                reading_minutes,
+                n_readings,
+                1,
+                started_at,
+                completed_at,
+                total_counts,
+                aggregate_json,
+                readings_json,
+                now,
+            ),
+        )
+
+    _audit(
+        "GEIGER_SOURCE_SIGNATURE",
+        (
+            f"id={signature_id} "
+            f"source={source} "
+            f"user={username} "
+            f"samples=3 "
+            f"duration=600s"
+        ),
+        request.client.host if request.client else "",
+    )
+
+    return {
+        "ok": True,
+        "id": signature_id,
+        "source": source,
+        "username": username,
+        "samples": 3,
+        "duration_seconds": 600,
+        "master_repository": True,
+    }
 @app.post("/api/geiger/ingest")
 async def geiger_ingest(request: Request):
     secret = os.environ.get("INGEST_SECRET", "")
