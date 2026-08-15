@@ -21,11 +21,19 @@ LEVEL3_THRESHOLD = 0.30
 
 # Windows FILETIME (ns since 1601) to Unix (ns since 1970)
 # 11644473600 seconds * 1e9 = nanoseconds between epochs
-FILETIME_TO_UNIX_OFFSET_NS = 11644473600000000000
+# ------------------------------------------------------------------
+# CALIBRATED OFFSET – replace with values from a simultaneous snapshot
+# Example measurement:
+#   true_unix_ns = 1786760172000000000          # system clock at that instant
+#   raw_wall_ns  = 13431233079292200960         # USB monitor wall_ns at same instant
+#   CALIBRATED_OFFSET_NS = raw_wall_ns - true_unix_ns
+# ------------------------------------------------------------------
+CALIBRATED_OFFSET_NS = 11644473600000000000   # ← PUT YOUR MEASURED OFFSET HERE
 
 
 def usb_to_unix_ns(raw):
-    return int(raw) - FILETIME_TO_UNIX_OFFSET_NS
+    """Convert raw wall_ns to Unix nanoseconds using the calibrated offset."""
+    return int(raw) - CALIBRATED_OFFSET_NS
 
 
 def load_usb_events(path):
@@ -37,6 +45,11 @@ def load_usb_events(path):
     with open(path, 'r', errors='replace') as f:
         content = f.read()
 
+    # ---- TEMP DIAGNOSTIC (remove later) ----
+    print("\n===== LAST 400 CHARACTERS OF USB LOG AS SEEN BY PYTHON =====")
+    print(content[-400:])
+    print("===== END =====\n")
+    # ---------------------------------------
     verbose_pattern = re.compile(
         r'EVENT\s*:\s*(CONNECT|DISCONNECT)[^\n]*\n'
         r'\s*TIMESTAMP\s*:\s*(\d{4}-\d{2}-\d{2}\s+[\d:.]+)[^\n]*\n'
@@ -58,25 +71,32 @@ def load_usb_events(path):
         print(f"  USB log format: verbose ({len(verbose_matches)} raw events)")
         for m in verbose_matches:
             etype, ts, wall_ns_str, qpc_ticks, qpc_freq = m.groups()
-            unix_ns = usb_to_unix_ns(int(float(wall_ns_str)))
+            raw_wall = int(float(wall_ns_str))
+            unix_ns  = usb_to_unix_ns(raw_wall)
+            # Always generate a clean full timestamp from the numeric value
+            ts_full = datetime.utcfromtimestamp(unix_ns / 1e9).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+
             events.append({
-                'type':      etype.strip(),
-                'wall_ns':   unix_ns,
-                'qpc_ticks': int(qpc_ticks),
-                'qpc_freq':  int(qpc_freq),
-                'timestamp': ts.strip(),
+                'type':        etype.strip() if hasattr(etype, 'strip') else etype,
+                'raw_wall_ns': raw_wall,
+                'wall_ns':     unix_ns,
+                'qpc_ticks':   int(qpc_ticks),
+                'qpc_freq':    int(qpc_freq),
+                'timestamp':   ts_full,          # ← now always full & consistent
             })
     elif inline_matches:
         print(f"  USB log format: inline ({len(inline_matches)} raw events)")
         for m in inline_matches:
             etype, wall_ns_str, qpc_ticks, qpc_freq, ts = m.groups()
-            unix_ns = usb_to_unix_ns(int(float(wall_ns_str)))
+            raw_wall = int(float(wall_ns_str))
+            unix_ns  = usb_to_unix_ns(raw_wall)
             events.append({
-                'type':      etype,
-                'wall_ns':   unix_ns,
-                'qpc_ticks': int(qpc_ticks),
-                'qpc_freq':  int(qpc_freq),
-                'timestamp': ts,
+                'type':        etype,
+                'raw_wall_ns': raw_wall,      # kept for forensic audit
+                'wall_ns':     unix_ns,       # used for all correlation math
+                'qpc_ticks':   int(qpc_ticks),
+                'qpc_freq':    int(qpc_freq),
+                'timestamp':   ts.strip(),
             })
     else:
         print("[WARN] No USB events matched -- check format")
@@ -293,6 +313,7 @@ def format_report(correlations, geiger_records, usb_bursts):
             "",
             f"EVENT {i} -- {b['type']}",
             f"  USB timestamp   : {b['timestamp']}",
+            f"  raw_wall_ns     : {b.get('raw_wall_ns', 'N/A')}",
             f"  wall_ns (unix)  : {b['wall_ns']}",
             f"  Burst count     : {b['count']} events in {b['duration_ms']}ms",
             f"  Straddles gap   : {'YES' if strd else 'NO -- nearest gap used'}",
@@ -355,7 +376,7 @@ def format_report(correlations, geiger_records, usb_bursts):
         "",
         "SUMMARY TABLE",
         "=" * 72,
-        f"{'#':<4} {'TYPE':<12} {'TIMESTAMP':<26} {'PRE MAX':<10} "
+        f"{'#':<4} {'TYPE':<12} {'TIMESTAMP':<28} {'PRE MAX':<10} "
         f"{'POST MAX':<10} {'DELTA':<10} {'GAP':<10} "
         f"{'L2pre':<6} {'L3pre':<6}",
         "-" * 72,
