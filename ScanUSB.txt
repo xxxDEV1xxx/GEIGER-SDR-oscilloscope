@@ -1,0 +1,16 @@
+# CTW USB Disconnect Monitor — Copy and paste into PowerShell as Administrator
+# Correlates USB connect/disconnect events with Geiger wall_ns timestamps
+# Christopher T. Williams — CTW-11 SENTINEL
+
+wevtutil sl "Microsoft-Windows-DriverFrameworks-UserMode/Operational" /e:true /q:true
+
+Register-WmiEvent -Query "SELECT * FROM Win32_DeviceChangeEvent WHERE EventType = 2 OR EventType = 3" -Action {
+    $ns = [System.Diagnostics.Stopwatch]::GetTimestamp()
+    $freq = [System.Diagnostics.Stopwatch]::Frequency
+    $wallNs = [long]([System.DateTime]::UtcNow.ToFileTime()) * 100
+    $type = if($Event.SourceEventArgs.NewEvent.EventType -eq 2){"CONNECT"}else{"DISCONNECT"}
+    Write-Host "$type wall_ns=$wallNs qpc_ticks=$ns qpc_freq=$freq $(Get-Date -Format 'HH:mm:ss.fffffff')"
+} | Out-Null
+
+Write-Host "CTW USB Monitor active — Ctrl+C to stop"
+while($true){Start-Sleep -Seconds 1}
