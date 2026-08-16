@@ -7857,7 +7857,7 @@ async function saveEditProfile(){
           var btmColl = false;
           bar.addEventListener('click', function(){
             btmColl = !btmColl;
-            btmRow.style.display = btmColl ? 'none' : '';
+            btmRow.style.display = btmColl ? 'none' : 'flex';
             var bch = document.getElementById('gp-btm-ch');
             if(bch) bch.textContent = btmColl ? '\u25b2' : '\u25bc';
           });
