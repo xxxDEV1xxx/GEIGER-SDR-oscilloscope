@@ -5529,7 +5529,10 @@ async def serve_beep_3():
 @app.get("/MissileLock2.wav")
 async def serve_missile_lock_2():
     return _audio_file_response("MissileLock2.wav")
-
+  
+@app.get("/mayday.mp3")
+async def serve_mayday():
+    return _audio_file_response("mayday.mp3")
 
 @app.get("/R2 1.wav")
 async def serve_r2_1():
