@@ -293,14 +293,14 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
 </defs>
 </svg>
 
-<div class="max-w-[1300px] mx-auto flex relative">
-
+<div class="flex justify-center min-h-screen w-full">
 <!-- LEFT SIDEBAR -->
-<aside class="w-16 xl:w-64 h-screen sticky top-0 flex-shrink-0 flex flex-col px-2 xl:px-4 py-2 relative" style="z-index:9999;overflow-y:auto;overflow-x:visible;scrollbar-width:thin;scrollbar-color:#1a1a1a #000">
+<aside class="w-16 xl:w-64 h-screen sticky top-0 flex-shrink-0 flex flex-col px-2 xl:px-4 py-2 relative"
+       style="z-index:9999;overflow-y:auto;overflow-x:visible;scrollbar-width:thin;scrollbar-color:#1a1a1a #000">
   <svg class="filigree-v" viewBox="0 0 32 800" preserveAspectRatio="none"><rect width="32" height="800" fill="url(#fig-v-pat)"/></svg>
   <div class="mb-4 px-2"><span class="text-2xl font-black tracking-tight">flex<span class="text-blue-400">.</span></span></div>
-  <nav class="flex-1 space-y-1">
-    <button onclick="nav('feed')" id="nav-feed" class="sidebar-item active w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left">
+  <nav class="flex-none space-y-1">
+  <button onclick="nav('feed')" id="nav-feed" class="sidebar-item active w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left">
       <i class="fa-solid fa-house w-5 text-center text-lg"></i><span class="hidden xl:inline">Home</span>
     </button>
     <button onclick="nav('explore')" id="nav-explore" class="sidebar-item w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left">
@@ -1128,9 +1128,42 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
     <!-- Oscilloscope + bottom -->
     <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
       <!-- Oscilloscope canvas -->
-      <div style="flex:1;background:#080808;position:relative;min-height:0;">
-        <canvas id="gp-canvas" style="width:100%;height:100%;display:block;"></canvas>
-      </div>
+      <div style="flex:1;background:#080808;position:relative;min-height:0;overflow:hidden;">
+
+  <canvas id="gp-canvas"
+          style="position:absolute;inset:0;width:100%;height:100%;display:block;"></canvas>
+
+  <!-- Dedicated instantaneous-value readout.
+       It is outside the canvas coordinate system, so the waveform
+       can never cover or hide it. -->
+  <div id="gp-instant-readout"
+       style="
+         position:absolute;
+         top:8px;
+         right:8px;
+         z-index:5;
+         min-width:108px;
+         padding:4px 7px;
+         text-align:right;
+         background:rgba(0,0,0,.72);
+         border:1px solid rgba(0,255,136,.22);
+         color:#00FF88;
+         font-family:Consolas,monospace;
+         line-height:1.05;
+         pointer-events:none;">
+    <div style="font-size:.52rem;color:#336b4f;letter-spacing:.12em;">
+      INSTANTANEOUS
+    </div>
+    <div id="gp-instant-value"
+         style="font-size:1rem;font-weight:700;">
+      -.----
+    </div>
+    <div style="font-size:.5rem;color:#336b4f;">
+      µSv/h
+    </div>
+  </div>
+
+</div>
       <!-- Bottom split: raw data + events -->
       <div style="height:160px;display:flex;border-top:1px solid #222;flex-shrink:0;">
         <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid #222;">
@@ -1257,6 +1290,8 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
           <option value="661steamsiren.wav">661 Steam Siren</option>
           <option value="HMSIllustriousActionStations.wav" selected>HMS Illustrious Action Stations</option>
           <option value="chemalm.wav">Chemical Alarm</option>
+          <option value="mayday.mp3">Mayday</option>
+          <option value="mayday.mp3">Mayday</option>
           <option value="Alarm 1.wav">Alarm 1</option>
           <option value="Alarm 2.wav">Alarm 2</option>
           <option value="Alarm 3.wav">Alarm 3</option>
@@ -1336,6 +1371,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
           <option value="661steamsiren.wav">661 Steam Siren</option>
           <option value="HMSIllustriousActionStations.wav">HMS Illustrious Action Stations</option>
           <option value="chemalm.wav" selected>Chemical Alarm</option>
+          <option value="mayday.mp3">Mayday</option>
           <option value="Alarm 1.wav">Alarm 1</option>
           <option value="Alarm 2.wav">Alarm 2</option>
           <option value="Alarm 3.wav">Alarm 3</option>
@@ -2581,90 +2617,155 @@ const _gp = {
     };
     const smoothed = smooth(data, 7);
 
-    // Stable Y-axis: expand fast, shrink very slowly — kills vertical hop
-    const Y_MAX_DEF = 0.30;
-    const Y_MIN_DEF = 0.0;
-    if (this._viewMax == null) this._viewMax = Y_MAX_DEF;
-    if (this._viewMin == null) this._viewMin = Y_MIN_DEF;
+// ── Y SCALE — direct conversion of MainWindow.xaml.cs ─────────────
 
-    const drMax = Math.max(...smoothed);
-    const drMin = Math.min(...smoothed);
+const Y_MAX_DEF = 0.30;
 
-    if (drMax > this._viewMax * 0.92) {
-      this._viewMax = drMax * 1.18;
+if (this._viewMax == null || !Number.isFinite(this._viewMax)) {
+  this._viewMax = Y_MAX_DEF;
+}
+
+const drMaxRaw =
+  data.length ? Math.max(...data) : 0;
+
+if (drMaxRaw > this._viewMax * 0.90) {
+  this._viewMax =
+    Math.max(
+      drMaxRaw * 1.25,
+      Y_MAX_DEF
+    );
+}
+else if (
+  data.length > 20 &&
+  drMaxRaw < this._viewMax * 0.50 &&
+  this._viewMax > Y_MAX_DEF
+) {
+  this._viewMax =
+    Math.max(
+      drMaxRaw * 1.50,
+      Y_MAX_DEF
+    );
+}
+
+const max = this._viewMax;
+const min = 0.0;
+
+// ── CTW GEIGER DR WAVEFORM ────────────────────────────────────────
+// Direct conversion of the original MainWindow.xaml.cs waveform.
+//
+// Original:
+//   xStep = w / (n - 1)
+//   y    = h - (dr / _yMax) * h
+//   Polyline
+//   StrokeThickness = 2.0
+//   Round line joins
+//
+// LIVE mode deliberately does NOT remap the first point according to
+// the number of currently available samples. The 120-sample window
+// occupies a fixed 120-sample coordinate space. As new samples arrive,
+// the oldest sample leaves through x=0 and the newest sample occupies
+// the right edge.
+//
+// This is the behavior of the original oscilloscope.
+
+const waveformValues = smoothed;
+
+if (waveformValues.length >= 2) {
+
+  const waveformSlots =
+    this._panorama && this._panZoomed
+      ? Math.max(waveformValues.length - 1, 1)
+      : this._panorama
+        ? Math.max(waveformValues.length - 1, 1)
+        : LIVE_WIN - 1;
+
+  const waveformXStep =
+    w / waveformSlots;
+
+  const waveformY = value => {
+    return h -
+      ((value - min) /
+       Math.max(max - min, Number.EPSILON)) * h;
+  };
+
+  const waveformX = index => {
+    if (this._panorama) {
+      return index * waveformXStep;
     }
-    if (drMin < this._viewMin + 0.005) {
-      this._viewMin = Math.max(0, drMin - 0.01);
-    }
 
-    if (smoothed.length > 20) {
-      const targetMax = Math.max(drMax * 1.25, Y_MAX_DEF);
-      const targetMin = Math.max(0, Math.min(drMin - 0.015, targetMax - 0.25));
-      this._viewMax += (targetMax - this._viewMax) * 0.02;
-      this._viewMin += (targetMin - this._viewMin) * 0.02;
-    }
+    // LIVE:
+    // Fixed 120-sample window.
+    //
+    // If the buffer has fewer than 120 samples during startup,
+    // the data begins at its natural slot. Once 120 samples exist,
+    // the oldest point is exactly x=0 and newest is exactly x=w.
+    return (
+      (LIVE_WIN - waveformValues.length + index) *
+      waveformXStep
+    );
+  };
 
-    if (this._viewMax - this._viewMin < 0.25) {
-      this._viewMax = this._viewMin + 0.25;
-    }
+  /*
+   * Direct point-to-point polyline.
+   *
+   * The original WPF implementation uses a Polyline rather than
+   * an interpolating spline. Canvas 2D lineTo is the equivalent.
+   */
+  const points = [];
 
-    const max = this._viewMax;
-    const min = this._viewMin;
+  for (let i = 0; i < waveformValues.length; i++) {
 
-// ── Waveform: Catmull-Rom spline + phosphor glow + gradient fill ──
-    const _yOf = v => h - ((v - min) / (max - min || 1)) * h;
-    const _xOf = i => this._panorama
-      ? i * xStep
-      : (LIVE_WIN - data.length + i) * xStep;
-
-    // Dense panorama: extra smooth pass so the overview shows trend, not noise
-    let wRender = smoothed;
-    if (this._panorama && !this._panZoomed && smoothed.length > w / 2) {
-      const extraWin = Math.max(3, Math.ceil(smoothed.length / (w / 2)));
-      wRender = smooth(smoothed, extraWin);
-    }
-
-    const wPts = wRender.map((v, i) => ({ x: _xOf(i), y: _yOf(v) }));
-
-    // Catmull-Rom cubic spline — passes through every sample point
-    const catmull = (p) => {
-      if (p.length < 2) return;
-      ctx.moveTo(p[0].x, p[0].y);
-      for (let i = 0; i < p.length - 1; i++) {
-        const a = p[Math.max(0, i - 1)], b = p[i];
-        const c = p[i + 1],              d = p[Math.min(p.length - 1, i + 2)];
-        ctx.bezierCurveTo(
-          b.x + (c.x - a.x) / 6, b.y + (c.y - a.y) / 6,
-          c.x - (d.x - b.x) / 6, c.y - (d.y - b.y) / 6,
-          c.x, c.y
-        );
-      }
-    };
-
-    // Gradient fill under the curve
-    const wGrad = ctx.createLinearGradient(0, 0, 0, h);
-    wGrad.addColorStop(0,    'rgba(0,255,136,0.22)');
-    wGrad.addColorStop(0.45, 'rgba(0,255,136,0.07)');
-    wGrad.addColorStop(1,    'rgba(0,255,136,0.00)');
-    ctx.beginPath();
-    catmull(wPts);
-    ctx.lineTo(wPts[wPts.length - 1].x, h);
-    ctx.lineTo(wPts[0].x, h);
-    ctx.closePath();
-    ctx.fillStyle = wGrad;
-    ctx.fill();
-
-    // Phosphor glow stack: diffuse → bloom → inner → core
-    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-    [
-      [12,  'rgba(0,255,136,0.025)'],
-      [5,   'rgba(0,255,136,0.07)' ],
-      [2.5, 'rgba(0,255,136,0.18)' ],
-      [1.4, '#00FF88'              ],
-    ].forEach(([lw, col]) => {
-      ctx.beginPath(); catmull(wPts);
-      ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.stroke();
+    points.push({
+      x: waveformX(i),
+      y: Math.max(
+        0,
+        Math.min(
+          h,
+          waveformY(waveformValues[i])
+        )
+      )
     });
+  }
+
+  /*
+   * Clip only the drawing operation, not the data.
+   *
+   * This is important: the waveform is allowed to terminate
+   * naturally at the left/right canvas boundaries. It must never
+   * be stretched inward to remain visible.
+   */
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, w, h);
+  ctx.clip();
+
+  ctx.beginPath();
+
+  ctx.moveTo(
+    points[0].x,
+    points[0].y
+  );
+
+  for (let i = 1; i < points.length; i++) {
+    ctx.lineTo(
+      points[i].x,
+      points[i].y
+    );
+  }
+
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+
+  /*
+   * Same visual character as the original WPF green waveform.
+   * The actual core remains 2px.
+   */
+  ctx.strokeStyle = '#00FF88';
+  ctx.lineWidth = 2.0;
+  ctx.stroke();
+
+  ctx.restore();
+}
     
     [[0.20,'#FF4444'],[0.15,'#FFAA00'],[0.10,'#FFFF00']].forEach(([val,col])=>{
       const y = h - ((val - min) / (max - min || 1)) * h;
@@ -4052,6 +4153,7 @@ _playCpsSound(cps){
     const el = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
     el('gp-dr', dr.toFixed(4));
     el('gp-realtime', dr.toFixed(4));
+    el('gp-instant-value', dr.toFixed(4));
     el('gp-cps', d.cps ?? '---');
     el('gp-cpm', String(this.cpmBuf.length).padStart(5,'0'));
     el('gp-cpm-sec', `${elapsed}s / 60s elapsed`);
@@ -4133,167 +4235,125 @@ _playCpsSound(cps){
   // Valid measurement ONLY when peak - floor >= 0.10 µSv/h.
   // Newest 3 valid pairs retained.
   // ═══════════════════════════════════════════════════════════════
-  _fpProcessReading(dr, wallMs) {
-    if (!Array.isArray(this._fpPairs)) this._fpPairs = [];
+_fpProcessReading(dr, wallMs) {
+  if (!Array.isArray(this._fpPairs)) this._fpPairs = [];
 
-    if (typeof this._fpArmed !== 'boolean') this._fpArmed = false;
-    if (typeof this._fpConfirmed !== 'boolean') this._fpConfirmed = false;
+  if (typeof this._fpArmed !== 'boolean') this._fpArmed = false;
+  if (typeof this._fpConfirmed !== 'boolean') this._fpConfirmed = false;
+  if (typeof this._fpFloorDr !== 'number') this._fpFloorDr = 0;
+  if (typeof this._fpHighDr !== 'number') this._fpHighDr = 0;
+  if (typeof this._fpFloorIdx !== 'number') this._fpFloorIdx = 0;
+  if (typeof this._fpHighIdx !== 'number') this._fpHighIdx = 0;
+  if (typeof this._fpFloorTs !== 'number') this._fpFloorTs = 0;
+  if (typeof this._fpHighTs !== 'number') this._fpHighTs = 0;
+  if (typeof this._fpSampleIdx !== 'number') this._fpSampleIdx = 0;
 
-    if (typeof this._fpFloorDr !== 'number') this._fpFloorDr = 0;
-    if (typeof this._fpHighDr !== 'number') this._fpHighDr = 0;
+  const FP_FLOOR_BAND = 0.10;
+  const FP_DROP_CONFIRM = 0.02;
+  const FP_MIN_HILL = 0.10;
+  const MIN_DT_SEC = 0.25; // never treat a real climb as zero-duration
 
-    if (typeof this._fpFloorIdx !== 'number') this._fpFloorIdx = 0;
-    if (typeof this._fpHighIdx !== 'number') this._fpHighIdx = 0;
+  const ts = Number.isFinite(wallMs) ? wallMs : Date.now();
 
-    if (typeof this._fpFloorTs !== 'number') this._fpFloorTs = 0;
-    if (typeof this._fpHighTs !== 'number') this._fpHighTs = 0;
+  this._fpSampleIdx++;
+  const idx = this._fpSampleIdx;
 
-    if (typeof this._fpSampleIdx !== 'number') this._fpSampleIdx = 0;
+  // Arm on floor
+  if (!this._fpArmed && !this._fpConfirmed && dr <= FP_FLOOR_BAND) {
+    this._fpArmed = true;
+    this._fpFloorDr = dr;
+    this._fpFloorIdx = idx;
+    this._fpFloorTs = ts;
+    this._fpHighDr = dr;
+    this._fpHighIdx = idx;
+    this._fpHighTs = ts;
+    this._fpConfirmed = false;
+  }
 
-    const FP_FLOOR_BAND = 0.10;
-    const FP_DROP_CONFIRM = 0.02;
-    const FP_MIN_HILL = 0.10;
-
-    const ts = Number.isFinite(wallMs) ? wallMs : Date.now();
-
-    this._fpSampleIdx++;
-    const idx = this._fpSampleIdx;
-
-    // EXACT C#:
-    // if (!_fpArmed && !_fpConfirmed && dr <= FP_FLOOR_BAND)
-    if (
-      !this._fpArmed &&
-      !this._fpConfirmed &&
-      dr <= FP_FLOOR_BAND
-    ) {
-      this._fpArmed = true;
-
-      this._fpFloorDr = dr;
-      this._fpFloorIdx = idx;
-      this._fpFloorTs = ts;
-
+  if (this._fpArmed && !this._fpConfirmed) {
+    // Track rising high
+    if (dr > this._fpHighDr) {
       this._fpHighDr = dr;
       this._fpHighIdx = idx;
       this._fpHighTs = ts;
-
-      this._fpConfirmed = false;
     }
 
-    // EXACT C#:
-    // if (_fpArmed && !_fpConfirmed)
-    if (this._fpArmed && !this._fpConfirmed) {
+    // Let floor settle lower while still flat
+    if (dr < this._fpFloorDr && (this._fpHighDr - this._fpFloorDr) < 0.015) {
+      this._fpFloorDr = dr;
+      this._fpFloorIdx = idx;
+      this._fpFloorTs = ts;
+      this._fpHighDr = dr;
+      this._fpHighIdx = idx;
+      this._fpHighTs = ts;
+    }
 
-      // Track rising high.
-      if (dr > this._fpHighDr) {
-        this._fpHighDr = dr;
-        this._fpHighIdx = idx;
-        this._fpHighTs = ts;
-      }
+    // Drop from high → candidate peak
+    if (this._fpHighDr > 0.001 && (this._fpHighDr - dr) >= FP_DROP_CONFIRM) {
+      const hill = this._fpHighDr - this._fpFloorDr;
 
-      // Let floor settle lower while still flat.
-      if (
-        dr < this._fpFloorDr &&
-        (this._fpHighDr - this._fpFloorDr) < 0.015
-      ) {
-        this._fpFloorDr = dr;
-        this._fpFloorIdx = idx;
-        this._fpFloorTs = ts;
+      if (hill >= FP_MIN_HILL) {
+        // Preferred: wall clock Δt (ms → s)
+        let dtSec = (this._fpHighTs - this._fpFloorTs) / 1000.0;
 
-        this._fpHighDr = dr;
-        this._fpHighIdx = idx;
-        this._fpHighTs = ts;
-      }
+        // Fallback: sample span (~1 reading/sec on your stream)
+        const sampleSpan = Math.max(0, this._fpHighIdx - this._fpFloorIdx);
+        if (!Number.isFinite(dtSec) || dtSec < MIN_DT_SEC) {
+          dtSec = Math.max(sampleSpan, 1) * 1.0; // 1 sample ≈ 1 s
+        }
+        dtSec = Math.max(dtSec, MIN_DT_SEC);
 
-      // Drop from high -> candidate peak.
-      if (
-        this._fpHighDr > 0.001 &&
-        (this._fpHighDr - dr) >= FP_DROP_CONFIRM
-      ) {
-        const hill = this._fpHighDr - this._fpFloorDr;
+        // Always a real intensity when hill is valid — never force 0
+        const peakHrEq = this._fpHighDr * (3600.0 / dtSec);
 
-        if (hill >= FP_MIN_HILL) {
+        const pair = {
+          fVal: this._fpFloorDr,
+          pVal: this._fpHighDr,
+          dtSec: Number(dtSec.toFixed(3)),
+          peakHrEq: Number(peakHrEq.toFixed(2)),
+          hill: Number(hill.toFixed(4)),
+          floorIdx: this._fpFloorIdx,
+          peakIdx: this._fpHighIdx,
+          floorTs: this._fpFloorTs,
+          peakTs: this._fpHighTs,
+          t: new Date().toLocaleTimeString()
+        };
 
-          // EXACT C#:
-          // (_fpHighTs - _fpFloorTs) / 1000.0
-          const dtSec = Math.max(
-            0,
-            (this._fpHighTs - this._fpFloorTs) / 1000.0
-          );
+        this._fpPairs.push(pair);
+        while (this._fpPairs.length > 3) this._fpPairs.shift();
 
-          // EXACT C#:
-          // dtSec > 0.1
-          // ? _fpHighDr * (3600.0 / dtSec)
-          // : 0.0
-          const peakHrEq =
-            dtSec > 0.1
-              ? this._fpHighDr * (3600.0 / dtSec)
-              : 0.0;
+        this._fpArmed = false;
+        this._fpConfirmed = false;
+        this._fpFloorDr = 0;
+        this._fpHighDr = 0;
+      } else {
+        // Sub-threshold discard
+        this._fpArmed = false;
+        this._fpConfirmed = false;
+        this._fpFloorDr = 0;
+        this._fpHighDr = 0;
 
-          const pair = {
-            fVal: this._fpFloorDr,
-            pVal: this._fpHighDr,
-
-            dtSec: Number(dtSec.toFixed(3)),
-            peakHrEq: Number(peakHrEq.toFixed(2)),
-            hill: Number(hill.toFixed(4)),
-
-            floorIdx: this._fpFloorIdx,
-            peakIdx: this._fpHighIdx,
-
-            floorTs: this._fpFloorTs,
-            peakTs: this._fpHighTs,
-
-            t: new Date().toLocaleTimeString()
-          };
-
-          this._fpPairs.push(pair);
-
-          // EXACT C#: newest 3 only.
-          while (this._fpPairs.length > 3) {
-            this._fpPairs.shift();
-          }
-
-          // EXACT C# reset.
-          this._fpArmed = false;
-          this._fpConfirmed = false;
-          this._fpFloorDr = 0;
-          this._fpHighDr = 0;
-
-        } else {
-
-          // EXACT C# sub-threshold discard.
-          this._fpArmed = false;
-          this._fpConfirmed = false;
-          this._fpFloorDr = 0;
-          this._fpHighDr = 0;
-
-          // EXACT C# immediate re-arm.
-          if (dr <= FP_FLOOR_BAND) {
-            this._fpArmed = true;
-
-            this._fpFloorDr = dr;
-            this._fpFloorIdx = idx;
-            this._fpFloorTs = ts;
-
-            this._fpHighDr = dr;
-            this._fpHighIdx = idx;
-            this._fpHighTs = ts;
-          }
+        if (dr <= FP_FLOOR_BAND) {
+          this._fpArmed = true;
+          this._fpFloorDr = dr;
+          this._fpFloorIdx = idx;
+          this._fpFloorTs = ts;
+          this._fpHighDr = dr;
+          this._fpHighIdx = idx;
+          this._fpHighTs = ts;
         }
       }
     }
+  }
 
-    // EXACT C# hard disarm.
-    if (
-      this._fpArmed &&
-      dr < this._fpFloorDr - 0.05
-    ) {
-      this._fpArmed = false;
-      this._fpConfirmed = false;
-      this._fpFloorDr = 0;
-      this._fpHighDr = 0;
-    }
-  },
+  // Hard disarm if we fell well below the armed floor
+  if (this._fpArmed && dr < this._fpFloorDr - 0.05) {
+    this._fpArmed = false;
+    this._fpConfirmed = false;
+    this._fpFloorDr = 0;
+    this._fpHighDr = 0;
+  }
+},
 
   _renderSig(entry) {
     this.sigLedger.unshift(entry);
