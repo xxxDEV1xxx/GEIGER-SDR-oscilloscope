@@ -1,0 +1,101 @@
+CTW GEIGER SCOPE — System Architecture & Technical Specification
+
+Classification: Radiation Telemetry Forensic Console
+Revision: 1.0
+Status: Active Development
+
+1. System Identity
+
+CTW Geiger Scope is not a Geiger counter display. It is a radiation event telemetry and forensic analysis system — a software architecture that treats radiation detector output as a structured signal stream subject to acquisition, conditioning, event reconstruction, temporal analysis, anomaly classification, and evidentiary logging.
+
+The attached detector (FS-5000 via RadPro firmware, or any CPS/DR-streaming source) is an input transducer. The system begins where the transducer ends.
+
+2. Architecture Pipeline
+┌─────────────────────────────────────────────────────────────────────┐
+│                     CTW GEIGER SCOPE PIPELINE                       │
+├──────────────┬──────────────┬─────────────┬────────────┬────────────┤
+│  LAYER 1     │  LAYER 2     │  LAYER 3    │  LAYER 4   │  LAYER 5  │
+│  ACQUISITION │  SIGNAL      │  EVENT      │  EVIDENCE  │  OUTPUT   │
+│              │  CONDITIONING│  ANALYSIS   │  LEDGER    │           │
+├──────────────┼──────────────┼─────────────┼────────────┼────────────┤
+│ WebSocket    │ DR stable-   │ Floor/peak  │ Timestamped│ Waveform  │
+│ stream       │ display gate │ capture     │ event log  │ oscilloscpe│
+│              │              │             │            │           │
+│ JSONL replay │ Rolling avg  │ CPS sequence│ CPS sig    │ Rolling   │
+│ (realtime)   │ 30s/60s/1hr  │ recording   │ ledger     │ threshold │
+│              │              │             │            │ monitors  │
+│ JSONL fast   │ CPM rolling  │ Recurrence  │ Exceedance │           │
+│ process      │ window       │ detection   │ log        │ L1/L2/L3  │
+│              │              │             │            │ siren     │
+│ Serial→      │ Session dose │ Beat/inter- │ Floor→peak │           │
+│ ngrok→WS     │ accumulation │ ference     │ pairs log  │ Panorama  │
+│              │              │ scoring     │            │ zoom view │
+│              │              │             │            │           │
+│              │              │ Alarm       │ Raw telem- │ Replay    │
+│              │              │ exposure    │ etry stream│ system    │
+│              │              │ timing      │            │           │
+└──────────────┴──────────────┴─────────────┴────────────┴───────────┘
+3. Subsystem Inventory
+3.1 Acquisition Layer
+Live WebSocket — persistent connection to ngrok tunnel forwarding fs5000_serial.py output; auto-reconnect on drop
+JSONL Replay — file-based realtime playback at 1× speed, full pipeline fidelity
+JSONL Fast Process — entire recording ingested synchronously; all derived values, ledgers, and waveform history populated instantly
+Gzip support — .jsonl.gz decompressed in-browser via DecompressionStream
+3.2 Signal Conditioning Layer
+DR stable-display gate — string-level comparison of toFixed(4) output with 300ms minimum inter-update interval; matches serial.py terminal behavior exactly
+Rolling averages — 30-second, 60-second, and 1-hour sliding windows computed from drHistory[] on every reading
+CPM rolling window — 60-second count-per-minute derived from raw CPS stream
+Session dose accumulator — running integral of DR × Δt
+Device dose passthrough — hardware-reported cumulative dose preserved separately
+3.3 Event Analysis Layer
+Floor/peak detector — identifies state transitions between LOW/ELEVATED, records {fVal, pVal, dtSec, peakHrEq} pairs
+CPS sequence recorder — captures integer CPS arrays across events for pattern comparison
+Recurrence engine — compares new CPS sequences against ledger using edit-distance / subsequence matching; maintains hit counts and timestamps per signature
+Beat interference detector — scores periodic constructive/destructive interference in CPS history
+Alarm exposure timer — tracks cumulative time spent above L1 (0.18), L2 (0.23), L3 (0.27) µSv/h thresholds, per-hour and total
+Exceedance logger — timestamped records when any rolling window exceeds 0.300 µSv/h reference
+3.4 Evidence Ledger Layer
+CPS signature ledger — numbered, sortable by value or time, persists full CPS sequence per entry
+Floor→peak pairs log — chronological record of every detected elevation event with rise time and peak-hour equivalent
+Raw telemetry stream — unprocessed [timestamp] DR=x CPS=x DOSE=x log, scrolling, preserved in order
+Recurrence ledger — per-signature recurrence count, last-seen time, sequence thumbnail
+Exceedance log — sub-ledger of threshold breach events with per-window breakdown
+3.5 Output Layer
+Waveform oscilloscope — canvas-rendered DR history, floor/peak dashed markers, CPS bar underlay, Δt annotation, panorama zoom mode
+Rolling threshold monitors — color-coded 30s/60s/1hr readouts, amber at 80% of reference, red above reference
+FS-5000/RadPro reference panel — device constants, SECOND/MINUTE/HOUR/YEAR projections, rolling window display
+L1/L2/L3 siren — threshold-gated audio alarm with per-level tone
+Panorama mode — full-history zoom/pan oscilloscope with click-to-inspect
+Replay system — realtime file playback with progress bar and filename display
+Export log — full session data exportable as JSONL
+4. Competitive Position
+Capability	GAMMA-SCOUT	Radiacode	Safecast	CTW Geiger Scope
+Real-time telemetry	Basic	Good	Basic	9/10
+Alarm / threshold monitoring	Basic	Moderate	None	9/10
+Temporal / event analysis	None	None	None	9/10
+Forensic event ledger	None	None	None	9/10
+Detector integration	Proprietary	Proprietary	Standardized	8/10 — open serial
+Visualization	Basic	Good	Map-based	8/10
+Remote monitoring	None	BLE only	Upload only	8/10 — WebSocket/ngrok
+Pattern / recurrence detection	None	None	None	Present — no known equivalent
+Radiation mapping	None	Good	Excellent	4/10
+Gamma spectroscopy	None	Excellent	None	1/10
+Calibration authority	Tested	Tested	Standardized	Detector-dependent
+
+The one gap commercial products hold is measurement authority. Calibration is a hardware and certification problem, not a software problem. The system makes no claims about detector accuracy — it faithfully processes whatever the attached transducer reports.
+
+5. The Distinguishing Feature
+
+Mainstream radiation software asks: "What is the current dose rate?"
+
+CTW Geiger Scope asks: "What happened, when, in what pattern, how often has it happened before, and what does the temporal structure of the signal reveal?"
+
+The recurrence subsystem is the clearest expression of this. No commercial product in the surveyed field maintains a searchable ledger of CPS event signatures and scores new events against it for recurrence. That is a forensic capability, not a monitoring capability.
+
+6. Formal System Classification
+
+CTW Geiger Scope is a radiation signal forensic console implementing a seven-layer pipeline: Acquisition → Stable Display Conditioning → Rolling Statistical Analysis → Event Detection & Classification → Evidentiary Ledger Maintenance → Multi-modal Visualization → Threshold Alerting.
+
+It is designed for anomaly characterization and temporal pattern forensics on radiation detector output streams, with secondary capability in real-time monitoring and dose tracking.
+
+It is not a spectrometer. It is not a mapping platform. It is a forensic signal analysis system that happens to consume radiation detector output.
