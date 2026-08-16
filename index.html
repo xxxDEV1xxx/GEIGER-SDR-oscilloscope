@@ -1125,6 +1125,203 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
       </div>
       <div id="gp-recur-ledger" style="flex:1;min-height:0;overflow-y:auto;padding:2px 4px;font-family:Consolas,monospace;font-size:.55rem;"></div>
     </div>
+<!-- FS-5000 / RadPro REFERENCE POINT -->
+<div id="gp-fs5000-reference"
+     style="
+       position:absolute;
+       top:60px;
+       left:calc(50% + 90px);
+       transform:translateX(-50%);
+       width:170px;
+       min-width:170px;
+       max-height:calc(100% - 70px);
+       overflow:hidden;
+       background:rgba(5,10,8,0.50);
+       border:1px solid rgba(22,77,53,0.50);
+       padding:7px 8px;
+       box-sizing:border-box;
+       z-index:20;
+       font-family:Consolas,monospace;
+       pointer-events:none;
+     ">
+
+  <!-- STATIC FS-5000 / RADPRO REFERENCE -->
+  <div style="
+       color:#00FF88;
+       font-size:.58rem;
+       font-weight:700;
+       letter-spacing:.04em;
+       margin-bottom:5px;
+  ">
+    FS-5000 / RADPRO REF
+  </div>
+
+  <div style="
+       color:#777;
+       font-size:.52rem;
+       margin-bottom:4px;
+  ">
+    0.300 µSv/h
+  </div>
+
+  <div style="display:flex;justify-content:space-between;gap:8px;">
+    <span style="color:#555;font-size:.52rem;">SECOND</span>
+    <span style="color:#00FFFF;font-size:.62rem;font-weight:700;">
+      0.769 CPS
+    </span>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;gap:8px;">
+    <span style="color:#555;font-size:.52rem;">MINUTE</span>
+    <span style="color:#FFFF00;font-size:.62rem;font-weight:700;">
+      46.14 CPM
+    </span>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;gap:8px;">
+    <span style="color:#555;font-size:.52rem;">30 SEC</span>
+    <span style="color:#FFDD00;font-size:.62rem;font-weight:700;">
+      23.07 CT
+    </span>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;gap:8px;">
+    <span style="color:#555;font-size:.52rem;">HOUR</span>
+    <span style="color:#FFAA00;font-size:.62rem;font-weight:700;">
+      2,768.4 CT
+    </span>
+  </div>
+
+  <div style="
+       border-top:1px solid #13251c;
+       margin-top:5px;
+       padding-top:4px;
+       color:#444;
+       font-size:.45rem;
+       line-height:1.2;
+  ">
+    J321 · 153.8 CPM/µSv/h
+  </div>
+
+  <!-- ROLLING MONITOR -->
+  <div style="
+       margin-top:7px;
+       padding-top:6px;
+       border-top:1px solid rgba(22,77,53,0.50);
+       color:#00AA66;
+       font-size:.52rem;
+       font-weight:700;
+       letter-spacing:.03em;
+       line-height:1.2;
+  ">
+    ROLLING THRESHOLD MONITOR
+  </div>
+
+  <div style="
+       color:#555;
+       font-size:.45rem;
+       margin-top:3px;
+       line-height:1.25;
+  ">
+    CONTINUOUS WINDOWS · &gt; MAX BACKGROUND
+  </div>
+
+  <!-- CURRENT ROLLING VALUES -->
+  <div style="
+       margin-top:5px;
+       padding:4px 0;
+       border-top:1px solid rgba(40,60,50,.25);
+       border-bottom:1px solid rgba(40,60,50,.25);
+  ">
+
+    <!-- 30 SECOND -->
+    <div style="
+         display:flex;
+         justify-content:space-between;
+         gap:5px;
+         margin-bottom:3px;
+    ">
+      <span style="color:#555;font-size:.47rem;">
+        30 SEC
+      </span>
+
+      <span id="gp-fs5000-avg30"
+            style="
+              color:#FFDD00;
+              font-size:.53rem;
+              font-weight:700;
+            ">
+        ---
+      </span>
+    </div>
+
+    <!-- 60 SECOND -->
+    <div style="
+         display:flex;
+         justify-content:space-between;
+         gap:5px;
+         margin-bottom:3px;
+    ">
+      <span style="color:#555;font-size:.47rem;">
+        60 SEC
+      </span>
+
+      <span id="gp-fs5000-avg60"
+            style="
+              color:#00CC88;
+              font-size:.53rem;
+              font-weight:700;
+            ">
+        ---
+      </span>
+    </div>
+
+    <!-- 1 HOUR -->
+    <div style="
+         display:flex;
+         justify-content:space-between;
+         gap:5px;
+    ">
+      <span style="color:#555;font-size:.47rem;">
+        1 HOUR
+      </span>
+
+      <span id="gp-fs5000-avg3600"
+            style="
+              color:#00AAFF;
+              font-size:.53rem;
+              font-weight:700;
+            ">
+        ---
+      </span>
+    </div>
+
+  </div>
+
+  <!-- EXCEEDANCE LOG -->
+  <div style="
+       color:#777;
+       font-size:.46rem;
+       margin-top:5px;
+       margin-bottom:2px;
+  ">
+    EXCEEDANCE LOG
+  </div>
+
+  <div id="gp-fs5000-exceedance"
+       style="
+         max-height:150px;
+         overflow-y:auto;
+         font-family:Consolas,monospace;
+         font-size:.46rem;
+         line-height:1.3;
+       ">
+    <div style="color:#555;">
+      Monitoring...
+    </div>
+  </div>
+
+</div>
     <!-- Oscilloscope + bottom -->
     <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
       <!-- Oscilloscope canvas -->
@@ -1195,12 +1392,12 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
         <div style="color:#FF4444;font-weight:700;font-size:.7rem;margin-bottom:8px;">LEVEL 1 — STEAM SIREN</div>
         <div style="margin-bottom:8px;">
           <div style="color:#555;font-size:.65rem;margin-bottom:4px;">THRESHOLD (µSv/h)</div>
-          <input id="gp-siren-thresh1" type="number" step="0.01" value="0.20" style="background:#111;border:1px solid #444;color:#fff;padding:4px 8px;font-family:Consolas,monospace;width:100px;">
+          <input id="gp-siren-thresh1" type="number" step="0.01" value="0.18" style="background:#111;border:1px solid #444;color:#fff;padding:4px 8px;font-family:Consolas,monospace;width:100px;">
           <span style="color:#555;font-size:.65rem;margin-left:8px;">Current: <span id="gp-siren-t1-display">0.20</span></span>
         </div>
         <div style="margin-bottom:8px;">
-          <div style="color:#555;font-size:.65rem;margin-bottom:4px;">VOLUME <span id="gp-siren-vol1-display" style="color:#FF4444;">85%</span></div>
-          <input id="gp-siren-vol1" type="range" min="0" max="100" value="85"
+          <div style="color:#555;font-size:.65rem;margin-bottom:4px;">VOLUME <span id="gp-siren-vol1-display" style="color:#FF4444;">10%</span></div>
+          <input id="gp-siren-vol1" type="range" min="0" max="100" value="10"
             style="width:100%;accent-color:#FF4444;cursor:pointer;"
             oninput="_gp.setAlarmVolume(1, this.value/100)">
         </div>
@@ -1238,15 +1435,15 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
         <select id="gp-siren-img1"
           style="background:#111;border:1px solid #444;color:#ccc;padding:3px 6px;font-family:Consolas,monospace;font-size:.65rem;cursor:pointer;width:100%;margin-bottom:6px;"
           onchange="_gp._sirenImgSelectChanged(1)">
-          <option value="alarm1.jpeg" selected>alarm1.jpeg (default)</option>
-          <option value="alarm2.jpeg">alarm2.jpeg</option>
+          <option value="alarm1.webp" selected>alarm1.webp (default)</option>
+          <option value="mayday.webp">mayday.webp</option>
           <option value="alarm3.jpeg">alarm3.jpeg</option>
           <option value="__custom__">📂 Custom PNG/JPEG/GIF/WebP…</option>
           <option value="__none__">— None —</option>
         </select>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
           <button type="button" onclick="_gp._sirenLoadImage(1)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">📂 LOAD IMAGE</button>
-          <span id="gp-siren-imgname1" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">alarm1.jpeg</span>
+          <span id="gp-siren-imgname1" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">alarm1.webp</span>
           <button type="button" id="gp-siren-imgclear1" onclick="_gp._sirenClearImage(1)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">✕</button>
         </div>
         <div style="margin-bottom:6px;">
@@ -1274,12 +1471,12 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
         <div style="color:#FFAA00;font-weight:700;font-size:.7rem;margin-bottom:8px;">LEVEL 2 — ACTION STATIONS</div>
         <div style="margin-bottom:8px;">
           <div style="color:#555;font-size:.65rem;margin-bottom:4px;">THRESHOLD (µSv/h)</div>
-          <input id="gp-siren-thresh2" type="number" step="0.01" value="0.27" style="background:#111;border:1px solid #444;color:#fff;padding:4px 8px;font-family:Consolas,monospace;width:100px;">
+          <input id="gp-siren-thresh2" type="number" step="0.01" value="0.23" style="background:#111;border:1px solid #444;color:#fff;padding:4px 8px;font-family:Consolas,monospace;width:100px;">
           <span style="color:#555;font-size:.65rem;margin-left:8px;">Current: <span id="gp-siren-t2-display">0.27</span></span>
         </div>
         <div style="margin-bottom:8px;">
-          <div style="color:#555;font-size:.65rem;margin-bottom:4px;">VOLUME <span id="gp-siren-vol2-display" style="color:#FFAA00;">85%</span></div>
-          <input id="gp-siren-vol2" type="range" min="0" max="100" value="85"
+          <div style="color:#555;font-size:.65rem;margin-bottom:4px;">VOLUME <span id="gp-siren-vol2-display" style="color:#FFAA00;">100%</span></div>
+          <input id="gp-siren-vol2" type="range" min="0" max="100" value="100"
             style="width:100%;accent-color:#FFAA00;cursor:pointer;"
             oninput="_gp.setAlarmVolume(2, this.value/100)">
         </div>
@@ -1312,22 +1509,22 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <button type="button" onclick="_gp._sirenTestL2()" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">▶ TEST</button>
           <button type="button" onclick="_gp._sirenLoadFile(2)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">📂 LOAD</button>
-          <span id="gp-siren-file2" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">HMSIllustriousActionStations.wav</span>
+          <span id="gp-siren-file2" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">mayday.mp3</span>
           <button type="button" id="gp-siren-clear2" onclick="_gp._sirenClear(2)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">✕</button>
         </div>
                 <div style="margin-top:10px;margin-bottom:4px;color:#555;font-size:.65rem;">OVERLAY IMAGE</div>
         <select id="gp-siren-img2"
           style="background:#111;border:1px solid #444;color:#ccc;padding:3px 6px;font-family:Consolas,monospace;font-size:.65rem;cursor:pointer;width:100%;margin-bottom:6px;"
           onchange="_gp._sirenImgSelectChanged(2)">
-          <option value="alarm1.jpeg">alarm1.jpeg</option>
-          <option value="alarm2.jpeg" selected>alarm2.jpeg (default)</option>
+          <option value="alarm1.webp">alarm1.webp</option>
+          <option value="mayday.webp" selected>mayday.webp (default)</option>
           <option value="alarm3.jpeg">alarm3.jpeg</option>
           <option value="__custom__">📂 Custom PNG/JPEG/GIF…</option>
           <option value="__none__">— None —</option>
         </select>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
           <button type="button" onclick="_gp._sirenLoadImage(2)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">📂 LOAD IMAGE</button>
-          <span id="gp-siren-imgname2" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">alarm2.jpeg</span>
+          <span id="gp-siren-imgname2" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">mayday.webp</span>
           <button type="button" id="gp-siren-imgclear2" onclick="_gp._sirenClearImage(2)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">✕</button>
         </div>
         <div style="margin-bottom:6px;">
@@ -1355,12 +1552,12 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
         <div style="color:#FF00FF;font-weight:700;font-size:.7rem;margin-bottom:8px;">LEVEL 3 — CHEMICAL ALARM</div>
         <div style="margin-bottom:8px;">
           <div style="color:#555;font-size:.65rem;margin-bottom:4px;">THRESHOLD (µSv/h)</div>
-          <input id="gp-siren-thresh3" type="number" step="0.01" value="0.33" style="background:#111;border:1px solid #444;color:#fff;padding:4px 8px;font-family:Consolas,monospace;width:100px;">
+          <input id="gp-siren-thresh3" type="number" step="0.01" value="0.27" style="background:#111;border:1px solid #444;color:#fff;padding:4px 8px;font-family:Consolas,monospace;width:100px;">
           <span style="color:#555;font-size:.65rem;margin-left:8px;">Current: <span id="gp-siren-t3-display">0.33</span></span>
         </div>
         <div style="margin-bottom:8px;">
-          <div style="color:#555;font-size:.65rem;margin-bottom:4px;">VOLUME <span id="gp-siren-vol3-display" style="color:#FF00FF;">85%</span></div>
-          <input id="gp-siren-vol3" type="range" min="0" max="100" value="85"
+          <div style="color:#555;font-size:.65rem;margin-bottom:4px;">VOLUME <span id="gp-siren-vol3-display" style="color:#FF00FF;">10%</span></div>
+          <input id="gp-siren-vol3" type="range" min="0" max="100" value="10"
             style="width:100%;accent-color:#FF00FF;cursor:pointer;"
             oninput="_gp.setAlarmVolume(3, this.value/100)">
         </div>
@@ -1399,8 +1596,8 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
         <select id="gp-siren-img3"
           style="background:#111;border:1px solid #444;color:#ccc;padding:3px 6px;font-family:Consolas,monospace;font-size:.65rem;cursor:pointer;width:100%;margin-bottom:6px;"
           onchange="_gp._sirenImgSelectChanged(3)">
-          <option value="alarm1.jpeg">alarm1.jpeg</option>
-          <option value="alarm2.jpeg">alarm2.jpeg</option>
+          <option value="alarm1.webp">alarm1.webp</option>
+          <option value="mayday.webp">mayday.webp</option>
           <option value="alarm3.jpeg" selected>alarm3.jpeg (default)</option>
           <option value="__custom__">📂 Custom PNG/JPEG/GIF…</option>
           <option value="__none__">— None —</option>
@@ -2460,6 +2657,20 @@ const _gp = {
   _gainL2: null,
   // ── Floor→Peak three-column metrics (ported from MainWindow.xaml.cs) ──
   _fpPairs: [],          // {fVal, pVal, dtSec, peakHrEq, floorIdx, peakIdx, t}
+
+  // ── Alarm exposure / threshold-duration metrics ──
+  _alarmTime: {
+    lastTs: 0,
+    total: [0, 0, 0],
+    current: [0, 0, 0],
+    hourly: [0, 0, 0],
+    floorToPeakCps: [],
+    active: false
+  },
+
+  // CPS captured during the currently armed floor → peak interval
+  _fpCpsBuf: [],
+
   _fpFloorDr: null,      // current arm floor
   _fpFloorIdx: -1,
   _fpFloorTs: 0,
@@ -2468,7 +2679,6 @@ const _gp = {
   _fpHighTs: 0,
   _fpConfirmed: false,
   _fpArmed: false,
-  _gainL2: null,
   _replay: {active:false},
   _zoomFreezeN: 0,
   _tlLines:[],
@@ -2984,6 +3194,95 @@ if (waveformValues.length >= 2) {
         });
 
         ctx.restore();
+
+        // ── Alarm exposure + floor→peak CPS metrics ─────────────
+        const alarmW = 285;
+        const alarmH = 92;
+        const alarmX = w - alarmW - 6;
+        const alarmY = by + boxH + 6;
+
+        ctx.save();
+
+        ctx.fillStyle = 'rgba(0,12,0,0.88)';
+        ctx.strokeStyle = '#00AA44';
+        ctx.lineWidth = 1;
+
+        ctx.fillRect(alarmX, alarmY, alarmW, alarmH);
+        ctx.strokeRect(alarmX, alarmY, alarmW, alarmH);
+
+        ctx.font = 'bold 10px Consolas,monospace';
+        ctx.fillStyle = '#00FF88';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
+
+        ctx.fillText(
+          'ALARM EXPOSURE TIME',
+          alarmX + 6,
+          alarmY + 12
+        );
+
+        ctx.font = '9px Consolas,monospace';
+
+        const at = this._alarmTime || {
+          total: [0,0,0],
+          hourly: [0,0,0]
+        };
+
+        const fmtSec = (v) => {
+          v = Number(v) || 0;
+
+          if (v < 60) return v.toFixed(1) + 's';
+
+          const m = Math.floor(v / 60);
+          const s = Math.floor(v % 60);
+
+          if (m < 60) return `${m}m ${s}s`;
+
+          const h = Math.floor(m / 60);
+          return `${h}h ${m % 60}m`;
+        };
+
+        ctx.fillStyle = '#66FF88';
+
+        ctx.fillText(
+          `L1 >= ${Number(this._alarmThreshold).toFixed(2)} : ${fmtSec(at.total[0])}  /hr ${fmtSec(at.hourly[0])}`,
+          alarmX + 6,
+          alarmY + 27
+        );
+
+        ctx.fillText(
+          `L2 >= ${Number(this._alarmThreshold2).toFixed(2)} : ${fmtSec(at.total[1])}  /hr ${fmtSec(at.hourly[1])}`,
+          alarmX + 6,
+          alarmY + 41
+        );
+
+        ctx.fillText(
+          `L3 >= ${Number(this._alarmThreshold3).toFixed(2)} : ${fmtSec(at.total[2])}  /hr ${fmtSec(at.hourly[2])}`,
+          alarmX + 6,
+          alarmY + 55
+        );
+
+        const newest = pairs.length
+          ? pairs[pairs.length - 1]
+          : null;
+
+        ctx.fillStyle = '#AAAA66';
+
+        if (newest) {
+          ctx.fillText(
+            `FP CPS: total=${newest.cpsTotal || 0}  pk=${newest.cpsPeak || 0}  avg=${Number(newest.cpsAvg || 0).toFixed(2)}`,
+            alarmX + 6,
+            alarmY + 71
+          );
+        } else {
+          ctx.fillText(
+            'FP CPS: waiting for valid floor → peak',
+            alarmX + 6,
+            alarmY + 71
+          );
+        }
+
+        ctx.restore();
       }
     }
     if (this._panorama && this._panZoomed) {
@@ -3042,9 +3341,9 @@ if (waveformValues.length >= 2) {
     }).catch(e=>{alert('Screen capture failed: '+e.message);});
   },
   _alarmEnabled: false,
-  _alarmThreshold: 0.20,   // L1
-  _alarmThreshold2: 0.27,  // L2
-  _alarmThreshold3: 0.33,  // L3  (chemalm) — set to 33 if you meant absolute 33
+  _alarmThreshold: 0.18,   // L1
+  _alarmThreshold2: 0.23,  // L2
+  _alarmThreshold3: 0.27,  // L3  (chemalm) — set to 33 if you meant absolute 33
 
   _alarmL1Wanted: false,
   _alarmL2Wanted: false,
@@ -3052,7 +3351,7 @@ if (waveformValues.length >= 2) {
 // ── CPS EVENT SOUNDS ──────────────────────────────────────────────────────
   // Index 0 = CPS 1, index 1 = CPS 2 … index 9 = CPS 10, index 10 = CPS 11+
   _cpsSounds: [
-    'Explosion Large 2.wav',
+    'type99_mn.wav',
     'Imperial Laser 1.wav',
     'Imperial Laser 2.wav',
     'Imperial Laser Turbo.wav',
@@ -3067,8 +3366,19 @@ if (waveformValues.length >= 2) {
   // Custom AudioBuffers loaded via file picker, parallel array (null = use filename)
   _cpsSoundBuffers: new Array(11).fill(null),
   _cpsSoundCustomNames: new Array(11).fill(null),
-  _cpsVolumes: new Array(11).fill(1.0),
-  _cpsAudioCtx: null,
+_cpsVolumes: [
+  0.11,  // CPS 1
+  0.07,  // CPS 2
+  0.30,  // CPS 3
+  0.35,  // CPS 4
+  0.40,  // CPS 5
+  0.45,  // CPS 6
+  0.50,  // CPS 7
+  0.55,  // CPS 8
+  0.60,  // CPS 9
+  0.70,  // CPS 10
+  0.80   // CPS 11+
+],  _cpsAudioCtx: null,
   _getCpsCtx(){
     if (!this._cpsAudioCtx || this._cpsAudioCtx.state === 'closed') {
       this._cpsAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -3244,9 +3554,9 @@ _playCpsSound(cps){
     const lvlStr = lvl >= 11 ? '11+' : String(lvl);
     lbl.textContent = `CPS ${lvlStr} → ${name.replace('.wav','').replace('.mp3','')}`;
   },
-  _alarmVol1: 0.85,
-  _alarmVol2: 0.85,
-  _alarmVol3: 0.85,
+  _alarmVol1: 0.10,
+  _alarmVol2: 1.00,
+  _alarmVol3: 0.10,
 
   _alarmAudioL1: null,
   _alarmAudioL2: null,
@@ -3257,10 +3567,10 @@ _playCpsSound(cps){
   _sirenAudioL3: null,
   // Built-in file chosen in dropdown (used when no custom buffer)
   _sirenFileL1: '661steamsiren.wav',
-  _sirenFileL2: 'HMSIllustriousActionStations.wav',
+  _sirenFileL2: 'mayday.mp3',
   _sirenFileL3: 'chemalm.wav',
-  _sirenImgL1: 'alarm1.jpeg',
-  _sirenImgL2: 'alarm2.jpeg',
+  _sirenImgL1: 'alarm1.webp',
+  _sirenImgL2: 'mayday.webp',
   _sirenImgL3: 'alarm3.jpeg',
   _sirenImgCustomL1: null,
   _sirenImgCustomL2: null,
@@ -3363,7 +3673,7 @@ _playCpsSound(cps){
   },
   _sirenDefaultFile(level){
     if (level === 1) return '661steamsiren.wav';
-    if (level === 2) return 'HMSIllustriousActionStations.wav';
+    if (level === 2) return 'mayday.mp3';
     return 'chemalm.wav';
   },
 
@@ -3404,7 +3714,7 @@ _playCpsSound(cps){
     else this._sirenTestL3();
   },
   _sirenImgDefault(level){
-    return level === 1 ? 'alarm1.jpeg' : level === 2 ? 'alarm2.jpeg' : 'alarm3.jpeg';
+    return level === 1 ? 'alarm1.webp' : level === 2 ? 'mayday.webp' : 'alarm3.jpeg';
   },
 
   _sirenImgUrl(level){
@@ -4131,9 +4441,92 @@ _playCpsSound(cps){
   _tlEvt(msg){
     this._tlEvtCol.push(msg);
   },
+  // ═══════════════════════════════════════════════════════════════
+  // ALARM THRESHOLD TIME METRICS
+  //
+  // Measures actual elapsed wall-clock time above each configured
+  // alarm threshold. Time is accumulated independently for L1/L2/L3.
+  //
+  // total  = complete session exposure
+  // hourly = equivalent exposure rate normalized to one hour
+  // ═══════════════════════════════════════════════════════════════
+  _updateAlarmTime(dr, wallMs) {
+    const ts = Number.isFinite(wallMs) ? wallMs : Date.now();
+
+    if (!this._alarmTime) {
+      this._alarmTime = {
+        lastTs: ts,
+        total: [0, 0, 0],
+        current: [0, 0, 0],
+        hourly: [0, 0, 0],
+        floorToPeakCps: [],
+        active: false
+      };
+      return;
+    }
+
+    if (!Number.isFinite(this._alarmTime.lastTs) || this._alarmTime.lastTs <= 0) {
+      this._alarmTime.lastTs = ts;
+      return;
+    }
+
+    let dt = (ts - this._alarmTime.lastTs) / 1000.0;
+
+    // Reject clock jumps / stale packets.
+    if (!Number.isFinite(dt) || dt < 0 || dt > 10) {
+      dt = 0;
+    }
+
+    const thresholds = [
+      Number(this._alarmThreshold),
+      Number(this._alarmThreshold2),
+      Number(this._alarmThreshold3)
+    ];
+
+    for (let i = 0; i < 3; i++) {
+      if (Number.isFinite(thresholds[i]) && dr >= thresholds[i]) {
+        this._alarmTime.total[i] += dt;
+      }
+    }
+
+    this._alarmTime.lastTs = ts;
+
+    const elapsedSession =
+      this.cpmMinStart
+        ? Math.max(1, (ts - this.cpmMinStart) / 1000.0)
+        : 1;
+
+    for (let i = 0; i < 3; i++) {
+      this._alarmTime.hourly[i] =
+        this._alarmTime.total[i] * 3600.0 / elapsedSession;
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════════
+  // CPS STORAGE FOR FLOOR → PEAK EVENTS
+  // ═══════════════════════════════════════════════════════════════
+  _captureFpCps(cps) {
+    if (!this._fpArmed) return;
+
+    if (!Array.isArray(this._fpCpsBuf)) {
+      this._fpCpsBuf = [];
+    }
+
+    this._fpCpsBuf.push(Number(cps) || 0);
+  },
+
   _cpsReady: false,
   onReading(d){
     const dr = d.dr || 0;
+
+    const readingWallMs =
+      d.wall_ns
+        ? d.wall_ns / 1e6
+        : Date.now();
+
+    this._updateAlarmTime(dr, readingWallMs);
+    this._captureFpCps(d.cps || 0);
+
     this._checkAlarm(dr);
     if (!this._cpsReady) { this._cpsReady = true; this._cpsPreloadAll(); }
     if (d.cps > 0) this._playCpsSound(d.cps);
@@ -4265,6 +4658,7 @@ _fpProcessReading(dr, wallMs) {
     this._fpFloorIdx = idx;
     this._fpFloorTs = ts;
     this._fpHighDr = dr;
+    this._fpCpsBuf = [0];
     this._fpHighIdx = idx;
     this._fpHighTs = ts;
     this._fpConfirmed = false;
@@ -4306,6 +4700,19 @@ _fpProcessReading(dr, wallMs) {
         // Always a real intensity when hill is valid — never force 0
         const peakHrEq = this._fpHighDr * (3600.0 / dtSec);
 
+        const fpCps = Array.isArray(this._fpCpsBuf)
+          ? this._fpCpsBuf.slice()
+          : [];
+
+        const fpTotalCps = fpCps.reduce(
+          (sum, v) => sum + (Number(v) || 0),
+          0
+        );
+
+        const fpPeakCps = fpCps.length
+          ? Math.max(...fpCps)
+          : 0;
+
         const pair = {
           fVal: this._fpFloorDr,
           pVal: this._fpHighDr,
@@ -4316,6 +4723,15 @@ _fpProcessReading(dr, wallMs) {
           peakIdx: this._fpHighIdx,
           floorTs: this._fpFloorTs,
           peakTs: this._fpHighTs,
+
+          // CPS occurring during this floor → peak interval
+          cps: fpCps,
+          cpsTotal: fpTotalCps,
+          cpsPeak: fpPeakCps,
+          cpsAvg: fpCps.length
+            ? Number((fpTotalCps / fpCps.length).toFixed(2))
+            : 0,
+
           t: new Date().toLocaleTimeString()
         };
 
@@ -4326,12 +4742,14 @@ _fpProcessReading(dr, wallMs) {
         this._fpConfirmed = false;
         this._fpFloorDr = 0;
         this._fpHighDr = 0;
+        this._fpCpsBuf = [];
       } else {
         // Sub-threshold discard
         this._fpArmed = false;
         this._fpConfirmed = false;
         this._fpFloorDr = 0;
         this._fpHighDr = 0;
+        this._fpCpsBuf = [];
 
         if (dr <= FP_FLOOR_BAND) {
           this._fpArmed = true;
