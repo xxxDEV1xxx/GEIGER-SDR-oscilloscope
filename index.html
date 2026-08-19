@@ -1496,8 +1496,14 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
       <button id="gp-siren-btn" onclick="_gp.openSirenConfig()" style="background:#0a0a1a;border:1px solid #8844FF;color:#8844FF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">🔊 SIREN</button>
       <button id="gp-remote-btn" onclick="_gp.openRemoteConfig()" style="background:#0a1a1a;border:1px solid #00CCFF;color:#00CCFF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">🌐 CONNECT</button>
 <button id="gp-replay-btn" onclick="_gp.openReplay()" style="background:#0a1a0a;border:1px solid #00AA44;color:#00AA44;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⏵ REPLAY</button>
-      <button id="gp-fastproc-btn" onclick="_gp.openFastProcess()" style="background:#0a0a1a;border:1px solid #FFAA00;color:#FFAA00;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⏩ PROCESS ALL</button>      <button id="gp-pan-btn" onclick="_gp.togglePanorama()" style="background:#0a0a1a;border:1px solid #4444FF;color:#4444FF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⊞ PANORAMA</button>
-<button onclick="_gp.exportLog()" style="background:#001a00;border:1px solid #00FF88;color:#00FF88;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⬇ EXPORT LOG</button>
+      <button id="gp-pan-btn" onclick="_gp.togglePanorama()" style="background:#0a0a1a;border:1px solid #4444FF;color:#4444FF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⊞ PANORAMA</button>
+      <div style="display:flex;align-items:center;gap:6px;background:#0a0a1a;border:1px solid #FF44FF;padding:2px 8px;border-radius:4px;">
+        <span style="font-family:Consolas,monospace;font-size:.65rem;color:#FF44FF;">CPS WIN</span>
+        <input type="range" id="gp-cps-win" min="1" max="300" value="60" step="1"
+          style="width:80px;cursor:pointer;"
+          oninput="_gp._cpsWindow=+this.value;document.getElementById('gp-cps-win-val').textContent=this.value+'s'">
+        <span id="gp-cps-win-val" style="font-family:Consolas,monospace;font-size:.65rem;color:#FF44FF;min-width:32px;">60s</span>
+      </div><button onclick="_gp.exportLog()" style="background:#001a00;border:1px solid #00FF88;color:#00FF88;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⬇ EXPORT LOG</button>
       <button onclick="_gp.clearLog()" style="background:#1a0000;border:1px solid #FF4444;color:#FF4444;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">✕ CLEAR LOG</button>
       <a href="/downloads/fs5000_serial.py" download style="background:#001100;border:1px solid #00FF41;color:#00FF41;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;text-decoration:none;">⬇ fs5000_serial.py</a>
       <button id="gp-rec-btn" onclick="_gp.toggleRecord()" style="background:#1a0000;border:1px solid #FF4444;color:#FF4444;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⏺ RECORD</button>
@@ -1871,24 +1877,24 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
         <select id="gp-siren-sound1"
           style="background:#111;border:1px solid #444;color:#ccc;padding:3px 6px;font-family:Consolas,monospace;font-size:.65rem;cursor:pointer;width:100%;margin-bottom:6px;"
           onchange="_gp._sirenSoundSelectChanged(1)">
-          <option value="661steamsiren.wav" selected>661 Steam Siren</option>
-          <option value="HMSIllustriousActionStations.wav">HMS Illustrious Action Stations</option>
-          <option value="chemalm.wav">Chemical Alarm</option>
-          <option value="Alarm 1.wav">Alarm 1</option>
-          <option value="Alarm 2.wav">Alarm 2</option>
-          <option value="Alarm 3.wav">Alarm 3</option>
-          <option value="Alarm 4.wav">Alarm 4</option>
-          <option value="Beep 1.wav">Beep 1</option>
-          <option value="Beep 2.wav">Beep 2</option>
-          <option value="Beep 3.wav">Beep 3</option>
-          <option value="MissileLock2.wav">Missile Lock 2</option>
-          <option value="R2 1.wav">R2 1</option>
-          <option value="R2 2.wav">R2 2</option>
-          <option value="R2 3.wav">R2 3</option>
-          <option value="R2 4.wav">R2 4</option>
-          <option value="R2 5.wav">R2 5</option>
-          <option value="R2 6.wav">R2 6</option>
-          <option value="R2 7.wav">R2 7</option>
+          <option value="/audio/661steamsiren.wav" selected>661 Steam Siren</option>
+          <option value="/audio/HMSIllustriousActionStations.wav">HMS Illustrious Action Stations</option>
+          <option value="/audio/chemalm.wav">Chemical Alarm</option>
+          <option value="/audio/Alarm 1.wav">Alarm 1</option>
+          <option value="/audio/Alarm 2.wav">Alarm 2</option>
+          <option value="/audio/Alarm 3.wav">Alarm 3</option>
+          <option value="/audio/Alarm 4.wav">Alarm 4</option>
+          <option value="/audio/Beep 1.wav">Beep 1</option>
+          <option value="/audio/Beep 2.wav">Beep 2</option>
+          <option value="/audio/Beep 3.wav">Beep 3</option>
+          <option value="/audio/MissileLock2.wav">Missile Lock 2</option>
+          <option value="/audio/R2 1.wav">R2 1</option>
+          <option value="/audio/R2 2.wav">R2 2</option>
+          <option value="/audio/R2 3.wav">R2 3</option>
+          <option value="/audio/R2 4.wav">R2 4</option>
+          <option value="/audio/R2 5.wav">R2 5</option>
+          <option value="/audio/R2 6.wav">R2 6</option>
+          <option value="/audio/R2 7.wav">R2 7</option>
           <option value="__custom__">📂 Custom file…</option>
         </select>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -1949,25 +1955,25 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
         <select id="gp-siren-sound2"
           style="background:#111;border:1px solid #444;color:#ccc;padding:3px 6px;font-family:Consolas,monospace;font-size:.65rem;cursor:pointer;width:100%;margin-bottom:6px;"
           onchange="_gp._sirenSoundSelectChanged(2)">
-          <option value="661steamsiren.wav">661 Steam Siren</option>
-          <option value="HMSIllustriousActionStations.wav" selected>HMS Illustrious Action Stations</option>
-          <option value="chemalm.wav">Chemical Alarm</option>
-          <option value="mayday.mp3">Mayday</option>
-          <option value="Alarm 1.wav">Alarm 1</option>
-          <option value="Alarm 2.wav">Alarm 2</option>
-          <option value="Alarm 3.wav">Alarm 3</option>
-          <option value="Alarm 4.wav">Alarm 4</option>
-          <option value="Beep 1.wav">Beep 1</option>
-          <option value="Beep 2.wav">Beep 2</option>
-          <option value="Beep 3.wav">Beep 3</option>
-          <option value="MissileLock2.wav">Missile Lock 2</option>
-          <option value="R2 1.wav">R2 1</option>
-          <option value="R2 2.wav">R2 2</option>
-          <option value="R2 3.wav">R2 3</option>
-          <option value="R2 4.wav">R2 4</option>
-          <option value="R2 5.wav">R2 5</option>
-          <option value="R2 6.wav">R2 6</option>
-          <option value="R2 7.wav">R2 7</option>
+          <option value="/audio/661steamsiren.wav">661 Steam Siren</option>
+          <option value="/audio/HMSIllustriousActionStations.wav" selected>HMS Illustrious Action Stations</option>
+          <option value="/audio/chemalm.wav">Chemical Alarm</option>
+          <option value="/audio/mayday.mp3">Mayday</option>
+          <option value="/audio/Alarm 1.wav">Alarm 1</option>
+          <option value="/audio/Alarm 2.wav">Alarm 2</option>
+          <option value="/audio/Alarm 3.wav">Alarm 3</option>
+          <option value="/audio/Alarm 4.wav">Alarm 4</option>
+          <option value="/audio/Beep 1.wav">Beep 1</option>
+          <option value="/audio/Beep 2.wav">Beep 2</option>
+          <option value="/audio/Beep 3.wav">Beep 3</option>
+          <option value="/audio/MissileLock2.wav">Missile Lock 2</option>
+          <option value="/audio/R2 1.wav">R2 1</option>
+          <option value="/audio/R2 2.wav">R2 2</option>
+          <option value="/audio/R2 3.wav">R2 3</option>
+          <option value="/audio/R2 4.wav">R2 4</option>
+          <option value="/audio/R2 5.wav">R2 5</option>
+          <option value="/audio/R2 6.wav">R2 6</option>
+          <option value="/audio/R2 7.wav">R2 7</option>
           <option value="__custom__">📂 Custom file…</option>
         </select>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -2028,25 +2034,25 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
         <select id="gp-siren-sound3"
           style="background:#111;border:1px solid #444;color:#ccc;padding:3px 6px;font-family:Consolas,monospace;font-size:.65rem;cursor:pointer;width:100%;margin-bottom:6px;"
           onchange="_gp._sirenSoundSelectChanged(3)">
-          <option value="661steamsiren.wav">661 Steam Siren</option>
-          <option value="HMSIllustriousActionStations.wav">HMS Illustrious Action Stations</option>
-          <option value="chemalm.wav" selected>Chemical Alarm</option>
-          <option value="mayday.mp3">Mayday</option>
-          <option value="Alarm 1.wav">Alarm 1</option>
-          <option value="Alarm 2.wav">Alarm 2</option>
-          <option value="Alarm 3.wav">Alarm 3</option>
-          <option value="Alarm 4.wav">Alarm 4</option>
-          <option value="Beep 1.wav">Beep 1</option>
-          <option value="Beep 2.wav">Beep 2</option>
-          <option value="Beep 3.wav">Beep 3</option>
-          <option value="MissileLock2.wav">Missile Lock 2</option>
-          <option value="R2 1.wav">R2 1</option>
-          <option value="R2 2.wav">R2 2</option>
-          <option value="R2 3.wav">R2 3</option>
-          <option value="R2 4.wav">R2 4</option>
-          <option value="R2 5.wav">R2 5</option>
-          <option value="R2 6.wav">R2 6</option>
-          <option value="R2 7.wav">R2 7</option>
+          <option value="/audio/661steamsiren.wav">661 Steam Siren</option>
+          <option value="/audio/HMSIllustriousActionStations.wav">HMS Illustrious Action Stations</option>
+          <option value="/audio/chemalm.wav" selected>Chemical Alarm</option>
+          <option value="/audio/mayday.mp3">Mayday</option>
+          <option value="/audio/Alarm 1.wav">Alarm 1</option>
+          <option value="/audio/Alarm 2.wav">Alarm 2</option>
+          <option value="/audio/Alarm 3.wav">Alarm 3</option>
+          <option value="/audio/Alarm 4.wav">Alarm 4</option>
+          <option value="/audio/Beep 1.wav">Beep 1</option>
+          <option value="/audio/Beep 2.wav">Beep 2</option>
+          <option value="/audio/Beep 3.wav">Beep 3</option>
+          <option value="/audio/MissileLock2.wav">Missile Lock 2</option>
+          <option value="/audio/R2 1.wav">R2 1</option>
+          <option value="/audio/R2 2.wav">R2 2</option>
+          <option value="/audio/R2 3.wav">R2 3</option>
+          <option value="/audio/R2 4.wav">R2 4</option>
+          <option value="/audio/R2 5.wav">R2 5</option>
+          <option value="/audio/R2 6.wav">R2 6</option>
+          <option value="/audio/R2 7.wav">R2 7</option>
           <option value="__custom__">📂 Custom file…</option>
         </select>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -2119,31 +2125,31 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
             style="background:#111;border:1px solid #444;color:#ccc;padding:3px 6px;font-family:Consolas,monospace;font-size:.65rem;cursor:pointer;width:100%;"
             onchange="_gp._cpsSoundFileChanged()">
             <optgroup label="── Sci-Fi / Lasers ──">
-              <option value="Explosion Large 2.wav">Explosion Large 2</option>
-              <option value="Imperial Laser 1.wav">Imperial Laser 1</option>
-              <option value="Imperial Laser 2.wav">Imperial Laser 2</option>
-              <option value="Imperial Laser Turbo.wav">Imperial Laser Turbo</option>
-              <option value="Ion Cannon 1.wav">Ion Cannon 1</option>
-              <option value="Ion Cannon 2.wav">Ion Cannon 2</option>
-              <option value="Ion Cannon Turbo.wav">Ion Cannon Turbo</option>
-              <option value="Ion Impact.wav">Ion Impact</option>
-              <option value="Shield Hit.wav">Shield Hit</option>
-              <option value="Stormtrooper Blaster.wav">Stormtrooper Blaster</option>
-              <option value="Torpedo Fire.wav">Torpedo Fire</option>
-              <option value="Turbolaser 1.wav">Turbolaser 1</option>
-              <option value="Turbolaser 2.wav">Turbolaser 2</option>
-              <option value="chemalm.wav">Chemical Alarm</option>
-              <option value="starwarslaser.mp3">Star Wars Laser</option>
-              <option value="StarWarsLaser.mp3">StarWarsLaser (mp3)</option>
+              <option value="/audio/Explosion Large 2.wav">Explosion Large 2</option>
+              <option value="/audio/Imperial Laser 1.wav">Imperial Laser 1</option>
+              <option value="/audio/Imperial Laser 2.wav">Imperial Laser 2</option>
+              <option value="/audio/Imperial Laser Turbo.wav">Imperial Laser Turbo</option>
+              <option value="/audio/Ion Cannon 1.wav">Ion Cannon 1</option>
+              <option value="/audio/Ion Cannon 2.wav">Ion Cannon 2</option>
+              <option value="/audio/Ion Cannon Turbo.wav">Ion Cannon Turbo</option>
+              <option value="/audio/Ion Impact.wav">Ion Impact</option>
+              <option value="/audio/Shield Hit.wav">Shield Hit</option>
+              <option value="/audio/Stormtrooper Blaster.wav">Stormtrooper Blaster</option>
+              <option value="/audio/Torpedo Fire.wav">Torpedo Fire</option>
+              <option value="/audio/Turbolaser 1.wav">Turbolaser 1</option>
+              <option value="/audio/Turbolaser 2.wav">Turbolaser 2</option>
+              <option value="/audio/chemalm.wav">Chemical Alarm</option>
+              <option value="/audio/starwarslaser.mp3">Star Wars Laser</option>
+              <option value="/audio/StarWarsLaser.mp3">StarWarsLaser (mp3)</option>
             </optgroup>
             <optgroup label="── Guns ──">
-              <option value="Besa_Shot_Body-007.ogg">Besa Shot Body</option>
-              <option value="Besa_Shot_HiFi-002.ogg">Besa Shot HiFi</option>
-              <option value="FG42_Shot_Body-008.ogg">FG42 Shot Body</option>
-              <option value="M2_Browning_Body_Test_02-003.ogg">M2 Browning Body</option>
-              <option value="M2_Browning_HiFi_Test_02-001.ogg">M2 Browning HiFi</option>
-              <option value="AK47ST_Fire01.wav">AK47 Fire</option>
-              <option value="type99_mn.wav">Type 99</option>
+              <option value="/audio/Besa_Shot_Body-007.ogg">Besa Shot Body</option>
+              <option value="/audio/Besa_Shot_HiFi-002.ogg">Besa Shot HiFi</option>
+              <option value="/audio/FG42_Shot_Body-008.ogg">FG42 Shot Body</option>
+              <option value="/audio/M2_Browning_Body_Test_02-003.ogg">M2 Browning Body</option>
+              <option value="/audio/M2_Browning_HiFi_Test_02-001.ogg">M2 Browning HiFi</option>
+              <option value="/audio/AK47ST_Fire01.wav">AK47 Fire</option>
+              <option value="/audio/type99_mn.wav">Type 99</option>
             </optgroup>
             <option value="__custom__">📂 Use custom file…</option>
           </select>
@@ -2977,6 +2983,51 @@ if(me){const chessToggle=document.getElementById('ctwchess-toggle');if(chessTogg
   const savedFont=localStorage.getItem('postFont');
   if(savedFont){document.getElementById('feed-list').style.fontFamily=savedFont;document.getElementById('font-picker').value=savedFont;}
   setTimeout(()=>GEIGER.probe(),2000);
+
+  // ── SSIG library sync: push any locally stored signatures to server ──
+  // Runs once at startup if the user is logged in.
+  // Silent on all errors — never blocks the UI.
+  setTimeout(async () => {
+    try {
+      if (!token && !localStorage.getItem('token')) return;
+      const raw = localStorage.getItem('ssigLibrary');
+      if (!raw) return;
+      const lib = JSON.parse(raw);
+      if (!Array.isArray(lib) || !lib.length) return;
+      // Ask server which signatures it already has for this user
+      let existing = [];
+      try {
+        const res = await api('GET', '/api/geiger/source-signatures');
+        existing = Array.isArray(res) ? res.map(s => s.source_name || s.source) : [];
+        console.info('[SSIG SYNC] server has:', existing);
+      } catch (e) {
+        console.warn('[SSIG SYNC] could not fetch existing:', e.message);
+      }
+      let pushed = 0, skipped = 0;
+      for (const sig of lib) {
+        const name = String(sig.source || sig.name || '').trim();
+        if (!name) { skipped++; continue; }
+        // Skip if server already has this source name
+        if (existing.some(e => e.toLowerCase() === name.toLowerCase())) {
+          skipped++;
+          continue;
+        }
+        try {
+          await api('POST', '/api/geiger/source-signatures', sig);
+          pushed++;
+        } catch (syncErr) {
+          console.warn('[SSIG SYNC] failed to push', name, ':', syncErr.message);
+          skipped++;
+        }
+      }
+      if (pushed > 0) {
+        toast(`Synced ${pushed} source signature${pushed > 1 ? 's' : ''} to server.`);
+        console.info(`[SSIG SYNC] pushed=${pushed} skipped=${skipped}`);
+      }
+    } catch (e) {
+      console.warn('[SSIG SYNC] silent failure:', e.message);
+    }
+  }, 3500); // slight delay so session/token is fully restored first
 });
 </script>
 <!-- ═══════════════════════════════════════════════
@@ -3183,6 +3234,7 @@ _lastDisplayedDrStr: null,
   _fpArmed: false,
   _replay: {active:false},
   _zoomFreezeN: 0,
+  _cpsWindow:60,
   _tlLines:[],
   _tlBucketSec:-1,
   _tlBucketTs:'',
@@ -3454,7 +3506,54 @@ if (waveformValues.length >= 2) {
   ctx.stroke();
   ctx.restore();
 }
-    
+
+// ── CPS rolling window waveform ───────────────────────────────────
+{
+  let cpsData;
+  if (this._panorama && this._panZoomed) {
+    const freezeN = this._zoomFreezeN || this.cpsHistory.length;
+    const center = Math.max(ZOOM_HALF, Math.min(freezeN - 1 - ZOOM_HALF, this._panZoomCenter + this._panDragOffset));
+    const s = Math.max(0, Math.floor(center - ZOOM_HALF));
+    cpsData = this.cpsHistory.slice(s, Math.min(this.cpsHistory.length, s + 2 * ZOOM_HALF + 1));
+  } else if (this._panorama) {
+    cpsData = this.cpsHistory;
+  } else {
+    cpsData = this.cpsHistory.slice(Math.max(0, this.cpsHistory.length - LIVE_WIN));
+  }
+  if (cpsData && cpsData.length >= 2) {
+    const win = this._cpsWindow || 60;
+    const cpsRolling = cpsData.map((v, i, a) => {
+      const s = Math.max(0, i - (win - 1));
+      let sum = 0;
+      for (let j = s; j <= i; j++) sum += a[j];
+      return sum;
+    });
+    const cpsMax = Math.max(...cpsRolling, 1);
+    const cpsSlots = this._panorama && !this._panZoomed
+      ? Math.max(cpsData.length - 1, 1)
+      : LIVE_WIN - 1;
+    const cpsXStep = w / cpsSlots;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, w, h);
+    ctx.clip();
+    ctx.beginPath();
+    cpsRolling.forEach((v, i) => {
+      const x = this._panorama
+        ? i * cpsXStep
+        : (LIVE_WIN - cpsRolling.length + i) * cpsXStep;
+      const y = h - (v / cpsMax) * h * 0.85;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#FF44FF';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
     [[0.20,'#FF4444'],[0.15,'#FFAA00'],[0.10,'#FFFF00']].forEach(([val,col])=>{
       const y = h - ((val - min) / (max - min || 1)) * h;
       ctx.strokeStyle = col;
@@ -3847,7 +3946,7 @@ _playCpsSound(cps){
     // Not decoded yet — play path from current selection immediately
     const filename = this._cpsSounds[idx];
     if (!filename) return;
-    const a = new Audio('/' + encodeURIComponent(filename));
+    const a = new Audio('/audio/' + encodeURIComponent(filename));
     a.volume = vol;
     a.play().catch(() => {});
   },
@@ -3903,7 +4002,7 @@ _playCpsSound(cps){
     if (!filename) return;
     try {
       const ctx = this._getCpsCtx();
-      const resp = await fetch('/' + encodeURIComponent(filename));
+      const resp = await fetch('/audio/' + encodeURIComponent(filename));
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const ab = await resp.arrayBuffer();
       const buf = await ctx.decodeAudioData(ab.slice(0));
@@ -3917,7 +4016,7 @@ _playCpsSound(cps){
       console.warn('CPS sound reload failed:', filename, e);
       // Fallback: one-shot HTML Audio so change still produces sound
       try {
-        const a = new Audio('/' + filename);
+        const a = new Audio('/audio/' + filename);
         a.volume = this._cpsVolumes[idx] ?? 1;
         a.play().catch(() => {});
       } catch (_) {}
@@ -4419,6 +4518,13 @@ _playCpsSound(cps){
     if (!canvas) return;
     this._src = this._src || { needle: 0.15, library: [], active: true, windows: [] };
     this._src.active = true;
+    // Throttle caches — DR needle updates max once per 3s, CPS once per 1s
+    this._src._drNeedlePos  = null;  // cached 0-1 position
+    this._src._drNeedleTs   = 0;     // last update timestamp
+    this._src._cpsNeedlePos = null;
+    this._src._cpsNeedleTs  = 0;
+    this._src._drSource     = null;  // cached matched source
+    this._src._cpsSource    = null;
     const resize = () => {
       const dpr = window.devicePixelRatio || 1;
       canvas.width  = Math.max(1, (canvas.offsetWidth  || 300) * dpr);
@@ -4505,23 +4611,63 @@ _playCpsSound(cps){
         : null;
     };
 
-    // DR match — uses drFloor/drPeak, falls back to drMean+-20%
-    const _drMatch  = _findBest(dr,
-      s => Number.isFinite(s.drFloor) && s.drFloor > 0
-           ? s.drFloor : (s.drMean * 0.75 || 0),
-      s => Number.isFinite(s.drPeak)  && s.drPeak  > 0
-           ? s.drPeak  : (s.drMean * 1.25 || 0)
-    );
-    // CPS-60 match — uses cps60Floor/Peak, falls back to floor/peak
-    const _cpsMatch = _findBest(cps60arg,
-      s => s.cps60Floor != null ? s.cps60Floor : s.floor,
-      s => s.cps60Peak  != null ? s.cps60Peak  : s.peak
-    );
+    // ── Throttled source matching ────────────────────────────────────
+    // DR: recompute match + needle max once every 3000ms
+    // CPS: recompute match + needle max once every 1000ms
+    const _now = Date.now();
+    const _src = this._src || {};
 
-    const _drSource  = _drMatch  ? _drMatch.source  : null;
-    const _cpsSource = _cpsMatch ? _cpsMatch.source : null;
-    const _drInside  = _drMatch  ? _drMatch.inside  : false;
-    const _cpsInside = _cpsMatch ? _cpsMatch.inside : false;
+    let _drSource, _drInside;
+    if (!_src._drNeedleTs || (_now - _src._drNeedleTs) >= 3000 || !lib.length) {
+      const _drMatch = _findBest(dr,
+        s => Number.isFinite(s.drFloor) && s.drFloor > 0
+             ? s.drFloor : (s.drMean * 0.75 || 0),
+        s => Number.isFinite(s.drPeak)  && s.drPeak  > 0
+             ? s.drPeak  : (s.drMean * 1.25 || 0)
+      );
+      _drSource  = _drMatch ? _drMatch.source : null;
+      _drInside  = _drMatch ? _drMatch.inside : false;
+      if (_drSource) {
+        const _ef = Number.isFinite(_drSource.drFloor) && _drSource.drFloor > 0
+          ? _drSource.drFloor : (_drSource.drMean * 0.75 || 0);
+        const _ep = Number.isFinite(_drSource.drPeak) && _drSource.drPeak > 0
+          ? _drSource.drPeak  : (_drSource.drMean * 1.25 || 0);
+        _src._drNeedlePos = _ep > _ef
+          ? Math.max(0, Math.min(1, (dr - _ef) / (_ep - _ef))) : null;
+      } else {
+        _src._drNeedlePos = null;
+      }
+      _src._drSource   = _drSource;
+      _src._drInside   = _drInside;
+      _src._drNeedleTs = _now;
+    } else {
+      _drSource = _src._drSource;
+      _drInside = _src._drInside || false;
+    }
+
+    // CPS: recompute every 1000ms
+    // Scale fix: cps60arg is a 60s TOTAL (e.g. 46 counts)
+    // s.floor/s.peak from _mdPushSig are also 60s totals — correct scale
+    // s.cps60Floor/cps60Peak are per-reading floor/peak of the 60s total
+    let _cpsSource, _cpsInside;
+    if (!_src._cpsNeedleTs || (_now - _src._cpsNeedleTs) >= 1000 || !lib.length) {
+      const _cpsMatch = _findBest(cps60arg,
+        s => s.cps60Floor != null && Number.isFinite(s.cps60Floor)
+             ? s.cps60Floor
+             : (Number.isFinite(s.floor) ? s.floor : 0),
+        s => s.cps60Peak  != null && Number.isFinite(s.cps60Peak)
+             ? s.cps60Peak
+             : (Number.isFinite(s.peak)  ? s.peak  : 0)
+      );
+      _cpsSource = _cpsMatch ? _cpsMatch.source : null;
+      _cpsInside = _cpsMatch ? _cpsMatch.inside : false;
+      _src._cpsSource   = _cpsSource;
+      _src._cpsInside   = _cpsInside;
+      _src._cpsNeedleTs = _now;
+    } else {
+      _cpsSource = _src._cpsSource;
+      _cpsInside = _src._cpsInside || false;
+    }
 
     // Header: uSv match left, CPS match right, with envelope ranges
     ctx.font = 'bold 9px Consolas,monospace';
@@ -4656,10 +4802,13 @@ _playCpsSound(cps){
             const t = Math.max(0, Math.min(1, (dotVal - floor) / (peak - floor)));
             const x = barX + t * barW;
             // Is the live value inside this source's envelope?
+            // Fail silently if no envelope data — skip dot, keep blue needle
+            if (!Number.isFinite(dotVal)) return;
             const liveInside = dotFloor != null && dotPeak != null
               && Number.isFinite(dotFloor) && Number.isFinite(dotPeak)
               && curVal >= dotFloor && curVal <= dotPeak;
             // Color: green=natural, red=structured
+            // Legacy entries without is_natural flag default to natural (green)
             const isNatural = s.is_natural !== false;
             const baseCol   = isNatural ? [61, 220, 132] : [248, 113, 113];
             const alpha     = liveInside ? 1.0 : 0.35;
@@ -4681,6 +4830,7 @@ _playCpsSound(cps){
       };
     // ── µSv/h bar (top) ──────────────────────────────────────────────
     // Driven independently by _drSource (closest DR envelope match).
+    // ── µSv/h bar — uses cached needle position (updated max 1/3s) ──
     if (_drSource) {
       const _ef = Number.isFinite(_drSource.drFloor) && _drSource.drFloor > 0
         ? _drSource.drFloor : (_drSource.drMean * 0.75 || 0);
@@ -4689,8 +4839,9 @@ _playCpsSound(cps){
       const _em = Number.isFinite(_drSource.drMode) ? _drSource.drMode
                 : Number.isFinite(_drSource.drMean)  ? _drSource.drMean
                 : (_ef + _ep) / 2;
+      // Use cached needle pos — only recomputed every 3s
+      const _drNeedle = _src._drNeedlePos;
       if (_ep > _ef) {
-        const _drNeedle = Math.max(0, Math.min(1, (dr - _ef) / (_ep - _ef)));
         drawBar(32, '\u00b5Sv/h', _drNeedle, _ef, _em, _ep,
           dr, v => v.toFixed(4), _drInside);
       } else {
@@ -6814,6 +6965,14 @@ _rollingState: null,
     summary.completed_at = new Date(
       this.startedAt + this.READING_MS
     ).toISOString();
+    // Required by server: duration_s must be exactly 600
+    summary.duration_s = 600;
+    // Snapshot cps60 freq map and floor/peak for _finalize aggregation
+    summary.cps60_freq_map = Object.assign({}, this._cps60FreqMap || {});
+    summary.cps60_floor = Number.isFinite(this._cps60Floor) &&
+      this._cps60Floor !== Infinity  ? this._cps60Floor : 0;
+    summary.cps60_peak  = Number.isFinite(this._cps60Peak) &&
+      this._cps60Peak  !== -Infinity ? this._cps60Peak  : 0;
     this.readings.push(summary);
     const n = this.readingIndex + 1;
     this._setSlot(n, 'done', summary);
@@ -7118,6 +7277,13 @@ _rollingState: null,
       source: this.sourceName,
       // FIX 3: natural flag from checkbox — persists in ssigLibrary
       is_natural: this._isNatural !== false,
+      // Required by server endpoint validation
+      method:              'time-weighted-GM-statistical-envelope-plus-CPS-temporal-signature',
+      detector:            'Geiger-Muller',
+      n_readings:          this.N_READINGS,
+      reading_seconds:     600,
+      reading_minutes:     10,
+      independent_samples: true,
       /*
        * Continuous rolling 60-second CPS identifier.
        *
@@ -9751,9 +9917,32 @@ const METALDET = {
       const cpsPct = this._cpsToPct(v) / 100; // 0-1 envelope position
       let finalPct;
       if (RBA && RBA._ready) {
-        // Blend: 50% envelope position + 50% RBA structure dial
-        // structureScore 0=natural(bottom) 1=structured(top)
+        // Both ground truths loaded — blend envelope + RBA structure dial
+        // structureScore 0=natural(bottom/green) 1=structured(top/red)
         finalPct = 0.5 * cpsPct + 0.5 * this._structureScore;
+      } else if (this._sources && this._sources.length) {
+        // Only one pool recorded — use envelope position alone
+        // Find best source match for current CPS
+        const _liveDr2 = Number(this._lastLiveDr) || 0;
+        let _bestSrc = null, _bestD = Infinity;
+        for (const s of this._sources) {
+          const _f = Number.isFinite(s.drFloor) && s.drFloor > 0
+            ? s.drFloor : (s.drMean * 0.75 || 0);
+          const _p = Number.isFinite(s.drPeak) && s.drPeak > 0
+            ? s.drPeak  : (s.drMean * 1.25 || 0);
+          const _span = Math.max(_p - _f, 1e-9);
+          const _d = _liveDr2 < _f ? (_f - _liveDr2) / _span
+                   : _liveDr2 > _p ? (_liveDr2 - _p) / _span : 0;
+          if (_d < _bestD) { _bestD = _d; _bestSrc = { f: _f, p: _p }; }
+        }
+        if (_bestSrc && _bestSrc.p > _bestSrc.f) {
+          finalPct = Math.max(0, Math.min(1,
+            (Number(this._lastLiveDr) - _bestSrc.f) /
+            (_bestSrc.p - _bestSrc.f)
+          ));
+        } else {
+          finalPct = cpsPct;
+        }
       } else {
         finalPct = cpsPct;
       }
