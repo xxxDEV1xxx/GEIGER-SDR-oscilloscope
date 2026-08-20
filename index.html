@@ -1496,20 +1496,27 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
       <button id="gp-siren-btn" onclick="_gp.openSirenConfig()" style="background:#0a0a1a;border:1px solid #8844FF;color:#8844FF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">🔊 SIREN</button>
       <button id="gp-remote-btn" onclick="_gp.openRemoteConfig()" style="background:#0a1a1a;border:1px solid #00CCFF;color:#00CCFF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">🌐 CONNECT</button>
 <button id="gp-replay-btn" onclick="_gp.openReplay()" style="background:#0a1a0a;border:1px solid #00AA44;color:#00AA44;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⏵ REPLAY</button>
-      <button id="gp-pan-btn" onclick="_gp.togglePanorama()" style="background:#0a0a1a;border:1px solid #4444FF;color:#4444FF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⊞ PANORAMA</button>
-      <div style="display:flex;align-items:center;gap:6px;background:#0a0a1a;border:1px solid #FF44FF;padding:2px 8px;border-radius:4px;">
+<button id="gp-pan-btn" onclick="_gp.togglePanorama()" style="background:#0a0a1a;border:1px solid #4444FF;color:#4444FF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⊞ PANORAMA</button>
+<button id="gp-fastproc-btn" onclick="_gp.openFastProcess()" style="background:#0a0a1a;border:1px solid #FFAA00;color:#FFAA00;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⏩ PROCESS ALL</button>
+<button onclick="_gp.openFastProcessExport()" style="background:#0a0a1a;border:1px solid #FF8800;color:#FF8800;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⏩ PROCESS + EXPORT</button>
+           <div style="display:flex;align-items:center;gap:6px;background:#0a0a1a;border:1px solid #FF44FF;padding:2px 8px;border-radius:4px;">
         <span style="font-family:Consolas,monospace;font-size:.65rem;color:#FF44FF;">CPS WIN</span>
-        <input type="range" id="gp-cps-win" min="1" max="300" value="60" step="1"
+        <input type="range" id="gp-cps-win" min="1" max="60" value="60" step="1"
           style="width:80px;cursor:pointer;"
-          oninput="_gp._cpsWindow=+this.value;document.getElementById('gp-cps-win-val').textContent=this.value+'s'">
-        <span id="gp-cps-win-val" style="font-family:Consolas,monospace;font-size:.65rem;color:#FF44FF;min-width:32px;">60s</span>
-      </div><button onclick="_gp.exportLog()" style="background:#001a00;border:1px solid #00FF88;color:#00FF88;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⬇ EXPORT LOG</button>
+          oninput="var v=+this.value;_gp._cpsWindow=v;document.getElementById('gp-cps-win-val').textContent=v+'s';document.getElementById('gp-cps-win-num').value=v">
+        <span id="gp-cps-win-val" style="font-family:Consolas,monospace;font-size:.65rem;color:#FF44FF;min-width:28px;">60s</span>
+        <input type="number" id="gp-cps-win-num" min="1" max="60" value="60"
+          style="width:40px;background:#0a0a1a;border:1px solid #FF44FF;color:#FF44FF;font-family:Consolas,monospace;font-size:.65rem;padding:1px 3px;text-align:center;"
+          oninput="var v=Math.min(60,Math.max(1,+this.value||60));_gp._cpsWindow=v;document.getElementById('gp-cps-win').value=v;document.getElementById('gp-cps-win-val').textContent=v+'s'">
+      </div>
+      <button onclick="_gp.exportLog()" style="background:#001a00;border:1px solid #00FF88;color:#00FF88;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⬇ EXPORT LOG</button>
+      <button onclick="_gp.exportSigs()" style="background:#001a00;border:1px solid #00FFFF;color:#00FFFF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⬇ EXPORT SIGS</button>
       <button onclick="_gp.clearLog()" style="background:#1a0000;border:1px solid #FF4444;color:#FF4444;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">✕ CLEAR LOG</button>
-      <a href="/downloads/fs5000_serial.py" download style="background:#001100;border:1px solid #00FF41;color:#00FF41;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;text-decoration:none;">⬇ fs5000_serial.py</a>
+      <a href="/downloads/fs5000_serial.py" download style="background:#001100;border:1px solid #00FF41;color:#00FF41;cursor:pointer;padding:2px 6px;font-family:Consolas,monospace;font-size:.55rem;text-decoration:none;">⬇ fs5000</a>
       <button id="gp-rec-btn" onclick="_gp.toggleRecord()" style="background:#1a0000;border:1px solid #FF4444;color:#FF4444;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⏺ RECORD</button>
       <button id="gp-alarm-btn" onclick="_gp.toggleAlarm()" style="background:#0a0a0a;border:1px solid #333;color:#555;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">🔇 ALARM</button>
       <button type="button" onclick="toggleGeigerPanel()" title="Close Geiger Scope"
-        style="background:#1a0000;border:1px solid #FF4444;color:#FF4444;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;margin-left:4px;flex-shrink:0;">✕ CLOSE</button>
+        style="background:#1a0000;border:1px solid #FF4444;color:#FF4444;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;margin-left:auto;flex-shrink:0;">✕ CLOSE</button>
     </div>
   </div>
   <!-- Metal-detector meter: compact under header -->
@@ -1566,6 +1573,14 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
       <div id="gp-peak" style="font-size:1rem;font-weight:700;color:#FFFF00;">-.----</div>
       <div style="color:#555;font-size:.6rem;margin-top:4px;">FLOOR (window)</div>
       <div id="gp-floor" style="font-size:1rem;font-weight:700;color:#00FFFF;">-.----</div>
+            <div style="border-top:1px solid #222;margin:8px 0;"></div>
+      <div style="color:#444;font-size:.6rem;margin-bottom:2px;">INCLINE CPS TOTAL</div>
+      <div style="color:#555;font-size:.55rem;margin-bottom:4px;">
+        0 → peak → −10% · window = <span id="gp-incl-win-lbl">60</span>s
+      </div>
+      <div id="gp-incl-current" style="font-size:.85rem;font-weight:700;color:#FF44FF;">—</div>
+      <div style="color:#555;font-size:.55rem;margin-top:4px;">LAST EVENTS</div>
+      <div id="gp-incl-log" style="font-family:Consolas,monospace;font-size:.55rem;max-height:90px;overflow-y:auto;color:#aa66aa;"></div>
       <div style="color:#555;font-size:.6rem;margin-top:4px;">DEVICE DOSE (µSv total)</div>
       <div id="gp-dose" style="font-size:.9rem;color:#8888FF;">-.----</div>
       <div style="color:#555;font-size:.6rem;margin-top:4px;">SESSION DOSE (µSv)</div>
@@ -3188,6 +3203,7 @@ if(_geigerSSE){ try{_geigerSSE.close();}catch(e){} _geigerSSE = null; }  } else 
 const _gp = {
   drHistory: [], cpsHistory: [], peakLog: [], sessionDose: 0, peakWindow: 0, floorWindow: 99,
   cpmBuf: [], sigPending: [], cpmMinStart: null, canvas: null, ctx: null,
+  _cpsWallNs: [],
   _yMax: 0.30,
   _viewMin: 0,
   _viewMax: 0.30,
@@ -3235,13 +3251,22 @@ _lastDisplayedDrStr: null,
   _replay: {active:false},
   _zoomFreezeN: 0,
   _cpsWindow:60,
+    _incline: {
+    active: false,
+    startIdx: -1,
+    peak: 0,
+    peakIdx: -1,
+    sumInWindow: 0,
+    log: [],
+  },
+  _lastSampleT:null,
   _tlLines:[],
   _tlBucketSec:-1,
   _tlBucketTs:'',
   _tlCpsTicks:[],
   _tlSigCol:'',
   _tlEvtCol:[],
-  sigBuf: [], sigGapCount: 0, sigSeqNum: 0, sigLedger: [],
+  sigBuf: [], sigGapCount: 0, sigSeqNum: 0, sigLedger: (()=>{try{return JSON.parse(localStorage.getItem('ctw_sigledger')||'[]');}catch(e){return [];}})(),
   init(){
     this.canvas = document.getElementById('gp-canvas');
     if(!this.canvas) return;
@@ -3353,7 +3378,12 @@ _lastDisplayedDrStr: null,
       startIdx = 0;
     } else {
       startIdx = Math.max(0, N - LIVE_WIN);
-      data = this.drHistory.slice(startIdx);
+      const raw = this.drHistory.slice(startIdx);
+      const pad = raw.length > 0 ? raw[0] : 0;
+      data = raw.length < LIVE_WIN
+        ? new Array(LIVE_WIN - raw.length).fill(pad).concat(raw)
+        : raw;
+      startIdx = 0;
     }
     if (data.length < 2) {
       requestAnimationFrame(() => this._draw());
@@ -3387,23 +3417,17 @@ if (this._viewMax == null || !Number.isFinite(this._viewMax)) {
 }
 const drMaxRaw =
   data.length ? Math.max(...data) : 0;
+// LIVE + ZOOM: sticky Y — only expand, never shrink (points keep Y while scrolling off)
+// PANORAMA (unzoomed): allow gentle shrink so long sessions stay readable
 if (drMaxRaw > this._viewMax * 0.90) {
-  this._viewMax =
-    Math.max(
-      drMaxRaw * 1.25,
-      Y_MAX_DEF
-    );
-}
-else if (
+  this._viewMax = Math.max(drMaxRaw * 1.25, Y_MAX_DEF);
+} else if (
+  this._panorama && !this._panZoomed &&
   data.length > 20 &&
   drMaxRaw < this._viewMax * 0.50 &&
   this._viewMax > Y_MAX_DEF
 ) {
-  this._viewMax =
-    Math.max(
-      drMaxRaw * 1.50,
-      Y_MAX_DEF
-    );
+  this._viewMax = Math.max(drMaxRaw * 1.50, Y_MAX_DEF);
 }
 const max = this._viewMax;
 const min = 0.0;
@@ -3443,16 +3467,15 @@ if (waveformValues.length >= 2) {
     if (this._panorama) {
       return index * waveformXStep;
     }
-    // LIVE:
-    // Fixed 120-sample window.
-    //
-    // If the buffer has fewer than 120 samples during startup,
-    // the data begins at its natural slot. Once 120 samples exist,
-    // the oldest point is exactly x=0 and newest is exactly x=w.
-    return (
-      (LIVE_WIN - waveformValues.length + index) *
-      waveformXStep
-    );
+    // LIVE: pure right-anchor. newest sample = w. older samples trail left.
+    // Sub-pixel scroll offset creates smooth conveyor between samples.
+    const now = performance.now();
+    if (!this._lastSampleT) this._lastSampleT = now;
+    const elapsed = Math.min(now - this._lastSampleT, 1000);
+    const subPx = (elapsed / 1000) * waveformXStep;
+    const fromRight = waveformValues.length - 1 - index;
+    return w - fromRight * waveformXStep - subPx;
+
   };
   /*
    * Direct point-to-point polyline.
@@ -3518,8 +3541,10 @@ if (waveformValues.length >= 2) {
   } else if (this._panorama) {
     cpsData = this.cpsHistory;
   } else {
-    cpsData = this.cpsHistory.slice(Math.max(0, this.cpsHistory.length - LIVE_WIN));
-  }
+    const cpsRaw = this.cpsHistory.slice(Math.max(0, this.cpsHistory.length - LIVE_WIN));
+    cpsData = cpsRaw.length < LIVE_WIN
+      ? new Array(LIVE_WIN - cpsRaw.length).fill(0).concat(cpsRaw)
+      : cpsRaw;  }
   if (cpsData && cpsData.length >= 2) {
     const win = this._cpsWindow || 60;
     const cpsRolling = cpsData.map((v, i, a) => {
@@ -3528,7 +3553,17 @@ if (waveformValues.length >= 2) {
       for (let j = s; j <= i; j++) sum += a[j];
       return sum;
     });
-    const cpsMax = Math.max(...cpsRolling, 1);
+    const cpsMaxNow = Math.max(...cpsRolling, 1);
+    if (this._cpsViewMax == null || !Number.isFinite(this._cpsViewMax)) {
+      this._cpsViewMax = cpsMaxNow;
+    }
+    if (cpsMaxNow > this._cpsViewMax * 0.90) {
+      this._cpsViewMax = Math.max(cpsMaxNow * 1.15, 1);
+    } else if (this._panorama && !this._panZoomed && cpsMaxNow < this._cpsViewMax * 0.45) {
+      // panorama only: allow shrink
+      this._cpsViewMax = Math.max(cpsMaxNow * 1.4, 1);
+    }
+    const cpsMax = this._cpsViewMax;
     const cpsSlots = this._panorama && !this._panZoomed
       ? Math.max(cpsData.length - 1, 1)
       : LIVE_WIN - 1;
@@ -3539,9 +3574,13 @@ if (waveformValues.length >= 2) {
     ctx.clip();
     ctx.beginPath();
     cpsRolling.forEach((v, i) => {
+      const now = performance.now();
+      if (!this._lastSampleT) this._lastSampleT = now;
+      const elapsed = Math.min(now - this._lastSampleT, 1000);
+      const subPx = (elapsed / 1000) * cpsXStep;
       const x = this._panorama
         ? i * cpsXStep
-        : (LIVE_WIN - cpsRolling.length + i) * cpsXStep;
+        : w - (cpsRolling.length - 1 - i) * cpsXStep - subPx;
       const y = h - (v / cpsMax) * h * 0.85;
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     });
@@ -3550,6 +3589,166 @@ if (waveformValues.length >= 2) {
     ctx.strokeStyle = '#FF44FF';
     ctx.lineWidth = 1.5;
     ctx.stroke();
+
+    // ── Purple major-peak labels: Σ raw CPS floor → crest only ────────
+    // Rules:
+    //   • One label per *significant* crest (prominence filter)
+    //   • Small shelves / intermediate bumps are absorbed into that crest
+    //   • Sum uses samples from left trough through the crest only
+    //     (never any downhill samples after the peak)
+    //   • No labels on pure descending flanks
+    {
+      const nRoll = cpsRolling.length;
+      if (nRoll >= 5) {
+        const hist = this.cpsHistory || [];
+        let histStart = 0;
+        let livePad = 0; // left zero-pad count in LIVE when hist < LIVE_WIN
+        if (this._panorama && this._panZoomed) {
+          const freezeN = this._zoomFreezeN || hist.length;
+          const center = Math.max(
+            ZOOM_HALF,
+            Math.min(freezeN - 1 - ZOOM_HALF, this._panZoomCenter + this._panDragOffset)
+          );
+          histStart = Math.max(0, Math.floor(center - ZOOM_HALF));
+        } else if (!this._panorama) {
+          if (hist.length >= LIVE_WIN) {
+            histStart = hist.length - LIVE_WIN;
+            livePad = 0;
+          } else {
+            histStart = 0;
+            livePad = LIVE_WIN - hist.length;
+          }
+        }
+
+        const maxRoll = (this._cpsViewMax && this._cpsViewMax > 0)
+          ? this._cpsViewMax
+          : Math.max(...cpsRolling, 1);
+        const yOfRoll = (v) => h - (v / maxRoll) * h * 0.85;
+        const xOfRoll = (i) => {
+          const now = performance.now();
+          if (!this._lastSampleT) this._lastSampleT = now;
+          const elapsed = Math.min(now - this._lastSampleT, 1000);
+          const subPx = (elapsed / 1000) * cpsXStep;
+          return this._panorama
+            ? i * cpsXStep
+            : w - (nRoll - 1 - i) * cpsXStep - subPx;
+        };
+
+        // 1) All local maxima (plateau → rightmost sample of the flat top)
+        const rawPeaks = [];
+        for (let i = 1; i < nRoll - 1; i++) {
+          const v = cpsRolling[i];
+          if (v >= cpsRolling[i - 1] && v > cpsRolling[i + 1]) rawPeaks.push(i);
+        }
+
+        // 2) Prominence: peak − higher of the deepest points to left/right
+        //    until a taller peak (or edge). Keeps only real crests.
+        const sorted = cpsRolling.slice().sort((a, b) => a - b);
+        const baseline = sorted[Math.floor(sorted.length * 0.12)] || 0;
+        const minProm = Math.max(4, maxRoll * 0.12); // tune: higher = fewer labels
+
+        const major = [];
+        for (const pi of rawPeaks) {
+          const pv = cpsRolling[pi];
+          if (pv < baseline + minProm) continue;
+
+          // left trough (stop at a taller peak)
+          let leftMin = pv, leftI = pi;
+          for (let k = pi - 1; k >= 0; k--) {
+            if (cpsRolling[k] > pv) break;
+            if (cpsRolling[k] < leftMin) { leftMin = cpsRolling[k]; leftI = k; }
+          }
+          // right trough (stop at a taller peak)
+          let rightMin = pv;
+          for (let k = pi + 1; k < nRoll; k++) {
+            if (cpsRolling[k] > pv) break;
+            if (cpsRolling[k] < rightMin) rightMin = cpsRolling[k];
+          }
+
+          const prom = pv - Math.max(leftMin, rightMin);
+          if (prom < minProm) continue;
+
+          // Reject pure downhill “peaks”: must have risen from the left trough
+          if (pv - leftMin < minProm * 0.85) continue;
+
+          major.push({ peakI: pi, floorI: leftI, peakV: pv });
+        }
+
+        // 3) Suppress a smaller crest that sits on the rising face of a
+        //    larger one to its right (aggregate into the final peak)
+        major.sort((a, b) => a.peakI - b.peakI);
+        const kept = [];
+        for (let i = 0; i < major.length; i++) {
+          const cur = major[i];
+          let absorbed = false;
+          for (let j = i + 1; j < major.length; j++) {
+            const nxt = major[j];
+            // same overall mountain if no deep reset between them
+            const gapMin = Math.min(...cpsRolling.slice(cur.peakI, nxt.peakI + 1));
+            if (nxt.peakV >= cur.peakV && gapMin > baseline + minProm * 0.35) {
+              absorbed = true; // cur is an intermediate shelf → drop it
+              break;
+            }
+          }
+          if (!absorbed) kept.push(cur);
+        }
+
+        ctx.save();
+        ctx.font = 'bold 15px Consolas,monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+
+        for (const ev of kept) {
+          // Map rolling index → absolute history index (skip LIVE pad slots)
+          const toAbs = (rollI) => {
+            if (!this._panorama && livePad > 0) {
+              if (rollI < livePad) return -1; // padded empty slot
+              return histStart + (rollI - livePad);
+            }
+            return histStart + rollI;
+          };
+          const peakAbs  = toAbs(ev.peakI);
+          const floorAbs = toAbs(ev.floorI);
+          if (peakAbs < 0 || peakAbs >= hist.length) continue;
+          if (floorAbs < 0) continue;
+
+          const lo = Math.max(0, Math.min(floorAbs, peakAbs));
+          const hi = Math.min(hist.length - 1, peakAbs);
+
+          let total = 0;
+          for (let j = lo; j <= hi; j++) total += (hist[j] || 0);
+          if (total <= 0) continue;
+
+          const tHist = this._cpsWallNs || [];
+          let secs = 0;
+          if (tHist.length > hi && tHist.length > lo) {
+            const t0 = Number(tHist[lo]) || 0;
+            const t1 = Number(tHist[hi]) || 0;
+            if (t0 > 0 && t1 > 0 && t1 >= t0) {
+              secs = (t1 - t0) / 1e9;
+            }
+          }
+          const secsStr = secs < 10 ? secs.toFixed(2) : secs.toFixed(1);
+
+          const x = xOfRoll(ev.peakI);
+          const y = yOfRoll(cpsRolling[ev.peakI]);
+          if (x < -20 || x > w + 20) continue;
+
+          const label = total + '  ' + secsStr + 's';
+          const tw = ctx.measureText(label).width;
+          const bx = x - tw / 2 - 3;
+          const by = y - 16;
+          ctx.fillStyle = 'rgba(20,0,20,0.85)';
+          ctx.fillRect(bx, by, tw + 6, 14);
+          ctx.strokeStyle = '#FF44FF';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(bx, by, tw + 6, 14);
+          ctx.fillStyle = '#FFAAFF';
+          ctx.fillText(label, x, y - 4);
+        }
+        ctx.restore();
+      }
+    }
     ctx.restore();
   }
 }
@@ -5598,6 +5797,17 @@ _remoteConnect() {
       btn.style.color=this._panorama?'#00FFFF':'#4444FF';
     }
   },
+  exportSigs(){
+    if(!this.sigLedger||!this.sigLedger.length){alert('No signatures yet.');return;}
+    const lines=this.sigLedger.map(e=>
+      `${e.t}\tSIG#${e.n}\t[${(e.seq||[]).join(',')}]\tpk=${e.peak}\tlen=${e.len}`
+    );
+    const blob=new Blob([lines.join('\n')],{type:'text/plain'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='signatures_'+new Date().toISOString().replace(/[:.]/g,'_').slice(0,19)+'.txt';
+    a.click();
+  },
   exportLog(){
     if(!this._tlLines||!this._tlLines.length){alert('No log data yet.');return;}
     const txt=this._tlLines.join('\n');
@@ -6093,8 +6303,17 @@ _remoteConnect() {
     if (!this._cpsReady) { this._cpsReady = true; this._cpsPreloadAll(); }
     if (d.cps > 0) this._playCpsSound(d.cps);
     this.drHistory.push(dr);
-    if(this.drHistory.length > 3600) this.drHistory.shift();    this.cpsHistory.push(d.cps||0);
-    if(this.cpsHistory.length > 3000) this.cpsHistory.shift();
+    this._lastSampleT = performance.now();
+    if (this.drHistory.length > 3600) this.drHistory.shift();
+    this.cpsHistory.push(d.cps || 0);
+    // Always store a real wall-clock ns (device ns preferred)
+    var _wn = (typeof wallNs !== 'undefined' && wallNs) ? wallNs
+            : (d.wall_ns || d.wallNs || (Date.now() * 1e6));
+    this._cpsWallNs.push(_wn);
+    if (this.cpsHistory.length > 3000) {
+      this.cpsHistory.shift();
+      this._cpsWallNs.shift();
+    }
     this._tlTick(d.wall_ns||0, d.cps||0);
     this.sessionDose += dr / 3600;
     this.peakWindow = Math.max(this.peakWindow, dr);
@@ -6382,6 +6601,7 @@ _fpProcessReading(dr, wallMs) {
 },
   _renderSig(entry) {
     this.sigLedger.unshift(entry);
+    try{localStorage.setItem('ctw_sigledger',JSON.stringify(this.sigLedger.slice(0,500)));}catch(e){}
     this._tlSig(entry);
     this._checkRecur(entry);
     if (this.sigLedger.length > 500) this.sigLedger.pop();
@@ -6549,6 +6769,10 @@ _fpProcessReading(dr, wallMs) {
     if(log.children.length>500) log.removeChild(log.lastChild);
   }
 };
+  _gp.openReplay = function(){
+  var inp = document.getElementById('gp-replay-input');
+  if(inp) inp.click();
+};
 _gp.openFastProcess = function(){
   var inp = document.createElement('input');
   inp.type = 'file';
@@ -6595,6 +6819,7 @@ _gp._fastProcessFile = async function(file){
     if(!line) continue;
     try {
       var d = JSON.parse(line);
+      if('seq' in d && 'dr' in d) d.type = 'reading';
       if(d.type === 'reading'){
         _gp.onReading(d);
         if(typeof runDetectors === 'function')
@@ -6607,10 +6832,45 @@ _gp._fastProcessFile = async function(file){
   }
   if(statusEl){ statusEl.textContent='DONE — '+processed+' records'; statusEl.style.color='#00FF88'; }
   if(btn){ btn.textContent='⏩ PROCESS ALL'; btn.style.borderColor='#00AA44'; btn.style.color='#00AA44'; }
-  var fileEl = document.getElementById('gp-replay-file');
-  if(fileEl){ fileEl.textContent = file.name+' ['+processed+' records — fully processed]'; }
-  var replayBar = document.getElementById('gp-replay-bar');
-  if(replayBar) replayBar.style.display = 'flex';
+};
+
+// ── PROCESS ALL + EXPORT — parses gz, populates GUI, then auto-downloads logs
+_gp.openFastProcessExport = function(){
+  var inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = '.jsonl,.jsonl.gz,.gz';
+  inp.onchange = function(e){ _gp._fastProcessFileExport(e.target.files[0]); };
+  inp.click();
+};
+
+_gp._fastProcessFileExport = async function(file){
+  if(!file) return;
+  // reuse same decompression and parse as _fastProcessFile
+  await _gp._fastProcessFile(file);
+  // now auto-download all outputs
+  var stamp = new Date().toISOString().replace(/[:.]/g,'_').slice(0,19);
+  var base = file.name.replace(/\.jsonl\.gz$|\.gz$/,'');
+  // timeline log
+  if(_gp._tlLines && _gp._tlLines.length){
+    var blob = new Blob([_gp._tlLines.join('\n')],{type:'text/plain'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = base+'_timeline_'+stamp+'.txt';
+    a.click();
+  }
+  // signatures
+  if(_gp.sigLedger && _gp.sigLedger.length){
+    var sigLines = _gp.sigLedger.map(function(e){
+      return e.t+'\tSIG#'+e.n+'\t['+e.seq.join(',')+']'+'\tpk='+e.peak+'\tlen='+e.len;
+    });
+    var blob2 = new Blob([sigLines.join('\n')],{type:'text/plain'});
+    var a2 = document.createElement('a');
+    a2.href = URL.createObjectURL(blob2);
+    a2.download = base+'_signatures_'+stamp+'.txt';
+    a2.click();
+  }
+  // export log (same as export log button)
+  _gp.exportLog();
 };
 function _startGeigerSSE(){
   if(_geigerSSE) return;
