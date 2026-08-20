@@ -3585,12 +3585,13 @@ if (waveformValues.length >= 2) {
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // ── Purple incline labels: Σ raw CPS from floor → true peak ───────
-    // Event model (matches original incline request):
-    //   start  = local floor / near-baseline before a sustained rise
-    //   peak   = highest point seen during the rise (ignores shelves)
-    //   seal   = value drops ≥10% below that overall peak, or returns near floor
-    // Arithmetic: total = Σ cpsHistory[j] for j in [floorAbs .. peakAbs]
+    // ── Purple major-peak labels: Σ raw CPS floor → crest only ────────
+    // Rules:
+    //   • One label per *significant* crest (prominence filter)
+    //   • Small shelves / intermediate bumps are absorbed into that crest
+    //   • Sum uses samples from left trough through the crest only
+    //     (never any downhill samples after the peak)
+    //   • No labels on pure descending flanks
     {
       const nRoll = cpsRolling.length;
       if (nRoll >= 5) {
@@ -3619,70 +3620,78 @@ if (waveformValues.length >= 2) {
             : w - (nRoll - 1 - i) * cpsXStep - subPx;
         };
 
-        // Baseline ≈ lower 15th percentile of the visible rolling series
-        const sorted = cpsRolling.slice().sort((a, b) => a - b);
-        const baseline = sorted[Math.floor(sorted.length * 0.15)] || 0;
-        const riseMin = Math.max(3, maxRoll * 0.08);   // ignore tiny noise bumps
-        const dropFrac = 0.10;                          // 10% drop seals the event
-
-        const events = [];
-        let active = false;
-        let floorI = 0, peakI = 0, peakV = 0;
-
-        for (let i = 1; i < nRoll; i++) {
+        // 1) All local maxima (plateau → rightmost sample of the flat top)
+        const rawPeaks = [];
+        for (let i = 1; i < nRoll - 1; i++) {
           const v = cpsRolling[i];
-          const prev = cpsRolling[i - 1];
+          if (v >= cpsRolling[i - 1] && v > cpsRolling[i + 1]) rawPeaks.push(i);
+        }
 
-          if (!active) {
-            // Start incline only on a clear rise from near baseline / local floor
-            if (v > prev && v > baseline + riseMin * 0.25) {
-              // Walk left to the true floor of this rise (skip shelves)
-              let fi = i - 1;
-              while (fi > 0 && cpsRolling[fi] >= cpsRolling[fi - 1]) fi--;
-              // Prefer deepest point in a short left window
-              let best = fi, bestV = cpsRolling[fi];
-              const leftLim = Math.max(0, fi - 12);
-              for (let k = leftLim; k <= fi; k++) {
-                if (cpsRolling[k] < bestV) { bestV = cpsRolling[k]; best = k; }
-              }
-              floorI = best;
-              peakI = i;
-              peakV = v;
-              active = true;
-            }
-          } else {
-            // Continuously track the true peak (shelves never freeze it)
-            if (v > peakV) {
-              peakV = v;
-              peakI = i;
-            }
-            const dropped = peakV > 0 && v <= peakV * (1 - dropFrac);
-            const nearFloor = v <= baseline + riseMin * 0.15;
-            const endOfData = (i === nRoll - 1);
+        // 2) Prominence: peak − higher of the deepest points to left/right
+        //    until a taller peak (or edge). Keeps only real crests.
+        const sorted = cpsRolling.slice().sort((a, b) => a - b);
+        const baseline = sorted[Math.floor(sorted.length * 0.12)] || 0;
+        const minProm = Math.max(4, maxRoll * 0.12); // tune: higher = fewer labels
 
-            if ((dropped || nearFloor || endOfData) && peakV >= riseMin) {
-              events.push({ floorI, peakI, peakV });
-              active = false;
-              peakV = 0;
+        const major = [];
+        for (const pi of rawPeaks) {
+          const pv = cpsRolling[pi];
+          if (pv < baseline + minProm) continue;
+
+          // left trough (stop at a taller peak)
+          let leftMin = pv, leftI = pi;
+          for (let k = pi - 1; k >= 0; k--) {
+            if (cpsRolling[k] > pv) break;
+            if (cpsRolling[k] < leftMin) { leftMin = cpsRolling[k]; leftI = k; }
+          }
+          // right trough (stop at a taller peak)
+          let rightMin = pv;
+          for (let k = pi + 1; k < nRoll; k++) {
+            if (cpsRolling[k] > pv) break;
+            if (cpsRolling[k] < rightMin) rightMin = cpsRolling[k];
+          }
+
+          const prom = pv - Math.max(leftMin, rightMin);
+          if (prom < minProm) continue;
+
+          // Reject pure downhill “peaks”: must have risen from the left trough
+          if (pv - leftMin < minProm * 0.85) continue;
+
+          major.push({ peakI: pi, floorI: leftI, peakV: pv });
+        }
+
+        // 3) Suppress a smaller crest that sits on the rising face of a
+        //    larger one to its right (aggregate into the final peak)
+        major.sort((a, b) => a.peakI - b.peakI);
+        const kept = [];
+        for (let i = 0; i < major.length; i++) {
+          const cur = major[i];
+          let absorbed = false;
+          for (let j = i + 1; j < major.length; j++) {
+            const nxt = major[j];
+            // same overall mountain if no deep reset between them
+            const gapMin = Math.min(...cpsRolling.slice(cur.peakI, nxt.peakI + 1));
+            if (nxt.peakV >= cur.peakV && gapMin > baseline + minProm * 0.35) {
+              absorbed = true; // cur is an intermediate shelf → drop it
+              break;
             }
           }
-        }
-        // If still rising at right edge, show in-progress event
-        if (active && peakV >= riseMin) {
-          events.push({ floorI, peakI, peakV });
+          if (!absorbed) kept.push(cur);
         }
 
         ctx.save();
-        ctx.font = 'bold 10px Consolas,monospace';
+        ctx.font = 'bold 15px Consolas,monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
 
-        for (const ev of events) {
+        for (const ev of kept) {
           const peakAbs  = histStart + ev.peakI;
           const floorAbs = histStart + ev.floorI;
           if (peakAbs < 0 || peakAbs >= hist.length) continue;
+
+          // Floor → peak only (ascending side). Never past the crest.
           const lo = Math.max(0, Math.min(floorAbs, peakAbs));
-          const hi = Math.min(hist.length - 1, Math.max(floorAbs, peakAbs));
+          const hi = Math.min(hist.length - 1, peakAbs); // hard stop at peak
 
           let total = 0;
           for (let j = lo; j <= hi; j++) total += (hist[j] || 0);
@@ -3692,7 +3701,7 @@ if (waveformValues.length >= 2) {
           const y = yOfRoll(cpsRolling[ev.peakI]);
           if (x < -20 || x > w + 20) continue;
 
-          const label = 'Σ' + total;
+          const label = String(total);
           const tw = ctx.measureText(label).width;
           const bx = x - tw / 2 - 3;
           const by = y - 16;
@@ -3707,7 +3716,6 @@ if (waveformValues.length >= 2) {
         ctx.restore();
       }
     }
-
     ctx.restore();
   }
 }
