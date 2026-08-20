@@ -3203,6 +3203,7 @@ if(_geigerSSE){ try{_geigerSSE.close();}catch(e){} _geigerSSE = null; }  } else 
 const _gp = {
   drHistory: [], cpsHistory: [], peakLog: [], sessionDose: 0, peakWindow: 0, floorWindow: 99,
   cpmBuf: [], sigPending: [], cpmMinStart: null, canvas: null, ctx: null,
+  _cpsWallNs: [],
   _yMax: 0.30,
   _viewMin: 0,
   _viewMax: 0.30,
@@ -3416,23 +3417,17 @@ if (this._viewMax == null || !Number.isFinite(this._viewMax)) {
 }
 const drMaxRaw =
   data.length ? Math.max(...data) : 0;
+// LIVE + ZOOM: sticky Y — only expand, never shrink (points keep Y while scrolling off)
+// PANORAMA (unzoomed): allow gentle shrink so long sessions stay readable
 if (drMaxRaw > this._viewMax * 0.90) {
-  this._viewMax =
-    Math.max(
-      drMaxRaw * 1.25,
-      Y_MAX_DEF
-    );
-}
-else if (
+  this._viewMax = Math.max(drMaxRaw * 1.25, Y_MAX_DEF);
+} else if (
+  this._panorama && !this._panZoomed &&
   data.length > 20 &&
   drMaxRaw < this._viewMax * 0.50 &&
   this._viewMax > Y_MAX_DEF
 ) {
-  this._viewMax =
-    Math.max(
-      drMaxRaw * 1.50,
-      Y_MAX_DEF
-    );
+  this._viewMax = Math.max(drMaxRaw * 1.50, Y_MAX_DEF);
 }
 const max = this._viewMax;
 const min = 0.0;
@@ -3558,7 +3553,17 @@ if (waveformValues.length >= 2) {
       for (let j = s; j <= i; j++) sum += a[j];
       return sum;
     });
-    const cpsMax = Math.max(...cpsRolling, 1);
+    const cpsMaxNow = Math.max(...cpsRolling, 1);
+    if (this._cpsViewMax == null || !Number.isFinite(this._cpsViewMax)) {
+      this._cpsViewMax = cpsMaxNow;
+    }
+    if (cpsMaxNow > this._cpsViewMax * 0.90) {
+      this._cpsViewMax = Math.max(cpsMaxNow * 1.15, 1);
+    } else if (this._panorama && !this._panZoomed && cpsMaxNow < this._cpsViewMax * 0.45) {
+      // panorama only: allow shrink
+      this._cpsViewMax = Math.max(cpsMaxNow * 1.4, 1);
+    }
+    const cpsMax = this._cpsViewMax;
     const cpsSlots = this._panorama && !this._panZoomed
       ? Math.max(cpsData.length - 1, 1)
       : LIVE_WIN - 1;
@@ -3597,6 +3602,7 @@ if (waveformValues.length >= 2) {
       if (nRoll >= 5) {
         const hist = this.cpsHistory || [];
         let histStart = 0;
+        let livePad = 0; // left zero-pad count in LIVE when hist < LIVE_WIN
         if (this._panorama && this._panZoomed) {
           const freezeN = this._zoomFreezeN || hist.length;
           const center = Math.max(
@@ -3605,10 +3611,18 @@ if (waveformValues.length >= 2) {
           );
           histStart = Math.max(0, Math.floor(center - ZOOM_HALF));
         } else if (!this._panorama) {
-          histStart = Math.max(0, hist.length - LIVE_WIN);
+          if (hist.length >= LIVE_WIN) {
+            histStart = hist.length - LIVE_WIN;
+            livePad = 0;
+          } else {
+            histStart = 0;
+            livePad = LIVE_WIN - hist.length;
+          }
         }
 
-        const maxRoll = Math.max(...cpsRolling, 1);
+        const maxRoll = (this._cpsViewMax && this._cpsViewMax > 0)
+          ? this._cpsViewMax
+          : Math.max(...cpsRolling, 1);
         const yOfRoll = (v) => h - (v / maxRoll) * h * 0.85;
         const xOfRoll = (i) => {
           const now = performance.now();
@@ -3685,23 +3699,42 @@ if (waveformValues.length >= 2) {
         ctx.textBaseline = 'bottom';
 
         for (const ev of kept) {
-          const peakAbs  = histStart + ev.peakI;
-          const floorAbs = histStart + ev.floorI;
+          // Map rolling index → absolute history index (skip LIVE pad slots)
+          const toAbs = (rollI) => {
+            if (!this._panorama && livePad > 0) {
+              if (rollI < livePad) return -1; // padded empty slot
+              return histStart + (rollI - livePad);
+            }
+            return histStart + rollI;
+          };
+          const peakAbs  = toAbs(ev.peakI);
+          const floorAbs = toAbs(ev.floorI);
           if (peakAbs < 0 || peakAbs >= hist.length) continue;
+          if (floorAbs < 0) continue;
 
-          // Floor → peak only (ascending side). Never past the crest.
           const lo = Math.max(0, Math.min(floorAbs, peakAbs));
-          const hi = Math.min(hist.length - 1, peakAbs); // hard stop at peak
+          const hi = Math.min(hist.length - 1, peakAbs);
 
           let total = 0;
           for (let j = lo; j <= hi; j++) total += (hist[j] || 0);
           if (total <= 0) continue;
 
+          const tHist = this._cpsWallNs || [];
+          let secs = 0;
+          if (tHist.length > hi && tHist.length > lo) {
+            const t0 = Number(tHist[lo]) || 0;
+            const t1 = Number(tHist[hi]) || 0;
+            if (t0 > 0 && t1 > 0 && t1 >= t0) {
+              secs = (t1 - t0) / 1e9;
+            }
+          }
+          const secsStr = secs < 10 ? secs.toFixed(2) : secs.toFixed(1);
+
           const x = xOfRoll(ev.peakI);
           const y = yOfRoll(cpsRolling[ev.peakI]);
           if (x < -20 || x > w + 20) continue;
 
-          const label = String(total);
+          const label = total + '  ' + secsStr + 's';
           const tw = ctx.measureText(label).width;
           const bx = x - tw / 2 - 3;
           const by = y - 16;
@@ -6271,8 +6304,16 @@ _remoteConnect() {
     if (d.cps > 0) this._playCpsSound(d.cps);
     this.drHistory.push(dr);
     this._lastSampleT = performance.now();
-    if(this.drHistory.length > 3600) this.drHistory.shift();    this.cpsHistory.push(d.cps||0);
-    if(this.cpsHistory.length > 3000) this.cpsHistory.shift();
+    if (this.drHistory.length > 3600) this.drHistory.shift();
+    this.cpsHistory.push(d.cps || 0);
+    // Always store a real wall-clock ns (device ns preferred)
+    var _wn = (typeof wallNs !== 'undefined' && wallNs) ? wallNs
+            : (d.wall_ns || d.wallNs || (Date.now() * 1e6));
+    this._cpsWallNs.push(_wn);
+    if (this.cpsHistory.length > 3000) {
+      this.cpsHistory.shift();
+      this._cpsWallNs.shift();
+    }
     this._tlTick(d.wall_ns||0, d.cps||0);
     this.sessionDose += dr / 3600;
     this.peakWindow = Math.max(this.peakWindow, dr);
