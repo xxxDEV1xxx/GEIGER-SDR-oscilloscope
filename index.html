@@ -1496,6 +1496,13 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
       <button id="gp-siren-btn" onclick="_gp.openSirenConfig()" style="background:#0a0a1a;border:1px solid #8844FF;color:#8844FF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">🔊 SIREN</button>
       <button id="gp-remote-btn" onclick="_gp.openRemoteConfig()" style="background:#0a1a1a;border:1px solid #00CCFF;color:#00CCFF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">🌐 CONNECT</button>
 <button id="gp-replay-btn" onclick="_gp.openReplay()" style="background:#0a1a0a;border:1px solid #00AA44;color:#00AA44;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⏵ REPLAY</button>
+<select id="gp-replay-speed" title="Replay speed" style="background:#0a1a0a;border:1px solid #00AA44;color:#00AA44;font-size:.7rem;padding:2px 4px;">
+  <option value="0.5">0.5×</option>
+  <option value="1" selected>1×</option>
+  <option value="2">2×</option>
+  <option value="5">5×</option>
+  <option value="10">10×</option>
+</select>
 <button id="gp-pan-btn" onclick="_gp.togglePanorama()" style="background:#0a0a1a;border:1px solid #4444FF;color:#4444FF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⊞ PANORAMA</button>
 <button id="gp-fastproc-btn" onclick="_gp.openFastProcess()" style="background:#0a0a1a;border:1px solid #FFAA00;color:#FFAA00;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⏩ PROCESS ALL</button>
 <button onclick="_gp.openFastProcessExport()" style="background:#0a0a1a;border:1px solid #FF8800;color:#FF8800;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⏩ PROCESS + EXPORT</button>
@@ -1509,6 +1516,10 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
           style="width:40px;background:#0a0a1a;border:1px solid #FF44FF;color:#FF44FF;font-family:Consolas,monospace;font-size:.65rem;padding:1px 3px;text-align:center;"
           oninput="var v=Math.min(60,Math.max(1,+this.value||60));_gp._cpsWindow=v;document.getElementById('gp-cps-win').value=v;document.getElementById('gp-cps-win-val').textContent=v+'s'">
       </div>
+      <button type="button" onclick="_gp.resumeLive()"
+  style="background:#0a0a1a;border:1px solid #4488FF;color:#4488FF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">
+  ⏏ RESUME LIVE
+</button>
       <button onclick="_gp.exportLog()" style="background:#001a00;border:1px solid #00FF88;color:#00FF88;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⬇ EXPORT LOG</button>
       <button onclick="_gp.exportSigs()" style="background:#001a00;border:1px solid #00FFFF;color:#00FFFF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⬇ EXPORT SIGS</button>
       <button onclick="_gp.clearLog()" style="background:#1a0000;border:1px solid #FF4444;color:#FF4444;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">✕ CLEAR LOG</button>
@@ -1818,6 +1829,12 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
       <div style="flex:1;background:#080808;position:relative;min-height:0;overflow:hidden;">
   <canvas id="gp-canvas"
           style="position:absolute;inset:0;width:100%;height:100%;display:block;"></canvas>
+   <div id="gp-cps-peak-tip"
+       style="display:none;position:absolute;z-index:20;pointer-events:none;
+              background:rgba(20,0,30,0.95);border:1px solid #FF44FF;border-radius:4px;
+              padding:6px 8px;font:11px Consolas,monospace;color:#FFAAFF;
+              white-space:pre;line-height:1.35;box-shadow:0 0 10px rgba(255,68,255,0.25);">
+  </div>
   <!-- Dedicated instantaneous-value readout.
        It is outside the canvas coordinate system, so the waveform
        can never cover or hide it. -->
@@ -3273,6 +3290,66 @@ _lastDisplayedDrStr: null,
     const resize = () => { this.canvas.width = this.canvas.offsetWidth; this.canvas.height = this.canvas.offsetHeight; };
     resize();
     new ResizeObserver(resize).observe(this.canvas);
+        this.canvas.addEventListener('mousemove', e => {
+      const tip = document.getElementById('gp-cps-peak-tip');
+      if (!tip || !this._cpsPeakHits || !this._cpsPeakHits.length) {
+        if (tip) tip.style.display = 'none';
+        return;
+      }
+      const rect = this.canvas.getBoundingClientRect();
+      const scaleX = this.canvas.width / Math.max(rect.width, 1);
+      const scaleY = this.canvas.height / Math.max(rect.height, 1);
+      const mx = (e.clientX - rect.left) * scaleX;
+      const my = (e.clientY - rect.top) * scaleY;
+
+      let hit = null;
+      for (let i = this._cpsPeakHits.length - 1; i >= 0; i--) {
+        const b = this._cpsPeakHits[i];
+        if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
+          hit = b;
+          break;
+        }
+      }
+      if (!hit) {
+        tip.style.display = 'none';
+        this.canvas.style.cursor = '';
+        return;
+      }
+      const fmt = (ns) => {
+        if (!ns || ns <= 0) return '—';
+        try {
+          if (typeof nsToUtcStr === 'function') {
+            // HH:MM:SS + fractional from ns
+            const d = new Date(ns / 1e6);
+            const frac = ((ns / 1e6) % 1000).toFixed(0).padStart(3, '0');
+            return nsToUtcStr(ns) + '.' + frac;
+          }
+          return new Date(ns / 1e6).toISOString();
+        } catch (_) {
+          return String(ns);
+        }
+      };
+      tip.textContent =
+        'First count:  ' + fmt(hit.t0) + '\n' +
+        'Last count:   ' + fmt(hit.t1) + '\n' +
+        'Window:       ' + (hit.secs < 10 ? hit.secs.toFixed(2) : hit.secs.toFixed(1)) + 's\n' +
+        'Σ counts:     ' + hit.total + '\n' +
+        'Rate:         ' + (hit.secs > 0 ? (hit.total / hit.secs).toFixed(2) : '—') + ' /s';
+      // Position near cursor, in the canvas parent (position:relative)
+      const parent = this.canvas.parentElement;
+      const prect = parent.getBoundingClientRect();
+      let left = e.clientX - prect.left + 12;
+      let top  = e.clientY - prect.top + 12;
+      tip.style.display = 'block';
+      tip.style.left = left + 'px';
+      tip.style.top = top + 'px';
+      this.canvas.style.cursor = 'help';
+    });
+    this.canvas.addEventListener('mouseleave', () => {
+      const tip = document.getElementById('gp-cps-peak-tip');
+      if (tip) tip.style.display = 'none';
+      this.canvas.style.cursor = '';
+    });
     this.canvas.addEventListener('click',e=>{
       if(this._panDragMoved){ this._panDragMoved=false; return; }
       const _ox=e.offsetX,_oy=e.offsetY,_cw=this.canvas.width;
@@ -3635,6 +3712,7 @@ if (waveformValues.length >= 2) {
         };
 
         // 1) All local maxima (plateau → rightmost sample of the flat top)
+        this._cpsPeakHits = []; // reset each frame
         const rawPeaks = [];
         for (let i = 1; i < nRoll - 1; i++) {
           const v = cpsRolling[i];
@@ -3762,6 +3840,23 @@ if (waveformValues.length >= 2) {
           ctx.textBaseline = 'top';
           ctx.fillText(line1, x, by + padY);
           ctx.fillText(line2, x, by + padY + lineH);
+
+          // Hit-box for hover tooltip (canvas coords)
+          // tHist already declared above in this block — do not redeclare
+          const t0 = (tHist && tHist[lo] != null) ? Number(tHist[lo]) : 0;
+          const t1 = (tHist && tHist[hi] != null) ? Number(tHist[hi]) : 0;
+          if (!this._cpsPeakHits) this._cpsPeakHits = [];
+          this._cpsPeakHits.push({
+            x: bx,
+            y: by,
+            w: tw + padX * 2,
+            h: boxH,
+            t0: t0,
+            t1: t1,
+            total: total,
+            secs: secs,
+            rate: rate
+          });
         }
         ctx.restore();
       }
@@ -6786,69 +6881,398 @@ _fpProcessReading(dr, wallMs) {
     if(log.children.length>500) log.removeChild(log.lastChild);
   }
 };
-  _gp.openReplay = function(){
-  var inp = document.getElementById('gp-replay-input');
-  if(inp) inp.click();
+_gp._stopLiveForOffline = function(){
+  _gp._offlineMode = true;   // kills live + blocks reconnect
+  _gp._livePaused = true;
+  if (_gp._replay && _gp._replay._timer) {
+    clearTimeout(_gp._replay._timer);
+    _gp._replay._timer = null;
+  }
+  if (_gp._replay) _gp._replay.active = false;
+  try {
+    if (typeof _geigerSSE !== 'undefined' && _geigerSSE) {
+      try { _geigerSSE.onclose = null; } catch (_) {}
+      try { _geigerSSE.onmessage = null; } catch (_) {}
+      try { _geigerSSE.close(); } catch (_) {}
+    }
+  } catch (_) {}
+  _geigerSSE = null;
 };
+
+
+_gp._clearHistoriesForOffline = function(){
+  _gp.drHistory = [];
+  _gp.cpsHistory = [];
+  _gp._cpsWallNs = [];
+  _gp.sessionDose = 0;
+  _gp.peakWindow = 0;
+  _gp.floorWindow = 99;
+  _gp._viewMax = 0.30;
+  _gp._cpsViewMax = null;
+  _gp._cpsPeakHits = [];
+  _gp._fpPairs = [];
+  _gp.sigBuf = [];
+  _gp.sigGapCount = 0;
+  // Optional: wipe signature UI for a clean offline run
+  // _gp.sigLedger = []; _gp.sigSeqNum = 0; _gp._redrawLedger?.();
+};
+
+_gp._readGzOrText = async function(file){
+  var buf = await file.arrayBuffer();
+  var u8 = new Uint8Array(buf);
+
+  // Plain text / non-gzip
+  if (u8.length < 2 || u8[0] !== 0x1f || u8[1] !== 0x8b) {
+    return new TextDecoder('utf-8', { fatal: false }).decode(u8);
+  }
+
+  // Multi-member gzip (Python gzip concatenates members; browser DS does one)
+  async function inflateMember(memberU8) {
+    if (typeof DecompressionStream !== 'undefined') {
+      var ds = new DecompressionStream('gzip');
+      var stream = new Blob([memberU8]).stream().pipeThrough(ds);
+      return new Uint8Array(await new Response(stream).arrayBuffer());
+    }
+    throw new Error('DecompressionStream not available');
+  }
+
+  var parts = [];
+  var offset = 0;
+  while (offset < u8.length - 1) {
+    // find next gzip magic
+    if (u8[offset] !== 0x1f || u8[offset + 1] !== 0x8b) {
+      offset++;
+      continue;
+    }
+    var start = offset;
+    // next member starts at following 1F 8B, or EOF
+    var next = -1;
+    for (var i = start + 2; i < u8.length - 1; i++) {
+      if (u8[i] === 0x1f && u8[i + 1] === 0x8b) {
+        // heuristic: gzip header flags byte + typical header — accept as new member
+        next = i;
+        break;
+      }
+    }
+    var member = next > start ? u8.subarray(start, next) : u8.subarray(start);
+    try {
+      var inflated = await inflateMember(member);
+      parts.push(inflated);
+    } catch (e) {
+      console.warn('[GZ] member inflate failed at', start, e);
+      // if first member fails, try whole file once
+      if (parts.length === 0) {
+        try {
+          parts.push(await inflateMember(u8));
+        } catch (e2) {
+          throw e2;
+        }
+        break;
+      }
+    }
+    if (next < 0) break;
+    offset = next;
+  }
+
+  if (!parts.length) throw new Error('gzip decompress produced no data');
+
+  var total = 0;
+  for (var p = 0; p < parts.length; p++) total += parts[p].length;
+  var out = new Uint8Array(total);
+  var o = 0;
+  for (var p = 0; p < parts.length; p++) {
+    out.set(parts[p], o);
+    o += parts[p].length;
+  }
+  var text = new TextDecoder('utf-8', { fatal: false }).decode(out);
+  console.info('[GZ] members=', parts.length, 'bytes=', out.length, 'chars=', text.length);
+  return text;
+};
+// Resume live later (optional button): _gp.resumeLive()
+_gp.resumeLive = function(){
+  _gp._offlineMode = false;
+  _gp._livePaused = false;
+  if (_gp._replay) {
+    if (_gp._replay._timer) clearTimeout(_gp._replay._timer);
+    _gp._replay.active = false;
+  }
+  _startGeigerSSE();
+  var el = document.getElementById('gp-conn-status');
+  if (el) { el.textContent = 'CONNECTING...'; el.style.color = '#FFAA00'; }
+};
+
+_gp._parseSerialJsonl = function(text){
+  var lines = text.split(/\r?\n/);
+  var records = [];
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim();
+    if (!line) continue;
+    try {
+      var d = JSON.parse(line);
+      // Your capture format: readings = {seq, wall_ns, dr, cps, ...}
+      if (d && typeof d === 'object') {
+        if (('seq' in d && 'dr' in d) || (d.type === 'reading')) {
+          d.type = 'reading';
+          records.push(d);
+        } else if (d.type === 'annotation' || d.type === 'forensic_session_header') {
+          // optional: skip or keep as events
+          // records.push(d);
+        } else if (d.type) {
+          records.push(d);
+        } else if ('dr' in d || 'cps' in d) {
+          d.type = 'reading';
+          records.push(d);
+        }
+      }
+    } catch (e) {}
+  }
+  console.info('[JSONL] reading records=', records.length, 'of lines=', lines.length);
+  return records;
+};
+
+_gp._setPanoramaDone = function(){
+  _gp._panorama = true;
+  _gp._panZoomed = false;
+  _gp._zoomFreezeN = _gp.drHistory.length;
+  _gp._panZoomCenter = Math.max(0, Math.floor((_gp.drHistory.length - 1) / 2));
+  _gp._panDragOffset = 0;
+  var btn = document.getElementById('gp-pan-btn');
+  if (btn) {
+    btn.textContent = '⊟ LIVE';
+    btn.style.borderColor = '#00FFFF';
+    btn.style.color = '#00FFFF';
+  }
+};
+
+// ── REPLAY: temporal playback of GZ / JSONL ──────────────────────
+_gp.openReplay = function(){
+  // Always fresh picker so change always fires
+  var inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = '.jsonl,.jsonl.gz,.gz,application/gzip';
+  inp.style.display = 'none';
+  document.body.appendChild(inp);
+  inp.onchange = function(){
+    var f = inp.files && inp.files[0];
+    try { document.body.removeChild(inp); } catch (_) {}
+    if (f) {
+      console.info('[REPLAY] file chosen:', f.name, f.size);
+      _gp._replayFile(f);
+    } else {
+      console.warn('[REPLAY] no file');
+    }
+  };
+  inp.click();
+};
+
+_gp._replayFile = async function(file){
+  if (!file) return;
+  console.info('[REPLAY] start', file.name);
+
+  var btn = document.getElementById('gp-replay-btn');
+  var statusEl = document.getElementById('gp-conn-status');
+  if (btn) {
+    btn.textContent = '⏳ REPLAY...';
+    btn.style.borderColor = '#00AA44';
+    btn.style.color = '#00AA44';
+  }
+  if (statusEl) {
+    statusEl.textContent = 'REPLAY: stopping live...';
+    statusEl.style.color = '#00AA44';
+  }
+
+  // 1) Kill live immediately
+  _gp._stopLiveForOffline();
+
+  // 2) Wipe slate
+  _gp.drHistory = [];
+  _gp.cpsHistory = [];
+  _gp._cpsWallNs = [];
+  _gp.sessionDose = 0;
+  _gp.peakWindow = 0;
+  _gp.floorWindow = 99;
+  _gp._viewMax = 0.30;
+  _gp._cpsViewMax = null;
+  _gp._cpsPeakHits = [];
+  _gp._fpPairs = [];
+  _gp.sigBuf = [];
+  _gp.sigGapCount = 0;
+  _gp._panorama = false;
+  _gp._panZoomed = false;
+
+  var text;
+  try {
+    text = await _gp._readGzOrText(file);
+  } catch (e) {
+    console.error('[REPLAY] read failed', e);
+    if (statusEl) {
+      statusEl.textContent = 'REPLAY READ ERROR';
+      statusEl.style.color = '#FF4444';
+    }
+    if (btn) btn.textContent = '⏵ REPLAY';
+    return;
+  }
+
+  var records = _gp._parseSerialJsonl(text);
+  console.info('[REPLAY] records:', records.length);
+  if (!records.length) {
+    if (statusEl) {
+      statusEl.textContent = 'REPLAY: no JSONL records';
+      statusEl.style.color = '#FF4444';
+    }
+    if (btn) btn.textContent = '⏵ REPLAY';
+    return;
+  }
+
+  if (statusEl) {
+    statusEl.textContent = 'REPLAY 0 / ' + records.length;
+    statusEl.style.color = '#00AA44';
+  }
+
+  _gp._replay = { active: true, records: records, idx: 0, _timer: null };
+  var speedEl = document.getElementById('gp-replay-speed');
+  var speed = speedEl ? (Number(speedEl.value) || 1) : 1;
+
+  var step = function(){
+    if (!_gp._replay || !_gp._replay.active) return;
+    var r = _gp._replay;
+    if (r.idx >= r.records.length) {
+      r.active = false;
+      _gp._panorama = true;
+      _gp._panZoomed = false;
+      _gp._zoomFreezeN = _gp.drHistory.length;
+      if (statusEl) {
+        statusEl.textContent =
+          'REPLAY DONE — ' + r.records.length + ' (panorama, live OFF)';
+        statusEl.style.color = '#00FF88';
+      }
+      if (btn) btn.textContent = '⏵ REPLAY';
+      return;
+    }
+
+    var d = r.records[r.idx];
+    try {
+      if (d.type === 'reading' || (d.dr != null && d.type !== 'event')) {
+        d.type = 'reading';
+        _gp.onReading(d);
+        if (typeof runDetectors === 'function') {
+          runDetectors(
+            d.wall_ns || Date.now() * 1e6,
+            d.dr || 0,
+            d.cps || 0,
+            d.dose || 0
+          );
+        }
+      } else if (d.type) {
+        _gp.onEvent(d);
+      }
+    } catch (err) {
+      console.warn('[REPLAY] record error', err);
+    }
+
+    r.idx++;
+    if (statusEl && (r.idx % 10 === 0 || r.idx >= r.records.length)) {
+      statusEl.textContent = 'REPLAY ' + r.idx + ' / ' + r.records.length;
+    }
+
+    if (r.idx >= r.records.length) {
+      step();
+      return;
+    }
+
+    var curNs = Number(d.wall_ns) || 0;
+    var nextNs = Number(r.records[r.idx].wall_ns) || 0;
+    var delayMs = 1000;
+    if (curNs > 0 && nextNs > curNs) {
+      delayMs = Math.min(5000, Math.max(0, (nextNs - curNs) / 1e6));
+    }
+    delayMs = delayMs / Math.max(0.1, speed);
+    r._timer = setTimeout(step, delayMs);
+  };
+
+  step();
+};
+
+// ── PROCESS ALL: instant bulk ingest, end on last sample in panorama ─
 _gp.openFastProcess = function(){
   var inp = document.createElement('input');
   inp.type = 'file';
   inp.accept = '.jsonl,.jsonl.gz,.gz';
-  inp.onchange = function(e){ _gp._fastProcessFile(e.target.files[0]); };
+  inp.onchange = function(e){
+    _gp._fastProcessFile(e.target.files[0]);
+  };
   inp.click();
 };
+
 _gp._fastProcessFile = async function(file){
-  if(!file) return;
+  if (!file) return;
   var btn = document.getElementById('gp-fastproc-btn');
   var statusEl = document.getElementById('gp-conn-status');
-  if(btn){ btn.textContent='⏳ PROCESSING...'; btn.style.borderColor='#FFAA00'; btn.style.color='#FFAA00'; }
-  if(statusEl){ statusEl.textContent='PROCESSING...'; statusEl.style.color='#FFAA00'; }
+  if (btn) {
+    btn.textContent = '⏳ PROCESSING...';
+    btn.style.borderColor = '#FFAA00';
+    btn.style.color = '#FFAA00';
+  }
+  if (statusEl) {
+    statusEl.textContent = 'PROCESSING...';
+    statusEl.style.color = '#FFAA00';
+  }
+
   var text;
   try {
-    if(file.name.endsWith('.gz')){
-      try {
-        var buf = await file.arrayBuffer();
-        var ds = new DecompressionStream('gzip');
-        var wr = ds.writable.getWriter();
-        var rd = ds.readable.getReader();
-        wr.write(new Uint8Array(buf));
-        wr.close();
-        var chunks = [];
-        while(true){ var r = await rd.read(); if(r.done) break; chunks.push(r.value); }
-        var tot = chunks.reduce(function(a,b){return a+b.length;},0);
-        var combined = new Uint8Array(tot);
-        var off = 0;
-        for(var ci=0;ci<chunks.length;ci++){ combined.set(chunks[ci],off); off+=chunks[ci].length; }
-        text = new TextDecoder().decode(combined);
-      } catch(gz_e){ text = await file.text(); }
-    } else {
-      text = await file.text();
+    text = await _gp._readGzOrText(file);
+  } catch (e) {
+    if (statusEl) {
+      statusEl.textContent = 'READ ERROR';
+      statusEl.style.color = '#FF4444';
     }
-  } catch(e){
-    if(statusEl){ statusEl.textContent='READ ERROR'; statusEl.style.color='#FF4444'; }
-    if(btn){ btn.textContent='⏩ PROCESS ALL'; }
+    if (btn) {
+      btn.textContent = '⏩ PROCESS ALL';
+      btn.style.borderColor = '#FFAA00';
+      btn.style.color = '#FFAA00';
+    }
     return;
   }
-  var lines = text.split('\n');
+
+  _gp._stopLiveForOffline();
+  _gp._clearHistoriesForOffline();
+
+  var records = _gp._parseSerialJsonl(text);
   var processed = 0;
-  for(var i=0; i<lines.length; i++){
-    var line = lines[i].trim();
-    if(!line) continue;
+  for (var i = 0; i < records.length; i++) {
+    var d = records[i];
     try {
-      var d = JSON.parse(line);
-      if('seq' in d && 'dr' in d) d.type = 'reading';
-      if(d.type === 'reading'){
+      if (d.type === 'reading' || ('dr' in d && !d.type)) {
+        if (!d.type) d.type = 'reading';
         _gp.onReading(d);
-        if(typeof runDetectors === 'function')
-          runDetectors(d.wall_ns || Date.now()*1e6, d.dr||0, d.cps||0, d.dose||0);
-      } else if(d.type){
+        if (typeof runDetectors === 'function') {
+          runDetectors(
+            d.wall_ns || Date.now() * 1e6,
+            d.dr || 0,
+            d.cps || 0,
+            d.dose || 0
+          );
+        }
+      } else if (d.type) {
         _gp.onEvent(d);
       }
       processed++;
-    } catch(e){}
+    } catch (e) {}
   }
-  if(statusEl){ statusEl.textContent='DONE — '+processed+' records'; statusEl.style.color='#00FF88'; }
-  if(btn){ btn.textContent='⏩ PROCESS ALL'; btn.style.borderColor='#00AA44'; btn.style.color='#00AA44'; }
+
+  // Stay on full session — last CPS on the right, scroll/zoom freely
+  _gp._setPanoramaDone();
+
+  if (statusEl) {
+    statusEl.textContent =
+      'DONE — ' + processed + ' records (panorama)';
+    statusEl.style.color = '#00FF88';
+  }
+  if (btn) {
+    btn.textContent = '⏩ PROCESS ALL';
+    btn.style.borderColor = '#00AA44';
+    btn.style.color = '#00AA44';
+  }
 };
 
 // ── PROCESS ALL + EXPORT — parses gz, populates GUI, then auto-downloads logs
@@ -6890,28 +7314,32 @@ _gp._fastProcessFileExport = async function(file){
   _gp.exportLog();
 };
 function _startGeigerSSE(){
-  if(_geigerSSE) return;
+  if (_gp._offlineMode) return; // offline / replay / process-all owns the feed
+  if (_geigerSSE) return;
   _gp.init();
-    try {
+  try {
     _gp._src = _gp._src || { needle: 0.15, library: [], active: true, windows: [] };
     _gp._src.active = true;
     _gp._src.locked = false;
     _gp._srcStartMeter();
     _gp._mdLiveTick(_gp._sourceCps60Value || 0);
   } catch (e) {}
-  // Prefer same-origin; fall back to known live tunnel if local WS is missing
+
   const WS_LOCAL =
     (location.protocol === 'https:' ? 'wss://' : 'ws://') +
     location.host +
     '/api/geiger/ws';
   const WS_FALLBACK = 'wss://refrain-blandness-anagram.ngrok-free.dev';
   let useFallback = false;
+
   function connect(){
+    if (_gp._offlineMode) return;
     const target = useFallback ? WS_FALLBACK : WS_LOCAL;
     const ws = new WebSocket(target);
     _geigerSSE = ws;
     ws.onmessage = function(e){
       try{
+        if (_gp._offlineMode || _gp._livePaused || (_gp._replay && _gp._replay.active)) return;
         const d = JSON.parse(e.data);
         if(d.type === 'reading'){
           _gp.onReading(d);
@@ -6924,6 +7352,7 @@ function _startGeigerSSE(){
     };
     ws.onclose = function(){
       _geigerSSE = null;
+      if (_gp._offlineMode) return; // do NOT reconnect during replay/process
       const el = document.getElementById('gp-conn-status');
       if(!useFallback){
         useFallback = true;
@@ -6935,6 +7364,7 @@ function _startGeigerSSE(){
       setTimeout(connect, 3000);
     };
     ws.onerror = function(){
+      if (_gp._offlineMode) return;
       const el = document.getElementById('gp-conn-status');
       if(el){ el.textContent='ERROR'; el.style.color='#FF4444'; }
     };
