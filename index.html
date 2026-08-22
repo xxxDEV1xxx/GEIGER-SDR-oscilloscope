@@ -3350,7 +3350,28 @@ _lastDisplayedDrStr: null,
       if (tip) tip.style.display = 'none';
       this.canvas.style.cursor = '';
     });
-    this.canvas.addEventListener('click',e=>{
+        this.canvas.addEventListener('click',e=>{
+      // ── CPS peak box click: export event + overlapping signatures ──
+      if (this._cpsPeakHits && this._cpsPeakHits.length) {
+        const rect = this.canvas.getBoundingClientRect();
+        const scaleX = this.canvas.width / Math.max(rect.width, 1);
+        const scaleY = this.canvas.height / Math.max(rect.height, 1);
+        const mx = (e.clientX - rect.left) * scaleX;
+        const my = (e.clientY - rect.top) * scaleY;
+        let hit = null;
+        for (let i = this._cpsPeakHits.length - 1; i >= 0; i--) {
+          const b = this._cpsPeakHits[i];
+          if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
+            hit = b;
+            break;
+          }
+        }
+        if (hit) {
+          this._exportCpsPeakEvent(hit);
+          e.stopPropagation();
+          return;
+        }
+      }
       if(this._panDragMoved){ this._panDragMoved=false; return; }
       const _ox=e.offsetX,_oy=e.offsetY,_cw=this.canvas.width;
       if(_ox>=_cw-291&&_ox<=_cw-6){
@@ -6558,6 +6579,17 @@ el('gp-conn-status', 'CONNECTED');
           this.sigSeqNum++;
           const peak = Math.max(...this.sigBuf);
           const total = this.sigBuf.reduce((a, b) => a + b, 0);
+          const _wn = this._cpsWallNs || [];
+          const _ch = this.cpsHistory || [];
+          // Best-effort: map this sigBuf to the tail of cpsHistory
+          let _tStart = 0, _tEnd = 0;
+          const _sigLen = this.sigBuf.length;
+          if (_wn.length >= _sigLen && _ch.length >= _sigLen) {
+            // assume sigBuf is the most recent _sigLen cps samples
+            const _i0 = _ch.length - _sigLen;
+            _tStart = Number(_wn[_i0]) || 0;
+            _tEnd   = Number(_wn[_ch.length - 1]) || 0;
+          }
           const entry = {
             n: this.sigSeqNum,
             len: this.sigBuf.length,
@@ -6565,7 +6597,9 @@ el('gp-conn-status', 'CONNECTED');
             total,
             seq: this.sigBuf.slice(),
             t: new Date().toLocaleTimeString(),
-            ts: Date.now()
+            ts: Date.now(),
+            wall_ns_start: _tStart,
+            wall_ns_end: _tEnd
           };
           const visible = entry.seq.filter(v => v > 0).length;
           if (visible < 4) {
@@ -7286,12 +7320,9 @@ _gp.openFastProcessExport = function(){
 
 _gp._fastProcessFileExport = async function(file){
   if(!file) return;
-  // reuse same decompression and parse as _fastProcessFile
   await _gp._fastProcessFile(file);
-  // now auto-download all outputs
   var stamp = new Date().toISOString().replace(/[:.]/g,'_').slice(0,19);
   var base = file.name.replace(/\.jsonl\.gz$|\.gz$/,'');
-  // timeline log
   if(_gp._tlLines && _gp._tlLines.length){
     var blob = new Blob([_gp._tlLines.join('\n')],{type:'text/plain'});
     var a = document.createElement('a');
@@ -7299,10 +7330,9 @@ _gp._fastProcessFileExport = async function(file){
     a.download = base+'_timeline_'+stamp+'.txt';
     a.click();
   }
-  // signatures
   if(_gp.sigLedger && _gp.sigLedger.length){
     var sigLines = _gp.sigLedger.map(function(e){
-      return e.t+'\tSIG#'+e.n+'\t['+e.seq.join(',')+']'+'\tpk='+e.peak+'\tlen='+e.len;
+      return e.t+'\tSIG#'+e.n+'\t['+(e.seq||[]).join(',')+']\tpk='+e.peak+'\tlen='+e.len;
     });
     var blob2 = new Blob([sigLines.join('\n')],{type:'text/plain'});
     var a2 = document.createElement('a');
@@ -7310,9 +7340,91 @@ _gp._fastProcessFileExport = async function(file){
     a2.download = base+'_signatures_'+stamp+'.txt';
     a2.click();
   }
-  // export log (same as export log button)
   _gp.exportLog();
 };
+
+_gp._fmtWallNs = function(ns) {
+  ns = Number(ns) || 0;
+  if (ns <= 0) return '—';
+  try {
+    if (typeof nsToUtcStr === 'function') {
+      var frac = ((ns / 1e6) % 1000).toFixed(0).padStart(3, '0');
+      return nsToUtcStr(ns) + '.' + frac + '  (' + ns + ')';
+    }
+    return new Date(ns / 1e6).toISOString() + '  (' + ns + ')';
+  } catch (_) {
+    return String(ns);
+  }
+};
+
+_gp._sigOverlapsWindow = function(sig, t0, t1) {
+  var s0 = Number(sig.wall_ns_start) || 0;
+  var s1 = Number(sig.wall_ns_end) || 0;
+  if (s0 > 0 && s1 > 0) {
+    if (s0 > s1) { var tmp = s0; s0 = s1; s1 = tmp; }
+    return s0 < t1 && s1 > t0;
+  }
+  var ts = Number(sig.ts) || 0;
+  if (!ts || t0 <= 0 || t1 <= 0) return false;
+  var t0ms = t0 / 1e6;
+  var t1ms = t1 / 1e6;
+  var lenMs = Math.max(1, Number(sig.len) || 1) * 1000;
+  return (ts - lenMs) < t1ms && ts > t0ms;
+};
+
+_gp._exportCpsPeakEvent = function(hit) {
+  var t0 = Number(hit.t0) || 0;
+  var t1 = Number(hit.t1) || 0;
+  var total = hit.total;
+  var secs = hit.secs;
+  var rate = hit.rate != null ? hit.rate : (secs > 0 ? total / secs : 0);
+  var line = '[CPS PEAK CLICK] rate=' + rate.toFixed(3) + '/s  Σ=' + total +
+    '  dt=' + secs.toFixed(3) + 's  t0=' + _gp._fmtWallNs(t0) +
+    '  t1=' + _gp._fmtWallNs(t1);
+  try { if (typeof fireEvent === 'function') fireEvent(line, '#FF44FF'); } catch (_) {}
+  var log = document.getElementById('gp-events');
+  if (log) {
+    var row = document.createElement('div');
+    row.style.cssText = 'padding:2px 0;border-bottom:1px solid #111;color:#FF44FF;font-size:.65rem;';
+    row.textContent = line;
+    log.insertBefore(row, log.firstChild);
+  }
+  var ledger = Array.isArray(_gp.sigLedger) ? _gp.sigLedger : [];
+  var matched = ledger.filter(function(sig) { return _gp._sigOverlapsWindow(sig, t0, t1); });
+  var stamp = new Date().toISOString().replace(/[:.]/g, '_').slice(0, 19);
+  var lines = [
+    'CTW GEIGER — CPS PEAK EVENT EXPORT',
+    'exported_at_utc=' + new Date().toISOString(),
+    '',
+    '=== PEAK BOX ===',
+    'rate_per_s=' + rate,
+    'total_counts=' + total,
+    'duration_s=' + secs,
+    'wall_ns_first=' + t0,
+    'wall_ns_last=' + t1,
+    'wall_utc_first=' + _gp._fmtWallNs(t0),
+    'wall_utc_last=' + _gp._fmtWallNs(t1),
+    '',
+    '=== OVERLAPPING SIGNATURES (' + matched.length + ') ===',
+    ''
+  ];
+  if (!matched.length) lines.push('(none)');
+  else matched.forEach(function(sig, i) {
+    lines.push('--- signature ' + (i + 1) + ' ---');
+    lines.push('n=' + sig.n);
+    lines.push('seq=[' + (sig.seq || []).join(',') + ']');
+    lines.push('peak=' + sig.peak + ' len=' + sig.len);
+    lines.push('wall_ns_start=' + (sig.wall_ns_start || 0));
+    lines.push('wall_ns_end=' + (sig.wall_ns_end || 0));
+    lines.push('');
+  });
+  var blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'cps_peak_' + stamp + '.txt';
+  a.click();
+};
+
 function _startGeigerSSE(){
   if (_gp._offlineMode) return; // offline / replay / process-all owns the feed
   if (_geigerSSE) return;
