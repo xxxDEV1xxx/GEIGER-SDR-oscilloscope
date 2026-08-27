@@ -9,9 +9,7 @@ Guards integrated:
   - hid_provenance.py  : HID device 1:1 enforcement + virtual keyboard slot
   - filename_provenance.py : RTLO / case-collision / homoglyph on upload filenames
 """
-
 from __future__ import annotations
-
 import base64
 import csv
 import datetime
@@ -49,7 +47,7 @@ from fastapi import (
     UploadFile, File, HTTPException, Depends, Header, Request, Response
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
 import bcrypt
 from jose import JWTError, jwt
@@ -1599,6 +1597,169 @@ async def chess_debug():
         result["chess_module"] = str(e)
     return result
   
+
+# ──────────────────────────────────────────────────────────────
+# USER AVATAR UPLOAD
+# Stores the resulting image URL in users.avatar_url.
+# Uses the same filename, size, entropy and Cloudinary controls
+# already used by post-media uploads.
+# ──────────────────────────────────────────────────────────────
+@app.post("/api/users/me/avatar")
+async def upload_my_avatar(
+    file: UploadFile = File(...),
+    user: dict = Depends(current_user),
+):
+    username = user["username"]
+
+    # Filename provenance / sanitization
+    fn_result = check_upload_filename(file.filename or "avatar")
+    if not fn_result["allowed"]:
+        _audit(
+            "AVATAR_FILENAME_PROV_BLOCKED",
+            f"username={username} filename={file.filename} "
+            f"violations={[v['type'] for v in fn_result['blocked']]}",
+        )
+        raise HTTPException(
+            400,
+            {
+                "error": "FILENAME_PROVENANCE_VIOLATION",
+                "violations": fn_result["blocked"],
+                "safe_name": fn_result["safe_name"],
+            },
+        )
+
+    raw = await file.read()
+    mime = (file.content_type or "").lower().strip()
+
+    # Avatars are images only.
+    if not mime.startswith("image/"):
+        raise HTTPException(400, "Avatar must be an image")
+
+    # Reuse the application's existing MIME allow-list.
+    if mime not in ALLOWED_MIME:
+        raise HTTPException(400, f"Unsupported image type: {mime}")
+
+    # Keep avatar uploads substantially below the global 20 MB ceiling.
+    # 5 MB is more than sufficient for an avatar while preventing
+    # unnecessarily large image payloads.
+    avatar_limit = min(_OOB_BOUNDS["upload_bytes"], 5 * 1024 * 1024)
+
+    if len(raw) > avatar_limit:
+        _audit(
+            "AVATAR_UPLOAD_REJECTED",
+            f"username={username} supplied={len(raw)} "
+            f"limit={avatar_limit} provenance=REJECTED",
+        )
+        raise HTTPException(413, "Avatar exceeds 5 MB")
+
+    if not raw:
+        raise HTTPException(400, "Empty avatar upload")
+
+    # Existing CTW reconstruction / entropy gate.
+    _recon_verdict = check_upload_entropy(
+        raw,
+        file.filename or "avatar",
+    )
+
+    if _recon_verdict["action"] == REJECTED:
+        _audit(
+            "AVATAR_RECON_UPLOAD_REJECTED",
+            f"username={username} file={file.filename} "
+            f"detail={_recon_verdict['detail']}",
+        )
+        raise HTTPException(
+            400,
+            detail=f"Avatar upload rejected: {_recon_verdict['detail']}",
+        )
+
+    # ----------------------------------------------------------
+    # Cloudinary path — preferred because the application already
+    # has Cloudinary configured for persistent media.
+    # ----------------------------------------------------------
+    if CLOUDINARY_ENABLED:
+        try:
+            result = cloudinary.uploader.upload(
+                raw,
+                folder="ctw-social/avatars",
+                resource_type="image",
+                public_id=f"avatar_{username}_{uuid.uuid4()}",
+                overwrite=False,
+                invalidate=True,
+            )
+
+            url = result.get("secure_url")
+            if not url:
+                raise RuntimeError("Cloudinary returned no secure_url")
+
+        except Exception as e:
+            _audit(
+                "AVATAR_CLOUDINARY_FAILED",
+                f"username={username} error={e}",
+            )
+            raise HTTPException(
+                502,
+                "Avatar storage service failed",
+            )
+
+    # ----------------------------------------------------------
+    # Local fallback — same /uploads mechanism already used by
+    # post-media when Cloudinary is disabled.
+    # ----------------------------------------------------------
+    else:
+        upload_dir = Path("uploads")
+        upload_dir.mkdir(exist_ok=True)
+
+        ext = _MIME_EXT.get(mime, ".img")
+        name = f"avatar_{uuid.uuid4()}{ext}"
+
+        (upload_dir / name).write_bytes(raw)
+        url = f"/uploads/{name}"
+
+    # ----------------------------------------------------------
+    # Store URL in the existing users.avatar_url column.
+    # ----------------------------------------------------------
+    with get_db() as db:
+        row = db.execute(
+            "SELECT username FROM users WHERE username=?",
+            (username,),
+        ).fetchone()
+
+        if not row:
+            raise HTTPException(404, "User not found")
+
+        db.execute(
+            "UPDATE users SET avatar_url=? WHERE username=?",
+            (url, username),
+        )
+
+        updated = db.execute(
+            """
+            SELECT username, display_name, bio, avatar_url, created_at
+            FROM users
+            WHERE username=?
+            """,
+            (username,),
+        ).fetchone()
+
+    _audit(
+        "AVATAR_UPLOAD_OK",
+        f"username={username} mime={mime} bytes={len(raw)} url={url}",
+    )
+
+    return {
+        "ok": True,
+        "url": url,
+        "avatar_url": url,
+        "user": {
+            "username": updated["username"],
+            "display_name": updated["display_name"],
+            "bio": updated["bio"],
+            "avatar_url": updated["avatar_url"],
+            "created_at": updated["created_at"],
+        },
+    }
+
+
 @app.post("/api/posts/{post_id}/media")
 async def attach_media(post_id:str, file:UploadFile=File(...),
                        user:dict=Depends(current_user)):
@@ -3619,6 +3780,10 @@ if Path("uploads").exists():
 if Path("/data/static").exists():
     app.mount("/static", StaticFiles(directory="/data/static"), name="static")
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)
+
 @app.get("/battlechess")
 async def serve_battlechess():
     return FileResponse("battlechess.html")
@@ -4851,6 +5016,61 @@ def _gnss_parse_nmea(text: str) -> list:
             rows.append(row)
             cur = {}
     return rows
+
+def _gnss_row_time(r):
+    """Epoch seconds for chronological ordering (earliest → 1)."""
+    for k in ("UtcTime", "timestamp", "time", "wall_ns", "ts"):
+        v = r.get(k)
+        if v is None or str(v).strip() in ("", "nan", "None"):
+            continue
+        s = str(v).strip()
+        try:
+            x = float(s)
+            if x > 1e18:
+                return x / 1e9
+            if x > 1e15:
+                return x / 1e6
+            if x > 1e12:
+                return x / 1e3
+            return x
+        except Exception:
+            pass
+        from datetime import datetime as _dt
+        for fmt in (
+            "%H%M%S.%f", "%H%M%S",
+            "%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ",
+            "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S",
+            "%d%m%y %H%M%S", "%d%m%y",
+        ):
+            try:
+                return _dt.strptime(s[:26], fmt).timestamp()
+            except Exception:
+                continue
+    ln = _gnss_iget(r, "LineNumber")
+    return float(ln) if ln is not None else 0.0
+
+
+def _gnss_hue_hex(t: float) -> str:
+    """Full visible spectrum: t in [0,1] → red … violet."""
+    import colorsys as _cs
+    t = max(0.0, min(1.0, float(t)))
+    r, g, b = _cs.hsv_to_rgb(t * 0.83, 0.95, 1.0)
+    return f"#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}"
+
+
+def _gnss_track_stops(n_pts: int, min_distinct: int = 10):
+    n_stops = max(min_distinct, max(1, n_pts - 1))
+    return [_gnss_hue_hex(i / max(1, n_stops - 1)) for i in range(n_stops)]
+
+
+def _gnss_track_color(i: int, n_pts: int, stops: list) -> str:
+    if n_pts <= 1:
+        return stops[0]
+    t = i / (n_pts - 1)
+    idx = int(round(t * (len(stops) - 1)))
+    return stops[idx]
+
+
 def _gnss_build_map_html(rows: list,
                          truth_lat: Optional[float] = None,
                          truth_lon: Optional[float] = None) -> str:
@@ -4879,17 +5099,38 @@ def _gnss_build_map_html(rows: list,
             15 if span < 0.02  else 13 if span < 0.1   else
             11 if span < 0.5   else 9)
 
-    features      = []
-    track_coords  = []
+    # Chronological points for sequence + spectrum path
+    geo_rows = []
+    for r in rows:
+        _lat = _gnss_fget(r, "Latitude")
+        _lon = _gnss_fget(r, "Longitude")
+        if _lat is None or _lon is None:
+            continue
+        geo_rows.append(r)
+    geo_rows.sort(key=_gnss_row_time)
+    n_pts = len(geo_rows)
+    if n_pts == 0:
+        return "<p>No valid coordinates in CSV.</p>"
+    grad_stops = _gnss_track_stops(n_pts, min_distinct=10)
+
+    features       = []
+    track_coords   = []
+    track_segments = []
     tower_seen: set = set()
     tower_features = []
 
-    for i, r in enumerate(rows):
+    for i, r in enumerate(geo_rows):
         lat = _gnss_fget(r, "Latitude")
         lon = _gnss_fget(r, "Longitude")
-        if lat is None or lon is None:
-            continue
+        seq = i + 1  # earliest = 1
         track_coords.append([lon, lat])
+        if i > 0:
+            prev = geo_rows[i - 1]
+            track_segments.append({
+                "from":  [_gnss_fget(prev, "Latitude"), _gnss_fget(prev, "Longitude")],
+                "to":    [lat, lon],
+                "color": _gnss_track_color(i - 1, n_pts, grad_stops),
+            })
         category, flags = _gnss_classify(r, collision_pcis, flash_ecis, pci_earfcn_counts)
         color, _ = _GNSS_CATEGORY_STYLE[category]
         flag_html = ""
@@ -4902,9 +5143,12 @@ def _gnss_build_map_html(rows: list,
         d_m  = _gnss_fget(r, "DistToTruth_m")
         d_ft = _gnss_fget(r, "DistToTruth_ft")
         d_str = f"{d_m:.1f} m ({d_ft:.1f} ft)" if d_m is not None else "—"
+        track_col = _gnss_track_color(i, n_pts, grad_stops)
         popup_html = (
             '<div style="font-family:monospace;font-size:12px;min-width:310px;line-height:1.65">'
-            f'<b>Point #{_gnss_safe(r.get("LineNumber", i+1))}</b><br>'
+            f'<b style="color:{track_col}">Sequence #{seq} / {n_pts}</b> '
+            f'<span style="color:#888">(earliest→latest)</span><br>'
+            f'<b>Point #{_gnss_safe(r.get("LineNumber", seq))}</b><br>'
             f'{flag_html}'
             f'<b>Spoofing Displacement</b><br>'
             f'&nbsp;Distance from truth: <b style="color:#e74c3c">{d_str}</b><br>'
@@ -4928,13 +5172,16 @@ def _gnss_build_map_html(rows: list,
             '</div>'
         )
         tooltip = (
-            f"#{_gnss_safe(r.get('LineNumber', i+1))}  "
+            f"#{seq}/{n_pts}  "
             f"PCI {_gnss_safe(r.get('Cell_PCI'))}  "
             f"RSRP {_gnss_safe(r.get('Cell_RSRP'))} dBm"
         )
         features.append({
             "lat": lat, "lon": lon,
+            "seq": seq,
+            "n": n_pts,
             "color": color,
+            "trackColor": track_col,
             "radius": 8 if category in ("reserved_tac",) else 6,
             "popup": popup_html.replace("`", "&#96;").replace("\\", "\\\\"),
             "tooltip": tooltip.replace("'", "\\'"),
@@ -4958,6 +5205,7 @@ def _gnss_build_map_html(rows: list,
                         f"TAC:{_gnss_safe(r.get('Cell_TAC'))}"
                     ).replace("'", "\\'"),
                 })
+
 
     present: set = set()
     for r in rows:
@@ -5024,9 +5272,11 @@ def _gnss_build_map_html(rows: list,
         if d < 250:  return '#e67e22'
         return '#e74c3c'
 
-    pts_js    = _json.dumps(features)
-    towers_js = _json.dumps(tower_features)
-    track_js  = _json.dumps(track_coords)
+    pts_js      = _json.dumps(features)
+    towers_js   = _json.dumps(tower_features)
+    track_js    = _json.dumps(track_coords)
+    segments_js = _json.dumps(track_segments)
+    grad_js     = _json.dumps(grad_stops)
 
     vectors = []
     for i, r in enumerate(rows):
@@ -5084,7 +5334,17 @@ def _gnss_build_map_html(rows: list,
   <span style="color:#e67e22">&#9644;</span> 100–250 m (significant)<br>
   <span style="color:#e74c3c">&#9644;</span> &gt; 250 m (severe / anomalous)<br>
   <hr style="margin:4px 0;border-color:#333">
+  <hr style="margin:4px 0;border-color:#333">
+  <b>Track path (time order)</b><br>
+  <div id="grad-bar" style="display:flex;height:12px;border-radius:3px;overflow:hidden;border:1px solid #555;margin:4px 0 2px;"></div>
+  <div style="display:flex;justify-content:space-between;font-size:10px;opacity:.9">
+    <span style="color:#ff0000">#1 EARLIEST</span>
+    <span style="color:#cc00ff">LATEST</span>
+  </div>
+  Numbers inside dots = sequence (1 = first fix)<br>
+  <hr style="margin:4px 0;border-color:#333">
   <b>Point color (cell anomaly)</b><br>
+
   LEGEND_ROWS
   <hr style="margin:4px 0;border-color:#333">
   <b>Session: PT_COUNT fixes &nbsp;|&nbsp; Max: MAX_DISP m &nbsp;|&nbsp; Mean: MEAN_DISP m</b><br>
@@ -5119,10 +5379,26 @@ L.control.layers({},{
   'Cell towers':lgTowers,
   'Ground truth':lgTruth
 },{position:'topright',collapsed:false}).addTo(map);
+const trackSegs = TRACK_SEGS_JSON;
+const gradStops = GRAD_STOPS_JSON;
+(function(){
+  const bar = document.getElementById('grad-bar');
+  if(bar && gradStops && gradStops.length){
+    bar.innerHTML = gradStops.map(c =>
+      '<div style="flex:1;height:100%;background:'+c+'"></div>'
+    ).join('');
+  }
+})();
 const track = TRACK_JSON;
 if(track.length>1)
-  L.polyline(track.map(c=>[c[1],c[0]]),{color:'#555',weight:1.2,opacity:0.5})
-   .bindTooltip('Track path').addTo(lgTrack);
+  L.polyline(track.map(c=>[c[1],c[0]]),{color:'#000',weight:4,opacity:0.35})
+   .addTo(lgTrack);
+trackSegs.forEach(s=>{
+  L.polyline([s.from, s.to], {
+    color: s.color, weight: 3.5, opacity: 0.95,
+    lineCap: 'round', lineJoin: 'round'
+  }).addTo(lgTrack);
+});
 const vectors = VECTORS_JSON;
 vectors.forEach(v=>{
   L.polyline([v.from,v.to],{color:v.color,weight:1.5,opacity:0.65})
@@ -5131,11 +5407,23 @@ vectors.forEach(v=>{
 });
 const pts = PTS_JSON;
 pts.forEach(p=>{
-  L.circleMarker([p.lat,p.lon],{
-    radius:p.radius,color:p.color,fillColor:p.color,
-    fillOpacity:0.85,weight:1.5
-  }).bindPopup(p.popup,{maxWidth:380})
-    .bindTooltip(p.tooltip,{sticky:true})
+  const size = (p.radius >= 8) ? 22 : 18;
+  const icon = L.divIcon({
+    className: '',
+    iconSize: [size, size],
+    iconAnchor: [size/2, size/2],
+    html: `<div style="
+      width:${size}px;height:${size}px;border-radius:50%;
+      background:${p.trackColor};color:#000;
+      border:2px solid ${p.color};
+      box-shadow:0 0 4px rgba(0,0,0,.7);
+      display:flex;align-items:center;justify-content:center;
+      font:${Math.max(9, size/2-1)}px/1 system-ui,sans-serif;font-weight:800;
+    ">${p.seq}</div>`
+  });
+  L.marker([p.lat, p.lon], {icon})
+    .bindPopup(p.popup, {maxWidth: 380})
+    .bindTooltip(p.tooltip, {sticky: true})
     .addTo(lgPoints);
 });
 const towers = TOWERS_JSON;
@@ -5187,6 +5475,8 @@ document.getElementById('pt-count').textContent=
         .replace("PTS_JSON",     pts_js)
         .replace("TOWERS_JSON",  towers_js)
         .replace("TRACK_JSON",   track_js)
+        .replace("TRACK_SEGS_JSON", segments_js)
+        .replace("GRAD_STOPS_JSON", grad_js)
         .replace("VECTORS_JSON", vectors_js)
         .replace("TRUTH_LAT",    f"{truth_lat:.6f}")
         .replace("TRUTH_LON",    f"{truth_lon:.6f}")
@@ -5365,12 +5655,12 @@ async def serve_siren_l2():
             headers={"Cache-Control": "public, max-age=86400"},
         )
     raise HTTPException(404, "HMSIllustriousActionStations.wav not found")
-@app.get("/Imperial Laser 1.wav")
+@app.get("/type99_mn.wav")
 async def serve_cps_1():
-    p = Path(__file__).parent / "Imperial Laser 1.wav"
-    if not p.exists(): p = Path("/app/Imperial Laser 1.wav")
+    p = Path(__file__).parent / "type99_mn.wav"
+    if not p.exists(): p = Path("/app/type99_mn.wav")
     if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
-    raise HTTPException(404, "Imperial Laser 1.wav not found")
+    raise HTTPException(404, "type99_mn.wav not found")
 
 @app.get("/Ion Cannon 2.wav")
 async def serve_cps_2():
@@ -5620,14 +5910,14 @@ def _image_file_response(filename: str):
     )
 
 
-@app.get("/alarm1.jpeg")
+@app.get("/alarm1.webp")
 async def serve_alarm_img_1():
-    return _image_file_response("alarm1.jpeg")
+    return _image_file_response("alarm1.webp")
 
 
-@app.get("/alarm2.jpeg")
+@app.get("/mayday.webp")
 async def serve_alarm_img_2():
-    return _image_file_response("alarm2.jpeg")
+    return _image_file_response("mayday.webp")
 
 
 @app.get("/alarm3.jpeg")
