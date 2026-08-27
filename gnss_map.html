@@ -1,881 +1,571 @@
-!DOCTYPE html
-html lang=en
-head
-meta charset=UTF-8
-meta name=viewport content=width=device-width,initial-scale=1
-titleGNSS Forensic Map — CTWtitle
-style
-  root {
-    --bg     #060809;
-    --panel  #0a0d10;
-    --border #1a2028;
-    --accent #00e5ff;
-    --warn   #ffb300;
-    --danger #ff1744;
-    --text   #90a4ae;
-    --font   'Courier New', monospace;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GNSS Forensic Map — CTW</title>
+<style>
+  :root {
+    --bg:     #060809;
+    --panel:  #0a0d10;
+    --border: #1a2028;
+    --accent: #00e5ff;
+    --warn:   #ffb300;
+    --danger: #ff1744;
+    --text:   #90a4ae;
+    --font:   'Courier New', monospace;
   }
 
-   { box-sizing border-box; margin 0; padding 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
 
   html, body {
-    height 100%;
-    background var(--bg);
-    color var(--text);
-    font-family var(--font);
-    font-size 13px;
-    overflow hidden;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    overflow: hidden;
   }
 
-   ── header ── 
   #header {
-    height 52px;
-    background var(--panel);
-    border-bottom 1px solid var(--border);
-    display flex;
-    align-items center;
-    padding 0 20px;
-    gap 16px;
-    flex-shrink 0;
+    height: 52px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 16px;
+    flex-shrink: 0;
   }
 
   #header .title {
-    color var(--accent);
-    font-size 13px;
-    font-weight bold;
-    letter-spacing 3px;
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: bold;
+    letter-spacing: 3px;
   }
 
   #header .sub {
-    color #1e3040;
-    font-size 9px;
-    letter-spacing 1px;
+    color: #1e3040;
+    font-size: 9px;
+    letter-spacing: 1px;
   }
 
-   ── layout ── 
   #body {
-    display flex;
-    height calc(100vh - 52px);
+    display: flex;
+    height: calc(100vh - 52px);
   }
 
-   ── left panel ── 
   #left {
-    width 320px;
-    flex-shrink 0;
-    background var(--panel);
-    border-right 1px solid var(--border);
-    display flex;
-    flex-direction column;
-    overflow hidden;
+    width: 320px;
+    flex-shrink: 0;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 
   #drop-zone {
-    margin 16px;
-    border 2px dashed var(--border);
-    border-radius 12px;
-    padding 24px 16px;
-    text-align center;
-    cursor pointer;
-    transition border-color 0.2s, background 0.2s;
-    flex-shrink 0;
+    margin: 16px;
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 24px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    flex-shrink: 0;
   }
 
-  #drop-zonehover,
+  #drop-zone:hover,
   #drop-zone.drag-over {
-    border-color var(--accent);
-    background rgba(0,229,255,0.04);
+    border-color: var(--accent);
+    background: rgba(0,229,255,0.04);
   }
 
   #drop-zone i {
-    font-size 28px;
-    color var(--accent);
-    margin-bottom 8px;
-    display block;
+    font-size: 28px;
+    color: var(--accent);
+    margin-bottom: 8px;
+    display: block;
   }
 
   #drop-zone .dz-title {
-    font-size 11px;
-    color var(--text);
-    margin-bottom 4px;
+    font-size: 11px;
+    color: var(--text);
+    margin-bottom: 4px;
   }
 
   #drop-zone .dz-sub {
-    font-size 9px;
-    color #1e3040;
-    letter-spacing 1px;
+    font-size: 9px;
+    color: #1e3040;
+    letter-spacing: 1px;
   }
 
-  #file-input {
-    display none;
-  }
+  #file-input { display: none; }
 
-   ── ground truth ── 
   #truth-controls {
-    margin 0 16px 12px;
-    display flex;
-    flex-direction column;
-    gap 6px;
-    flex-shrink 0;
+    margin: 0 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
   }
 
   #truth-controls input {
-    width 100%;
-    background #060809;
-    color var(--text);
-    border 1px solid var(--border);
-    border-radius 6px;
-    padding 8px;
-    font-family var(--font);
-    font-size 10px;
-    outline none;
+    width: 100%;
+    background: #060809;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px;
+    font-family: var(--font);
+    font-size: 10px;
+    outline: none;
   }
 
-  #truth-controls inputfocus {
-    border-color var(--accent);
+  #truth-controls input:focus {
+    border-color: var(--accent);
   }
 
-   ── stats panel ── 
   #stats {
-    margin 0 16px 12px;
-    background #060809;
-    border 1px solid var(--border);
-    border-radius 8px;
-    padding 10px 12px;
-    font-size 10px;
-    display none;
-    flex-shrink 0;
+    margin: 0 16px 12px;
+    background: #060809;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 10px;
+    display: none;
+    flex-shrink: 0;
   }
 
   #stats .stat-row {
-    display flex;
-    justify-content space-between;
-    padding 2px 0;
-    border-bottom 1px solid #0d1520;
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 0;
+    border-bottom: 1px solid #0d1520;
   }
 
-  #stats .stat-rowlast-child {
-    border-bottom none;
-  }
+  #stats .stat-row:last-child { border-bottom: none; }
 
   #stats .stat-label {
-    color #1e3040;
-    text-transform uppercase;
-    letter-spacing 1px;
+    color: #1e3040;
+    text-transform: uppercase;
+    letter-spacing: 1px;
   }
 
   #stats .stat-val {
-    color var(--accent);
-    font-weight bold;
+    color: var(--accent);
+    font-weight: bold;
   }
 
-  #stats .stat-val.warn {
-    color var(--warn);
-  }
+  #stats .stat-val.warn { color: var(--warn); }
+  #stats .stat-val.danger { color: var(--danger); }
 
-  #stats .stat-val.danger {
-    color var(--danger);
-  }
-
-   ── anomaly list ── 
   #anomaly-list {
-    flex 1;
-    overflow-y auto;
-    margin 0 16px 16px;
-    display none;
+    flex: 1;
+    overflow-y: auto;
+    margin: 0 16px 16px;
+    display: none;
   }
 
   #anomaly-list h3 {
-    font-size 9px;
-    color #1e3040;
-    text-transform uppercase;
-    letter-spacing 2px;
-    margin-bottom 8px;
+    font-size: 9px;
+    color: #1e3040;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
   }
 
   .anom-item {
-    background #060809;
-    border 1px solid var(--border);
-    border-radius 6px;
-    padding 8px 10px;
-    margin-bottom 6px;
-    font-size 10px;
-    cursor pointer;
-    transition border-color 0.15s;
+    background: #060809;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    font-size: 10px;
+    cursor: pointer;
+    transition: border-color 0.15s;
   }
 
-  .anom-itemhover {
-    border-color var(--accent);
-  }
+  .anom-item:hover { border-color: var(--accent); }
 
   .anom-item .ai-cat {
-    font-size 9px;
-    text-transform uppercase;
-    letter-spacing 1px;
-    margin-bottom 3px;
-    font-weight bold;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 3px;
+    font-weight: bold;
   }
 
   .anom-item .ai-detail {
-    color #37474f;
-    font-size 9px;
+    color: #37474f;
+    font-size: 9px;
   }
 
-  .cat-reserved_tac {
-    color #ccc;
-  }
+  .cat-reserved_tac { color: #ccc; }
+  .cat-pci_collision { color: var(--danger); }
+  .cat-flash_cell { color: var(--warn); }
+  .cat-rsrq_invalid { color: #a78bfa; }
 
-  .cat-pci_collision {
-    color var(--danger);
-  }
-
-  .cat-flash_cell {
-    color var(--warn);
-  }
-
-  .cat-rsrq_invalid {
-    color #a78bfa;
-  }
-
-   ── map iframe ── 
   #map-frame {
-    flex 1;
-    border none;
-    background #000;
-    display none;
+    flex: 1;
+    border: none;
+    background: #000;
+    display: none;
   }
 
-   ── placeholder ── 
   #placeholder {
-    flex 1;
-    display flex;
-    flex-direction column;
-    align-items center;
-    justify-content center;
-    gap 12px;
-    color #1e3040;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: #1e3040;
   }
 
   #placeholder i {
-    font-size 48px;
-    color #0d1520;
+    font-size: 48px;
+    color: #0d1520;
   }
 
   #placeholder p {
-    font-size 11px;
-    letter-spacing 1px;
-    text-transform uppercase;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
   }
 
-   ── loading overlay ── 
   #loading {
-    display none;
-    flex 1;
-    flex-direction column;
-    align-items center;
-    justify-content center;
-    gap 16px;
-    color var(--accent);
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    color: var(--accent);
   }
 
   #loading i {
-    font-size 32px;
-    animation spin 1s linear infinite;
+    font-size: 32px;
+    animation: spin 1s linear infinite;
   }
 
   @keyframes spin {
-    to { transform rotate(360deg); }
+    to { transform: rotate(360deg); }
   }
 
-   ── progress bar ── 
   #progress {
-    height 2px;
-    background var(--border);
-    flex-shrink 0;
-    display none;
+    height: 2px;
+    background: var(--border);
+    flex-shrink: 0;
+    display: none;
   }
 
   #progress-bar {
-    height 100%;
-    background var(--accent);
-    width 0%;
-    transition width 0.3s;
-    box-shadow 0 0 6px var(--accent);
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.3s;
+    box-shadow: 0 0 6px var(--accent);
   }
 
-   ── toast ── 
   #toast {
-    position fixed;
-    bottom 20px;
-    left 50%;
-    transform translateX(-50%);
-    padding 8px 20px;
-    border-radius 20px;
-    font-size 11px;
-    font-weight bold;
-    z-index 1000;
-    display none;
-    letter-spacing 1px;
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 20px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: bold;
+    z-index: 1000;
+    display: none;
+    letter-spacing: 1px;
   }
 
-  #toast.err {
-    background var(--danger);
-    color #fff;
-  }
+  #toast.err { background: var(--danger); color: #fff; }
+  #toast.ok { background: #00ba7c; color: #fff; }
 
-  #toast.ok {
-    background #00ba7c;
-    color #fff;
-  }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: #000; }
+  ::-webkit-scrollbar-thumb { background: #1a2028; border-radius: 4px; }
 
-   ── scrollbar ── 
-  -webkit-scrollbar {
-    width 4px;
-  }
-
-  -webkit-scrollbar-track {
-    background #000;
-  }
-
-  -webkit-scrollbar-thumb {
-    background #1a2028;
-    border-radius 4px;
-  }
-
-   ── instructions ── 
   #instructions {
-    margin 0 16px 12px;
-    padding 10px 12px;
-    background #060809;
-    border 1px solid var(--border);
-    border-radius 8px;
-    font-size 9px;
-    color #1e3040;
-    line-height 1.8;
-    flex-shrink 0;
+    margin: 0 16px 12px;
+    padding: 10px 12px;
+    background: #060809;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 9px;
+    color: #1e3040;
+    line-height: 1.8;
+    flex-shrink: 0;
   }
 
   #instructions b {
-    color #37474f;
-    display block;
-    margin-bottom 4px;
+    color: #37474f;
+    display: block;
+    margin-bottom: 4px;
   }
 
   #instructions code {
-    background #0a0d10;
-    border 1px solid var(--border);
-    border-radius 3px;
-    padding 1px 4px;
-    color var(--accent);
-    font-size 9px;
+    background: #0a0d10;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 4px;
+    color: var(--accent);
+    font-size: 9px;
   }
-style
+</style>
+<link rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+</head>
+<body>
 
-link rel=stylesheet
-      href=httpscdnjs.cloudflare.comajaxlibsfont-awesome6.6.0cssall.min.css
-head
+<div id="header">
+  <div>
+    <div class="title">GNSS FORENSIC MAP</div>
+    <div class="sub">CTW · SEQUENCE GRADIENT · CELL ANOMALY · LEAFLET</div>
+  </div>
+</div>
 
-body
-
-div id=header
-  div
-    div class=titleGNSS FORENSIC MAPdiv
-    div class=subCTW · SEQUENCE GRADIENT · CELL ANOMALY · LEAFLETdiv
-  div
-div
-
-div id=body
-
-  !-- left panel --
-  div id=left
-    div id=drop-zone
-         onclick=document.getElementById('file-input').click()
-         ondragover=dzOver(event)
-         ondragleave=dzLeave()
-         ondrop=dzDrop(event)
-      i class=fa-solid fa-satellite-dishi
-      div class=dz-titleDrop file herediv
-      div class=dz-subor click to browsediv
-    div
-    input
-      type=file
-      id=file-input
-      accept=.csv,.txt,.nmea,textcsv,textplain
-      onchange=handleFile(this.files[0])
-    
-    div id=truth-controls
-      input
-        type=number
-        id=truth_lat
-        placeholder=Ground truth lat (e.g. -5.641700)
-        step=any
-      
-      input
-        type=number
-        id=truth_lon
-        placeholder=Ground truth lon (e.g. -155.877800)
-        step=any
-      
-    div
-    div id=progress
-      div id=progress-bardiv
-    div
-    div style=margin-bottom6px;
-      a href=downloadsGNSS_AttackModel.ps1 download
-         style=displayblock;background#001100;border1px solid #00FF41;color#00FF41;font-familymonospace;font-size11px;padding6px 10px;text-decorationnone;text-aligncenter;letter-spacing1px;margin-bottom4px;
+<div id="body">
+  <div id="left">
+    <div id="drop-zone"
+         onclick="document.getElementById('file-input').click()"
+         ondragover="dzOver(event)"
+         ondragleave="dzLeave()"
+         ondrop="dzDrop(event)">
+      <i class="fa-solid fa-satellite-dish"></i>
+      <div class="dz-title">Drop file here</div>
+      <div class="dz-sub">or click to browse</div>
+    </div>
+    <input
+      type="file"
+      id="file-input"
+      accept=".csv,.txt,.nmea,text/csv,text/plain"
+      onchange="handleFile(this.files[0])"
+    >
+    <div id="truth-controls">
+      <input type="number" id="truth_lat"
+             placeholder="Ground truth lat (e.g. -5.641700)" step="any">
+      <input type="number" id="truth_lon"
+             placeholder="Ground truth lon (e.g. -155.877800)" step="any">
+    </div>
+    <div id="progress"><div id="progress-bar"></div></div>
+    <div style="margin-bottom:6px;">
+      <a href="/downloads/GNSS_AttackModel.ps1" download
+         style="display:block;background:#001100;border:1px solid #00FF41;color:#00FF41;font-family:monospace;font-size:11px;padding:6px 10px;text-decoration:none;text-align:center;letter-spacing:1px;margin-bottom:4px;">
         ⬇ GNSS_AttackModel.ps1
-      a
-    div
-    div id=instructions
-      bHOW TO USEbbr
-      Drop a code.txtcode or code.nmeacode GNSSLogger file for position track,
-      or a codepoints.csvcode from codeGNSS_AttackModel.ps1code for full cell anomaly detection.brbr
-      bANOMALY DETECTIONb
-      span style=color#444;font-size.65rem(CSV only)spanbr
+      </a>
+    </div>
+    <div id="instructions">
+      <b>HOW TO USE</b><br>
+      Drop a <code>.txt</code> or <code>.nmea</code> GNSSLogger file for position track,
+      or a <code>points.csv</code> from <code>GNSS_AttackModel.ps1</code> for full cell anomaly detection.<br><br>
+      <b>TRACK ORDER / GRADIENT</b><br>
+      Numbered dots = chronological sequence (<b style="color:#ff4444">#1 = earliest</b>).<br>
+      Path color = full spectrum (<span style="color:#ff0000">red</span> earliest →
+      <span style="color:#cc00ff">violet</span> latest).<br>
+      Click a point for <b>Sequence #n / N</b> in the info panel.<br><br>
+      <b>ANOMALY DETECTION</b>
+      <span style="color:#444;font-size:.65rem">(CSV only)</span><br>
       Reserved TAC · PCI collision · Flash cell · RSRQ out-of-spec
-    div
-    div id=statsdiv
-    div id=anomaly-list
-      h3Anomalies detectedh3
-      div id=anom-itemsdiv
-    div
-  div
-  !-- right map or placeholder --
-  div id=placeholder
-    i class=fa-solid fa-earth-americasi
-    pUpload a .txt, .nmea, or .csv file to beginp
-  div
-  div id=loading style=displaynone
-    i class=fa-solid fa-circle-notchi
-    span style=font-size11px;letter-spacing2pxPROCESSING…span
-  div
-  iframe
-    id=map-frame
-    sandbox=allow-scripts allow-same-origin allow-popups
-    referrerpolicy=no-referrer-when-downgrade
-  iframe
-div
-div id=toastdiv
-script
+    </div>
+    <div id="stats"></div>
+    <div id="anomaly-list">
+      <h3>Anomalies detected</h3>
+      <div id="anom-items"></div>
+    </div>
+  </div>
 
- ── dragdrop ─────────────────────────────────────────────────
+  <div id="placeholder">
+    <i class="fa-solid fa-earth-americas"></i>
+    <p>Upload a .txt, .nmea, or .csv file to begin</p>
+  </div>
+  <div id="loading" style="display:none">
+    <i class="fa-solid fa-circle-notch"></i>
+    <span style="font-size:11px;letter-spacing:2px">PROCESSING…</span>
+  </div>
+  <iframe
+    id="map-frame"
+    sandbox="allow-scripts allow-same-origin allow-popups"
+    referrerpolicy="no-referrer-when-downgrade">
+  </iframe>
+</div>
 
+<div id="toast"></div>
+
+<script>
 function dzOver(e) {
   e.preventDefault();
   document.getElementById('drop-zone').classList.add('drag-over');
 }
-
 function dzLeave() {
   document.getElementById('drop-zone').classList.remove('drag-over');
 }
-
 function dzDrop(e) {
   e.preventDefault();
   dzLeave();
-
   const f = e.dataTransfer.files[0];
-
-  if (f) {
-    handleFile(f);
-  }
+  if (f) handleFile(f);
 }
-
-
- ── file handler ──────────────────────────────────────────────
 
 async function handleFile(file) {
   if (!file) return;
-
-  const lowerName = (file.name  '').toLowerCase();
-
+  const lowerName = (file.name || '').toLowerCase();
   const ok =
-    lowerName.endsWith('.csv') 
-    lowerName.endsWith('.txt') 
-    lowerName.endsWith('.nmea') 
-    file.type === 'textcsv' 
-    file.type === 'textplain';
-
+    lowerName.endsWith('.csv') ||
+    lowerName.endsWith('.txt') ||
+    lowerName.endsWith('.nmea') ||
+    file.type === 'text/csv' ||
+    file.type === 'text/plain';
   if (!ok) {
     toast('Please upload a .csv, .txt, or .nmea file', 'err');
     return;
   }
-
   showLoading(true);
   setProgress(10);
-
   const fd = new FormData();
-
   fd.append('file', file);
-
-   Optional ground-truth coordinates.
-  const truthLat =
-    document.getElementById('truth_lat').value.trim();
-
-  const truthLon =
-    document.getElementById('truth_lon').value.trim();
-
-  if (truthLat) {
-    fd.append('truth_lat', truthLat);
-  }
-
-  if (truthLon) {
-    fd.append('truth_lon', truthLon);
-  }
-
+  const truthLat = document.getElementById('truth_lat').value.trim();
+  const truthLon = document.getElementById('truth_lon').value.trim();
+  if (truthLat) fd.append('truth_lat', truthLat);
+  if (truthLon) fd.append('truth_lon', truthLon);
   try {
-
     setProgress(30);
-
-    const r = await fetch('apignssmap', {
-      method 'POST',
-      body fd
-    });
-
+    const r = await fetch('/api/gnss/map', { method: 'POST', body: fd });
     setProgress(70);
-
     if (!r.ok) {
-
-      const err = await r.json().catch(() = ({
-        detail r.statusText
-      }));
-
-      throw new Error(
-        err.detail  r.statusText  'GNSS map request failed'
-      );
+      const err = await r.json().catch(() => ({ detail: r.statusText }));
+      throw new Error(err.detail || r.statusText || 'GNSS map request failed');
     }
-
     const data = await r.json();
-
-    if (!data.html) {
-      throw new Error('Server returned no map HTML');
-    }
-
+    if (!data.html) throw new Error('Server returned no map HTML');
     setProgress(90);
-
     renderMap(data.html, file.name);
-
     setProgress(100);
-
-    setTimeout(() = {
-      setProgress(0);
-    }, 800);
-
-    toast(
-      `Map rendered — ${file.name}`,
-      'ok'
-    );
-
+    setTimeout(() => setProgress(0), 800);
+    toast('Map rendered — ' + file.name, 'ok');
   } catch (e) {
-
-    console.error(
-      'GNSS map upload failed',
-      e
-    );
-
-    toast(
-      e.message  'GNSS map processing failed',
-      'err'
-    );
-
+    console.error('GNSS map upload failed:', e);
+    toast(e.message || 'GNSS map processing failed', 'err');
     showLoading(false);
     setProgress(0);
   }
 }
 
-
- ── map rendering ─────────────────────────────────────────────
-
 function renderMap(html, filename) {
-
-   Parse stats from the HTML before injecting into iframe.
   parseAndShowStats(html, filename);
-
-  const frame =
-    document.getElementById('map-frame');
-
-  const blob =
-    new Blob([html], { type 'texthtml' });
-
-  const url =
-    URL.createObjectURL(blob);
-
+  const frame = document.getElementById('map-frame');
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
   frame.src = url;
   frame.style.display = 'block';
-
-  document.getElementById(
-    'placeholder'
-  ).style.display = 'none';
-
-  document.getElementById(
-    'loading'
-  ).style.display = 'none';
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('loading').style.display = 'none';
 }
-
-
- ── statsanomaly parser ──────────────────────────────────────
 
 function parseAndShowStats(html, filename) {
-
   const cats = {
-
-    reserved_tac
-      (html.match(reserved_tacg)  []).length,
-
-    pci_collision
-      (html.match(pci_collisiong)  []).length,
-
-    flash_cell
-      (html.match(flash_cellg)  []).length,
-
-    rsrq_invalid
-      (html.match(rsrq_invalidg)  []).length
-
+    reserved_tac: (html.match(/"reserved_tac"/g) || []).length,
+    pci_collision: (html.match(/"pci_collision"/g) || []).length,
+    flash_cell: (html.match(/"flash_cell"/g) || []).length,
+    rsrq_invalid: (html.match(/"rsrq_invalid"/g) || []).length
   };
-
-   Count total points from serialized point objects.
-  const ptMatch =
-    html.match(latg);
-
-  const total =
-    ptMatch  ptMatch.length  0;
-
+  const ptMatch = html.match(/"lat":/g);
+  const total = ptMatch ? ptMatch.length : 0;
   const anomaly =
-    cats.reserved_tac +
-    cats.pci_collision +
-    cats.flash_cell +
-    cats.rsrq_invalid;
-
-  const stats =
-    document.getElementById('stats');
-
+    cats.reserved_tac + cats.pci_collision + cats.flash_cell + cats.rsrq_invalid;
+  const stats = document.getElementById('stats');
   stats.style.display = 'block';
+  stats.innerHTML =
+    '<div class="stat-row"><span class="stat-label">File</span>' +
+    '<span class="stat-val" style="font-size:9px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' +
+    filename + '">' + filename + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Total points</span>' +
+    '<span class="stat-val">' + total + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Anomalies</span>' +
+    '<span class="stat-val' + (anomaly > 0 ? ' danger' : '') + '">' + anomaly + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Reserved TAC</span>' +
+    '<span class="stat-val' + (cats.reserved_tac > 0 ? ' danger' : '') + '">' + cats.reserved_tac + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">PCI collision</span>' +
+    '<span class="stat-val' + (cats.pci_collision > 0 ? ' warn' : '') + '">' + cats.pci_collision + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Flash cell</span>' +
+    '<span class="stat-val' + (cats.flash_cell > 0 ? ' warn' : '') + '">' + cats.flash_cell + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">RSRQ invalid</span>' +
+    '<span class="stat-val' + (cats.rsrq_invalid > 0 ? ' warn' : '') + '">' + cats.rsrq_invalid + '</span></div>';
 
-  stats.innerHTML = `
-
-    div class=stat-row
-      span class=stat-labelFilespan
-      span
-        class=stat-val
-        style=font-size9px;max-width160px;
-        overflowhidden;text-overflowellipsis;
-        white-spacenowrap
-        title=${filename}
-        ${filename}
-      span
-    div
-
-    div class=stat-row
-      span class=stat-labelTotal pointsspan
-      span class=stat-val${total}span
-    div
-
-    div class=stat-row
-      span class=stat-labelAnomaliesspan
-      span class=stat-val ${anomaly  0  'danger'  ''}
-        ${anomaly}
-      span
-    div
-
-    div class=stat-row
-      span class=stat-labelReserved TACspan
-      span class=stat-val ${cats.reserved_tac  0  'danger'  ''}
-        ${cats.reserved_tac}
-      span
-    div
-
-    div class=stat-row
-      span class=stat-labelPCI collisionspan
-      span class=stat-val ${cats.pci_collision  0  'warn'  ''}
-        ${cats.pci_collision}
-      span
-    div
-
-    div class=stat-row
-      span class=stat-labelFlash cellspan
-      span class=stat-val ${cats.flash_cell  0  'warn'  ''}
-        ${cats.flash_cell}
-      span
-    div
-
-    div class=stat-row
-      span class=stat-labelRSRQ invalidspan
-      span class=stat-val ${cats.rsrq_invalid  0  'warn'  ''}
-        ${cats.rsrq_invalid}
-      span
-    div
-  `;
-
-
-   ── anomaly list ────────────────────────────────────────────
-
-  const alDiv =
-    document.getElementById('anomaly-list');
-
-  const aiDiv =
-    document.getElementById('anom-items');
-
+  const alDiv = document.getElementById('anomaly-list');
+  const aiDiv = document.getElementById('anom-items');
   aiDiv.innerHTML = '';
-
-  if (anomaly  0) {
-
+  if (anomaly > 0) {
     alDiv.style.display = 'block';
-
     try {
-
-      const m =
-        html.match(const pts = ([.]);s);
-
+      const m = html.match(/const pts = (\[.*?\]);/s);
       if (m) {
-
-        const pts =
-          JSON.parse(m[1]);
-
+        const pts = JSON.parse(m[1]);
         const catLabels = {
-
-          reserved_tac
-            'Reserved TAC',
-
-          pci_collision
-            'PCI Collision',
-
-          flash_cell
-            'Flash Cell',
-
-          rsrq_invalid
-            'RSRQ Invalid'
-
+          reserved_tac: 'Reserved TAC',
+          pci_collision: 'PCI Collision',
+          flash_cell: 'Flash Cell',
+          rsrq_invalid: 'RSRQ Invalid'
         };
-
-        const colorCat = {};
-
-        Object.entries({
-
-          reserved_tac '#111111',
-
-          pci_collision '#e53935',
-
-          flash_cell '#e67e22',
-
-          rsrq_invalid '#8e44ad'
-
-        }).forEach(([k, v]) = {
-
-          colorCat[v] = k;
-
-        });
-
-
-        pts.forEach((p, i) = {
-
-          const cat =
-            colorCat[p.color];
-
+        const colorCat = {
+          '#111111': 'reserved_tac',
+          '#e53935': 'pci_collision',
+          '#e67e22': 'flash_cell',
+          '#8e44ad': 'rsrq_invalid'
+        };
+        pts.forEach(function (p) {
+          const cat = colorCat[p.color];
           if (!cat) return;
-
-          const div =
-            document.createElement('div');
-
-          div.className =
-            'anom-item';
-
-          div.innerHTML = `
-
-            div class=ai-cat cat-${cat}
-              ${catLabels[cat]  cat}
-            div
-
-            div class=ai-detail
-              ${p.tooltip
-                 p.tooltip.replace('g, ')
-                 ''}
-            div
-          `;
-
+          const div = document.createElement('div');
+          div.className = 'anom-item';
+          const tip = p.tooltip ? p.tooltip.replace(/\\'/g, "'") : '';
+          const seq = p.seq ? ('#' + p.seq + (p.n ? '/' + p.n + ' · ' : ' · ')) : '';
+          div.innerHTML =
+            '<div class="ai-cat cat-' + cat + '">' + (catLabels[cat] || cat) + '</div>' +
+            '<div class="ai-detail">' + seq + tip + '</div>';
           aiDiv.appendChild(div);
-
         });
       }
-
     } catch (e) {
-
-      console.warn(
-        'Could not parse anomaly data',
-        e
-      );
-
+      console.warn('Could not parse anomaly data:', e);
     }
-
   } else {
-
     alDiv.style.display = 'none';
-
   }
 }
-
-
- ── helpers ───────────────────────────────────────────────────
 
 function showLoading(on) {
-
-  document.getElementById(
-    'loading'
-  ).style.display =
-    on  'flex'  'none';
-
-  document.getElementById(
-    'placeholder'
-  ).style.display =
-    on  'none'  'flex';
-
-  document.getElementById(
-    'map-frame'
-  ).style.display =
-    'none';
+  document.getElementById('loading').style.display = on ? 'flex' : 'none';
+  document.getElementById('placeholder').style.display = on ? 'none' : 'flex';
+  document.getElementById('map-frame').style.display = 'none';
 }
 
-
 function setProgress(pct) {
-
-  const bar =
-    document.getElementById('progress-bar');
-
-  const wrap =
-    document.getElementById('progress');
-
-  if (pct = 0) {
-
+  const bar = document.getElementById('progress-bar');
+  const wrap = document.getElementById('progress');
+  if (pct <= 0) {
     wrap.style.display = 'none';
     bar.style.width = '0%';
-
     return;
   }
-
   wrap.style.display = 'block';
   bar.style.width = pct + '%';
 }
 
-
- ── toast ─────────────────────────────────────────────────────
-
 let toastTimer = null;
-
 function toast(msg, type) {
-
-  const el =
-    document.getElementById('toast');
-
+  const el = document.getElementById('toast');
   el.textContent = msg;
   el.className = type;
   el.style.display = 'block';
-
   clearTimeout(toastTimer);
-
-  toastTimer =
-    setTimeout(() = {
-      el.style.display = 'none';
-    }, 4000);
+  toastTimer = setTimeout(function () { el.style.display = 'none'; }, 4000);
 }
-
-script
-
-body
-html
+</script>
+</body>
+</html>
