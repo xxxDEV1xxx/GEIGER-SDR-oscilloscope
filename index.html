@@ -4247,7 +4247,7 @@ _cpsVolumes: [
       const filename = this._cpsSounds[i];
       if (!filename) continue;
       try {
-        const resp = await fetch('/' + filename);
+        const resp = await fetch('/audio/' + encodeURIComponent(filename.replace(/^\/?audio\//, '')));
         const ab   = await resp.arrayBuffer();
         this._cpsPreloaded[i] = await ctx.decodeAudioData(ab);
       } catch(e) {}
@@ -4278,7 +4278,7 @@ _playCpsSound(cps){
     // Not decoded yet — play path from current selection immediately
     const filename = this._cpsSounds[idx];
     if (!filename) return;
-    const a = new Audio('/audio/' + encodeURIComponent(filename));
+    const a = new Audio('/audio/' + encodeURIComponent(String(filename).replace(/^\/?audio\//, '')));
     a.volume = vol;
     a.play().catch(() => {});
   },
@@ -4292,8 +4292,27 @@ _playCpsSound(cps){
     const customNames = this._cpsSoundCustomNames[idx];
     if (customNames) {
       sel.value = '__custom__';
+      const crow = document.getElementById('gp-cps-custom-row');
+      if (crow) crow.style.display = 'flex';
+      const cfn = document.getElementById('gp-cps-custom-filename');
+      if (cfn) cfn.textContent = customNames;
     } else {
-      sel.value = this._cpsSounds[idx] || 'Explosion Large 2.wav';
+      const crow = document.getElementById('gp-cps-custom-row');
+      if (crow) crow.style.display = 'none';
+      // Normalize stored name → option value used in the <select>
+      let stored = this._cpsSounds[idx] || 'type99_mn.wav';
+      stored = String(stored).replace(/^\/?audio\//, '');
+      const optVal = '/audio/' + stored;
+      // Prefer exact option match; fall back to bare / path forms
+      const opts = [...sel.options].map(o => o.value);
+      if (opts.includes(optVal)) sel.value = optVal;
+      else if (opts.includes('/' + stored)) sel.value = '/' + stored;
+      else if (opts.includes(stored)) sel.value = stored;
+      else {
+        // last resort: first non-custom option
+        const first = opts.find(v => v && v !== '__custom__');
+        if (first) sel.value = first;
+      }
     }
     // restore this slot's saved volume — does not touch other slots
     const vol = this._cpsVolumes[idx] ?? 1;
@@ -4319,8 +4338,9 @@ _playCpsSound(cps){
       return;
     }
     if (customRow) customRow.style.display = 'none';
-    // New choice for this CPS level only
-    this._cpsSounds[idx] = val;
+    // New choice for this CPS level only — store basename only
+    const bare = String(val).replace(/^\/?audio\//, '').replace(/^\//, '');
+    this._cpsSounds[idx] = bare;
     this._cpsSoundBuffers[idx] = null;
     this._cpsSoundCustomNames[idx] = null;
     // Drop old preloaded buffer so we never play the previous file
@@ -4334,7 +4354,7 @@ _playCpsSound(cps){
     if (!filename) return;
     try {
       const ctx = this._getCpsCtx();
-      const resp = await fetch('/audio/' + encodeURIComponent(filename));
+      const resp = await fetch('/audio/' + encodeURIComponent(String(filename).replace(/^\/?audio\//, '')));
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const ab = await resp.arrayBuffer();
       const buf = await ctx.decodeAudioData(ab.slice(0));
@@ -4348,7 +4368,7 @@ _playCpsSound(cps){
       console.warn('CPS sound reload failed:', filename, e);
       // Fallback: one-shot HTML Audio so change still produces sound
       try {
-        const a = new Audio('/audio/' + filename);
+        const a = new Audio('/audio/' + encodeURIComponent(String(filename).replace(/^\/?audio\//, '')));
         a.volume = this._cpsVolumes[idx] ?? 1;
         a.play().catch(() => {});
       } catch (_) {}
@@ -5446,10 +5466,14 @@ _playCpsSound(cps){
     this._syncAlarmOverlay();
   },
   _syncAlarmOverlay(){
-    const root = document.getElementById('gp-alarm-overlay');
+    let root = document.getElementById('gp-alarm-overlay');
     if (!root) {
-      console.warn('[siren-img] #gp-alarm-overlay missing from DOM');
-      return;
+      // Auto-create if page was missing the node
+      root = document.createElement('div');
+      root.id = 'gp-alarm-overlay';
+      root.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(root);
+      console.info('[siren-img] created #gp-alarm-overlay');
     }
     let any = false;
     for (let level = 1; level <= 3; level++) {
@@ -11169,5 +11193,8 @@ const RBA = {
   }
 })();
 </script>
+
+<!-- Alarm photo overlay (required for L1/L2/L3 images) -->
+<div id="gp-alarm-overlay" aria-hidden="true"></div>
 </body>
 </html>
