@@ -1,0 +1,6308 @@
+"""
+CTW Social Platform v4 — FastAPI + SQLite + Cloudinary
+Persistent storage via SQLite on Railway Volume.
+Media via Cloudinary CDN.
+CTW-BSC encrypted DMs — zero-knowledge architecture.
+
+Guards integrated:
+  - unicode_guard.py   : system-wide Unicode provenance (HTTP middleware + all string inputs)
+  - hid_provenance.py  : HID device 1:1 enforcement + virtual keyboard slot
+  - filename_provenance.py : RTLO / case-collision / homoglyph on upload filenames
+"""
+from __future__ import annotations
+import base64
+import csv
+import datetime
+import hashlib
+import hmac
+import io
+import json
+import math
+import os
+import re
+import random
+import asyncio
+import secrets
+import sqlite3
+import struct
+import subprocess
+import time
+import uuid
+import zlib
+import urllib.request
+import urllib.error
+import html
+import logging
+import shutil
+import time as _time
+from html.parser import HTMLParser
+from contextlib import asynccontextmanager, contextmanager
+from pathlib import Path
+from typing import Optional
+from wan_ingress import SM_MAX_FRAME_BYTES
+import cloudinary
+import cloudinary.uploader
+from fastapi import (
+    FastAPI, WebSocket, WebSocketDisconnect,
+    UploadFile, File, HTTPException, Depends, Header, Request, Response
+)
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
+from fastapi.staticfiles import StaticFiles
+import bcrypt
+from jose import JWTError, jwt
+from pydantic import BaseModel, Field
+from collections import deque, defaultdict
+import json as _json
+from stack_guard import (
+    init as sg_init,
+    shutdown as sg_shutdown,
+    check_stack_depth,
+    check_json_depth,
+    check_data_depth,
+    DataDepthViolation,
+    StackDepthViolation,
+    get_stats as sg_get_stats,
+    scan_proc_maps,
+    stack_guard,
+)
+from elf_sentinel import (
+    init as es_init,
+    analyze_upload,
+    analyze_file,
+    snapshot_process,
+    compare_snapshot_to_disk,
+    get_stats as es_get_stats,
+    ELFThreat,
+)
+from wan_ingress import (
+    init_wan_ingress,
+    shutdown_wan_ingress,
+    get_ingress_stats,
+    process_frame,
+    IngressDecision,
+)
+# ── Guard imports (modules must be present in /app/) ──────────────────────────
+from unicode_guard import (
+    get_guard as _ug_get_guard,
+    make_unicode_middleware,
+    sanitize_for_db,
+    scan_ws_message,
+    sanitize_subprocess_args,
+)
+from hid_provenance import (
+    get_guard as _hid_get_guard,
+    inject_virtual_key,
+    HIDProvenance,
+    start_udev_listener,
+)
+from filename_provenance import (
+    get_filename_guard,
+    check_upload_filename,
+)
+from ctw_recon import (
+    run_full_scan,
+    check_upload_entropy,
+    establish_baseline,
+    REJECTED,
+)
+# ── Audit Logger ───────────────────────────────────────────────────────────────
+audit_logger = logging.getLogger("ctw.audit")
+audit_logger.setLevel(logging.INFO)
+
+_audit_file = logging.FileHandler("/app/audit.log", mode="a", encoding="utf-8")
+_audit_file.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
+audit_logger.addHandler(_audit_file)
+
+_audit_console = logging.StreamHandler()
+_audit_console.setFormatter(logging.Formatter("%(asctime)s | %(message)s"))
+audit_logger.addHandler(_audit_console)
+
+_audit_last: dict[str, float] = {}
+
+# ══════════════════════════════════════════════════════════════
+# OOB GUARD — Userspace projection of USPTO 19/466,387
+# Kernel layer: oob_guard.ko (requires bare metal)
+# This layer: length provenance classification + clamping +
+#             audit-grade violation logging
+# Inventor: Christopher T. Williams
+# ══════════════════════════════════════════════════════════════
+
+# PSN — Pacified String Notation
+# Developed after observing live RTLO Unicode exploit fire inside
+# a Claude response during a security research session.
+# Format: PSN1:<type>:<hex>:<description>:<risk_class>
+_PSN_DANGEROUS = re.compile(
+    r'[\u202a-\u202e'   # LRE, RLE, PDF, LRO, RLO  (BiDi overrides)
+    r'\u2066-\u2069'    # LRI, RLI, FSI, PDI        (BiDi isolates)
+    r'\u200b-\u200f'    # ZW space, ZW non-joiner, ZW joiner, LRM, RLM
+    r'\u2060-\u2064'    # WJ, invisible operators
+    r'\u206a-\u206f'    # deprecated formatting chars
+    r'\ufeff'           # BOM / ZW no-break space
+    r'\u0000-\u0008'    # C0 control below TAB
+    r'\u000b-\u000c'    # VT, FF
+    r'\u000e-\u001f'    # SO through US
+    r'\u007f'           # DEL
+    r'\u0080-\u009f]'   # C1 control block
+)
+
+# Length provenance classes (mirrors kernel module classification)
+_OOB_PROVENANCE = {
+    "INTERNAL":  "length derived internally, unconditionally trusted",
+    "VALIDATED": "externally supplied, validated against known bound",
+    "CLAMPED":   "externally supplied, silently clamped to safe bound",
+    "REJECTED":  "externally supplied, failed validation, operation aborted",
+}
+
+# Hard bounds table — single source of truth
+_OOB_BOUNDS = {
+    "username":              50,
+    "password":              200,
+    "min_posts_to_interact":     2000,
+    "display_name":          50,
+    "bio":                   200,
+    "post_content":          2000,
+    "dm_ciphertext":         200000,
+    "dm_hint":               100,
+    "avatar_url":            512,
+    "search_query":          200,
+    "fen_string":            100,
+    "complainant":           200,
+    "bsc_salt":              16,
+    "bsc_nonce":             12,
+    "bsc_passphrase_min":    12,
+    "upload_bytes":          20971520,   # 20 MB
+    "csv_bytes":             104857600,   # 100 MB
+    "nmea_bytes":            20971520,   # 20 MB
+    "engine_timeout":        60,
+    "audit_detail":          200,
+}
+
+# ══════════════════════════════════════════════════════════════
+# ZERO BYTE ARCHITECTURE — Prototype → Production Integration
+# State Machine: S0_UNKNOWN → S1_OWNED → S2_VERIFIED →
+#                S3_AUTHENTICATED → S4_PROMOTED
+#
+# Every inbound value must pass all four gates before it
+# becomes a Python object usable by application logic.
+# No semantic identity is assigned before S4.
+#
+# Intellectual Property of Christopher T. Williams
+# Date of Authorship: July 14, 2026, 11:33 AM
+# All rights reserved.
+# ══════════════════════════════════════════════════════════════
+
+import uuid as _uuid_mod
+
+# ── State constants ────────────────────────────────────────────
+ZB_S0 = "S0_UNKNOWN"
+ZB_S1 = "S1_OWNED"
+ZB_S2 = "S2_VERIFIED"
+ZB_S3 = "S3_AUTHENTICATED"
+ZB_S4 = "S4_PROMOTED"
+
+# ── Disposition constants ──────────────────────────────────────
+ZB_ACCEPTED  = "ACCEPTED"
+ZB_REJECTED  = "REJECTED"
+ZB_CLAMPED   = "CLAMPED"
+ZB_BLOCKED   = "BLOCKED"
+
+# ── Session identity ───────────────────────────────────────────
+# One session ID per process lifetime. Ties all ledger rows
+# to a single deployment instance for forensic continuity.
+_ZB_SESSION_ID = str(_uuid_mod.uuid4())
+
+# ── Chain state ────────────────────────────────────────────────
+# In-memory head of the hash chain. Loaded from DB on startup,
+# updated on every write. Thread-safety handled by SQLite WAL.
+_ZB_CHAIN_HEAD: str = "0" * 64  # genesis block
+
+
+def _zb_load_chain_head() -> str:
+    """Load the most recent chain hash from the ledger table."""
+    try:
+        with get_db() as db:
+            row = db.execute(
+                "SELECT chain_hash FROM zb_ledger "
+                "ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            if row:
+                return row["chain_hash"]
+    except Exception:
+        pass
+    return "0" * 64
+
+
+def _zb_chain_hash(prev_hash: str, ts: float, field: str,
+                   state: str, disposition: str, detail: str) -> str:
+    """
+    SHA-256 hash chain link.
+    Input: previous hash + current event fields.
+    Any modification to a stored row breaks the chain.
+    """
+    raw = (
+        f"{prev_hash}|{ts:.6f}|{field}|"
+        f"{state}|{disposition}|{detail}"
+    ).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _zb_record(field: str, state: str, disposition: str,
+               provenance: str, detail: str) -> None:
+    """
+    Persist one Zero Byte transition event to the SQLite ledger.
+    Updates the in-memory chain head atomically.
+    Never raises — forensic logging must not crash the pipeline.
+    """
+    global _ZB_CHAIN_HEAD
+    try:
+        ts = time.time()
+        # Clamp detail to prevent ledger row bloat
+        safe_detail = str(detail)[:500]
+        link = _zb_chain_hash(
+            _ZB_CHAIN_HEAD, ts, field,
+            state, disposition, safe_detail
+        )
+        with get_db() as db:
+            db.execute(
+                "INSERT INTO zb_ledger "
+                "(ts, session_id, field, state, disposition, "
+                " provenance, detail, chain_hash) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                (ts, _ZB_SESSION_ID, field, state,
+                 disposition, provenance, safe_detail, link)
+            )
+        _ZB_CHAIN_HEAD = link
+    except Exception as e:
+        # Fall back to audit log — never raise
+        _audit("ZB_LEDGER_WRITE_FAIL", str(e)[:120])
+
+
+# ── RX Box ────────────────────────────────────────────────────
+
+class ZeroByteBox:
+    """
+    Owned buffer. Bytes gain ownership at S1, not meaning.
+    Meaning is forbidden until S4_PROMOTED.
+    """
+    __slots__ = ("_data", "length", "state", "field")
+
+    def __init__(self, data: bytes, field: str):
+        self._data  = bytes(data)      # defensive copy
+        self.length = len(data)
+        self.state  = ZB_S0
+        self.field  = field
+
+    @property
+    def data(self) -> bytes:
+        return self._data
+
+    def destroy(self) -> None:
+        """Overwrite buffer. Call after promotion or rejection."""
+        self._data = b"\x00" * self.length
+        self.state = "DESTROYED"
+
+
+def _zb_acquire(raw: bytes, field: str,
+                max_bytes: int) -> "ZeroByteBox | None":
+    """
+    S0 → S1: Raw bytes gain ownership.
+    Rejects empty input and inputs exceeding the registered bound.
+    Provenance class: INTERNAL (length derived from registered table).
+    """
+    if not raw:
+        _zb_record(field, ZB_S0, ZB_REJECTED,
+                   "REJECTED", "empty input")
+        return None
+
+    if len(raw) > max_bytes:
+        _zb_record(field, ZB_S0, ZB_REJECTED,
+                   "REJECTED",
+                   f"length={len(raw)} exceeds bound={max_bytes}")
+        return None
+
+    box = ZeroByteBox(raw, field)
+    box.state = ZB_S1
+    _zb_record(field, ZB_S1, ZB_ACCEPTED,
+               "INTERNAL", f"length={len(raw)}")
+    return box
+
+
+# ── Core admission function ───────────────────────────────────
+
+def zb_admit(value: str, field: str, caller: str,
+             require_auth: bool = False,
+             authenticated: bool = False) -> str:
+    """
+    Full S0 → S4 pipeline for string fields.
+
+    S0_UNKNOWN       — raw value received
+    S1_OWNED         — length bound applied (OOB clamp)
+    S2_VERIFIED      — PSN/Unicode scan clean
+    S3_AUTHENTICATED — auth check (if required)
+    S4_PROMOTED      — value becomes usable Python string
+
+    Returns the promoted string.
+    Raises HTTPException on BLOCK-tier violations.
+    Never returns a value that has not passed all gates.
+
+    Intellectual Property of Christopher T. Williams
+    July 14, 2026
+    """
+    if not isinstance(value, str):
+        value = str(value) if value is not None else ""
+
+    # ── S0: receive ───────────────────────────────────────────
+    _zb_record(field, ZB_S0, ZB_ACCEPTED,
+               "EXTERNAL", f"caller={caller} raw_len={len(value)}")
+
+    # ── S1: ownership — OOB length clamp ─────────────────────
+    bound = _OOB_BOUNDS.get(field)
+    if bound is not None and len(value) > bound:
+        clamped = value[:bound]
+        _zb_record(field, ZB_S1, ZB_CLAMPED,
+                   "CLAMPED",
+                   f"supplied={len(value)} bound={bound} caller={caller}")
+        value = clamped
+    else:
+        _zb_record(field, ZB_S1, ZB_ACCEPTED,
+                   "VALIDATED",
+                   f"len={len(value)} bound={bound} caller={caller}")
+
+    # ── S2: verification — PSN/Unicode scan ───────────────────
+    ug = _ug_get_guard()
+    result = ug.scan(value, context=f"zb_admit:{field}:{caller}")
+
+    if result.blocked:
+        for v in result.violations:
+            if v.get("disposition") == "BLOCK":
+                _zb_record(
+                    field, ZB_S2, ZB_BLOCKED,
+                    "REJECTED",
+                    f"char={v.get('codepoint')} "
+                    f"name={v.get('name','?')} "
+                    f"risk={v.get('risk')} caller={caller}"
+                )
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error":   "ZB_S2_BLOCK",
+                "field":   field,
+                "state":   ZB_S2,
+                "message": (
+                    f"Field '{field}' contains dangerous Unicode "
+                    f"characters. Admission denied at S2."
+                )
+            }
+        )
+
+    if result.violations:
+        _zb_record(field, ZB_S2, ZB_CLAMPED,
+                   "CLAMPED",
+                   f"stripped {len(result.violations)} "
+                   f"violation(s) caller={caller}")
+    else:
+        _zb_record(field, ZB_S2, ZB_ACCEPTED,
+                   "VALIDATED", f"clean caller={caller}")
+
+    value = result.sanitized
+
+    # ── S3: authentication gate ───────────────────────────────
+    if require_auth and not authenticated:
+        _zb_record(field, ZB_S3, ZB_REJECTED,
+                   "REJECTED",
+                   f"auth required but not present caller={caller}")
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error":   "ZB_S3_AUTH",
+                "field":   field,
+                "state":   ZB_S3,
+                "message": "Authentication required at S3."
+            }
+        )
+
+    _zb_record(field, ZB_S3, ZB_ACCEPTED,
+               "INTERNAL",
+               f"auth={'yes' if authenticated else 'n/a'} "
+               f"caller={caller}")
+
+    # ── S4: promotion — value becomes usable object ───────────
+    _zb_record(field, ZB_S4, ZB_ACCEPTED,
+               "INTERNAL",
+               f"promoted caller={caller}")
+
+    return value
+
+
+def zb_admit_bytes(raw: bytes, field: str,
+                   caller: str, max_bytes: int) -> bytes:
+    """
+    Full S0 → S4 pipeline for raw byte fields.
+    Used for upload payloads, DM ciphertext, NMEA files.
+
+    S1 uses registered bound or explicit max_bytes.
+    S2 skipped for byte fields — PSN is a string-layer concern.
+    S3 skipped here — caller handles auth before invoking.
+    S4 promotes to usable bytes.
+
+    Intellectual Property of Christopher T. Williams
+    July 14, 2026
+    """
+    # S0
+    _zb_record(field, ZB_S0, ZB_ACCEPTED,
+               "EXTERNAL",
+               f"caller={caller} raw_len={len(raw) if raw else 0}")
+
+    # S1
+    box = _zb_acquire(raw, field, max_bytes)
+    if box is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error":   "ZB_S1_REJECT",
+                "field":   field,
+                "state":   ZB_S1,
+                "message": (
+                    f"Field '{field}' failed ownership gate. "
+                    f"Empty or exceeds bound={max_bytes}."
+                )
+            }
+        )
+
+    # S2 — bytes: skip Unicode scan, record pass-through
+    _zb_record(field, ZB_S2, ZB_ACCEPTED,
+               "INTERNAL", "byte field — PSN gate N/A")
+
+    # S3 — auth handled by caller
+    _zb_record(field, ZB_S3, ZB_ACCEPTED,
+               "INTERNAL", "byte field — auth gate delegated to caller")
+
+    # S4 — promote
+    data = bytes(box.data)
+    box.destroy()
+    _zb_record(field, ZB_S4, ZB_ACCEPTED,
+               "INTERNAL",
+               f"promoted {len(data)} bytes caller={caller}")
+
+    return data
+
+
+# ── Chain verification ────────────────────────────────────────
+
+def zb_verify_chain(limit: int = 1000) -> dict:
+    """
+    Walk the last `limit` ledger rows and verify the hash chain.
+    Returns a report suitable for the /api/zb/verify endpoint.
+    Intellectual Property of Christopher T. Williams
+    July 14, 2026
+    """
+    try:
+        with get_db() as db:
+            rows = db.execute(
+                "SELECT id, ts, field, state, disposition, "
+                "detail, chain_hash FROM zb_ledger "
+                "ORDER BY id ASC LIMIT ?",
+                (limit,)
+            ).fetchall()
+    except Exception as e:
+        return {"ok": False, "error": str(e), "checked": 0}
+
+    if not rows:
+        return {"ok": True, "checked": 0, "message": "No ledger rows"}
+
+    prev_hash = "0" * 64
+    broken_at = None
+    checked   = 0
+
+    for row in rows:
+        expected = _zb_chain_hash(
+            prev_hash,
+            row["ts"],
+            row["field"],
+            row["state"],
+            row["disposition"],
+            row["detail"]
+        )
+        if expected != row["chain_hash"]:
+            broken_at = row["id"]
+            break
+        prev_hash = row["chain_hash"]
+        checked  += 1
+
+    if broken_at is not None:
+        _audit("ZB_CHAIN_BROKEN", f"at row id={broken_at}")
+        return {
+            "ok":        False,
+            "checked":   checked,
+            "broken_at": broken_at,
+            "message":   (
+                f"Chain integrity violation at row {broken_at}. "
+                "Ledger has been modified or corrupted."
+            )
+        }
+
+    return {
+        "ok":      True,
+        "checked": checked,
+        "head":    prev_hash,
+        "message": f"Chain intact across {checked} events."
+    }
+  
+def _audit(event: str, detail: str = "", ip: str = "") -> None:
+    key = f"{event}:{detail[:40]}"
+    now = _time.monotonic()
+    if now - _audit_last.get(key, 0) < 2.0:
+        return
+    _audit_last[key] = now
+    # FIX: sanitize log messages to prevent log injection via Unicode
+    ug = _ug_get_guard()
+    safe_event  = ug.sanitize_log(event)
+    safe_detail = ug.sanitize_log(detail)
+    msg = safe_event
+    if safe_detail:
+        msg += f" | {safe_detail}"
+    if ip:
+        msg += f" | ip={ip}"
+    audit_logger.info(msg)
+
+
+def _oob_clamp(value: str, field: str, caller: str = "") -> str:
+    """Clamp externally supplied string to registered bound. Provenance: CLAMPED"""
+    limit = _OOB_BOUNDS.get(field)
+    if limit is None:
+        _audit("OOB_UNREGISTERED_FIELD",
+               f"field={field} caller={caller} len={len(value)}")
+        return value
+    if len(value) > limit:
+        _audit("OOB_CLAMP",
+               f"field={field} supplied={len(value)} limit={limit} "
+               f"caller={caller} provenance=CLAMPED")
+        return value[:limit]
+    return value
+
+
+def _oob_reject(value, field: str, expected, caller: str = "") -> bool:
+    """Validate externally supplied length. Returns True=VALIDATED, False=REJECTED"""
+    bound = _OOB_BOUNDS.get(field, expected)
+    if value != bound:
+        _audit("OOB_LENGTH_MISMATCH",
+               f"field={field} supplied={value} expected={bound} "
+               f"caller={caller} provenance=REJECTED")
+        return False
+    return True
+
+
+def _oob_max(value: int, field: str, caller: str = "") -> int:
+    """Clamp integer to registered bound. Provenance: CLAMPED"""
+    limit = _OOB_BOUNDS.get(field)
+    if limit is None:
+        _audit("OOB_UNREGISTERED_FIELD",
+               f"field={field} caller={caller} value={value}")
+        return value
+    if value > limit:
+        _audit("OOB_INT_CLAMP",
+               f"field={field} supplied={value} limit={limit} "
+               f"caller={caller} provenance=CLAMPED")
+        return limit
+    return value
+
+
+def psn_scan(value: str, field: str, caller: str = "") -> str:
+    """
+    FIX: Complete implementation replacing the broken stub.
+
+    Scan a string for PSN-class dangerous Unicode sequences using the
+    UnicodeGuard. On detection: emits PSN_VIOLATION audit event and
+    either strips (non-critical) or raises HTTPException (BLOCK-tier).
+
+    This is the server-side complement of the client-side SANITIZE block.
+    Provenance class of clean output: VALIDATED
+    Provenance class of stripped output: CLAMPED
+    Raises HTTPException 400 on BLOCK-tier chars (RTLO, ESC).
+    """
+    if not isinstance(value, str):
+        return str(value) if value is not None else ""
+
+    ug = _ug_get_guard()
+    result = ug.scan(value, context=f"psn_scan:{field}:{caller}")
+
+    if result.blocked:
+        # BLOCK tier — RTLO, ESC sequences, C1 controls
+        # Emit audit record then reject the request
+        for v in result.violations:
+            if v.get('disposition') == 'BLOCK':
+                _audit(
+                    "PSN_VIOLATION_BLOCK",
+                    f"field={field} caller={caller} "
+                    f"char={v.get('codepoint')} name={v.get('name','?')} "
+                    f"risk={v.get('risk')} provenance=REJECTED"
+                )
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "PSN_VIOLATION",
+                "field": field,
+                "violations": [
+                    v for v in result.violations
+                    if v.get('disposition') == 'BLOCK'
+                ],
+                "message": (
+                    f"Field '{field}' contains dangerous Unicode characters "
+                    f"that cannot be accepted."
+                )
+            }
+        )
+
+    # STRIP tier — zero-width, format chars — log and return cleaned string
+    for v in result.violations:
+        if v.get('disposition') == 'STRIP':
+            _audit(
+                "PSN_VIOLATION_STRIP",
+                f"field={field} caller={caller} "
+                f"char={v.get('codepoint')} name={v.get('name','?')} "
+                f"risk={v.get('risk')} provenance=CLAMPED"
+            )
+
+    return result.sanitized
+
+
+# ──────────────────────────────────────────────────────────────
+# CTW-BSC CIPHER — embedded r4
+# ──────────────────────────────────────────────────────────────
+
+try:
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCMSIV
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+    from cryptography.hazmat.primitives import hashes as crypto_hashes
+    HAS_CRYPTO = True
+except Exception:
+    HAS_CRYPTO = False
+
+BSC_VERSION_TAG  = "CTW-BSC-V04"
+BSC_DELIM        = '\x00BSC2\x00'
+BSC_ZW_OPEN      = '\x00ZWOPEN\x00'
+BSC_ZW_CLOSE     = '\x00ZWCLOSE\x00'
+BSC_SALT_LEN     = 16
+BSC_NONCE_LEN    = 12
+BSC_PBKDF2_ITER  = 480_000
+BSC_MIN_PASS     = 12
+BSC_KS_SHUFFLE   = b'CTW-BSC-SHUFFLE\x00'
+BSC_KS_MORSE     = b'CTW-BSC-MORSE\x00'
+BSC_VALID_BAUDS  = frozenset([300,1200,2400,4800,9600,19200,38400,57600,115200])
+BSC_CORRECT_BAUD = 115200
+BSC_WRONG_BAUD   = 9600
+
+BSC_ZW_POOL = ['\u200B','\u200C','\u200D','\u2060',
+               '\u200E','\u200F','\u2061','\u2062']
+
+BSC_MORSE = {
+    'A':'.-',   'B':'-...','C':'-.-.','D':'-..',  'E':'.',
+    'F':'..-.', 'G':'--.',  'H':'....','I':'..',  'J':'.---',
+    'K':'-.-',  'L':'.-..','M':'--',  'N':'-.',  'O':'---',
+    'P':'.--.', 'Q':'--.-','R':'.-.',  'S':'...','T':'-',
+    'U':'..-',  'V':'...-','W':'.--', 'X':'-..-','Y':'-.--',
+    'Z':'--..',
+    '0':'-----','1':'.----','2':'..---','3':'...--','4':'....-',
+    '5':'.....','6':'-....','7':'--...','8':'---..','9':'----.',
+    '=':'.-.-.',':':'---...',' ':'/',
+}
+BSC_MORSE_REV = {v: k for k, v in BSC_MORSE.items()}
+BSC_B85 = frozenset(
+    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+    "!#$%&()*+-;<=>?@^_`{|}~"
+)
+
+def _bsc_derive(passphrase: str, salt: bytes):
+    pw = passphrase.encode('utf-8')
+    if HAS_CRYPTO:
+        kdf = PBKDF2HMAC(algorithm=crypto_hashes.SHA256(),
+                         length=68, salt=salt, iterations=BSC_PBKDF2_ITER)
+        d = kdf.derive(pw)
+    else:
+        d = hashlib.pbkdf2_hmac('sha256', pw, salt, BSC_PBKDF2_ITER, dklen=68)
+    return d[0:32], d[32:64], d[64:68]
+
+def _bsc_zw_map(key_sess: bytes) -> dict:
+    off = key_sess[0] % len(BSC_ZW_POOL)
+    r   = BSC_ZW_POOL[off:] + BSC_ZW_POOL[:off]
+    return {'dot':r[0],'dash':r[1],'letter':r[2],'word':r[3]}
+
+def _bsc_keystream(seed: bytes, domain: bytes, length: int) -> list:
+    ks, base, counter = [], domain + seed, 0
+    while len(ks) < length:
+        ks.extend(hashlib.sha256(base + struct.pack('>Q', counter)).digest())
+        counter += 1
+    return ks[:length]
+
+def _bsc_frozen(content: str) -> set:
+    frozen, pos = set(), 0
+    for line in content.split('\n'):
+        s = line.lstrip()
+        structural = (s.startswith(BSC_DELIM.strip('\x00')) or
+                      s.startswith('BSC2CT:') or
+                      s.startswith('BSC2BIN:') or
+                      s.startswith('CTW-BSC-V'))
+        if structural:
+            for i in range(len(line)): frozen.add(pos + i)
+        else:
+            for i, ch in enumerate(line):
+                if ch in (' ','\t'): frozen.add(pos + i)
+                else: break
+            rs = line.rstrip()
+            for i in range(pos + len(rs), pos + len(line)): frozen.add(i)
+        pos += len(line) + 1
+    return frozen
+
+def _bsc_misframe(byte_val: int, cb: int, wb: int) -> int:
+    bits = [0] + [(byte_val >> i) & 1 for i in range(8)] + [1,1]
+    ttx, trx, out = 1.0/cb, 1.0/wb, 0
+    for b in range(8):
+        idx = min(int(trx*(1.5+b)/ttx), len(bits)-1)
+        out |= bits[idx] << b
+    return out
+
+def _bsc_pad(seed: bytes, cb: int, wb: int, size: int=64) -> str:
+    seed = seed[:size].ljust(size, b'\x20')
+    return ''.join(chr((_bsc_misframe(b,cb,wb)%95)+0x20) for b in seed)
+
+def _bsc_snapshot(content: str, frozen: set) -> list:
+    return [(i,ch) for i,ch in enumerate(content)
+            if i not in frozen and 0x21 <= ord(ch) <= 0x7E]
+
+def _bsc_shuffle(content: str, frozen: set, ks: list, fwd: bool) -> str:
+    span  = 0x7E - 0x21 + 1
+    chars = list(content)
+    for idx,(pos,ch) in enumerate(_bsc_snapshot(content, frozen)):
+        shift = ks[idx % len(ks)]
+        code  = ord(ch)
+        new   = 0x21 + ((code - 0x21 + (shift if fwd else -shift)) % span)
+        chars[pos] = chr(new)
+    return ''.join(chars)
+
+def _bsc_to_morse(text: str, zm: dict) -> str:
+    out, words = [], text.split(' ')
+    for wi,word in enumerate(words):
+        for li,ch in enumerate(word):
+            if ch not in BSC_MORSE: continue
+            for s in BSC_MORSE[ch]:
+                out.append(zm['dot'] if s=='.' else zm['dash'])
+            if li < len(word)-1: out.append(zm['letter'])
+        if wi < len(words)-1: out.append(zm['word'])
+    return ''.join(out)
+
+def _bsc_from_morse(zw: str, zm: dict) -> str:
+    active = frozenset(zm.values())
+    chars  = [c for c in zw if c in active]
+    result, csym, cword = [], [], []
+    def flush_l():
+        pat = ''.join(csym)
+        if pat in BSC_MORSE_REV: cword.append(BSC_MORSE_REV[pat])
+        csym.clear()
+    def flush_w():
+        flush_l()
+        if cword: result.append(''.join(cword))
+        cword.clear()
+    for c in chars:
+        if   c==zm['dot']:    csym.append('.')
+        elif c==zm['dash']:   csym.append('-')
+        elif c==zm['letter']: flush_l()
+        elif c==zm['word']:   flush_w()
+    flush_w()
+    return ' '.join(result)
+
+def _bsc_l4_enc(data: bytes, key: bytes) -> bytes:
+    if not HAS_CRYPTO: raise RuntimeError("cryptography package required")
+    nonce = os.urandom(BSC_NONCE_LEN)
+    return nonce + AESGCMSIV(key).encrypt(nonce, data, None)
+
+def _bsc_l4_dec(data: bytes, key: bytes) -> bytes:
+    if not HAS_CRYPTO: raise RuntimeError("cryptography package required")
+    if len(data) < BSC_NONCE_LEN:
+        _audit("OOB_LENGTH_MISMATCH",
+               f"field=bsc_nonce supplied={len(data)} "
+               f"expected_min={BSC_NONCE_LEN} provenance=REJECTED caller=bsc_l4_dec")
+        raise ValueError("Ciphertext too short")
+    return AESGCMSIV(key).decrypt(data[:BSC_NONCE_LEN], data[BSC_NONCE_LEN:], None)
+
+def _bsc_morse_enc(payload: bytes, key: bytes, salt: bytes) -> str:
+    crc  = struct.pack('>I', zlib.crc32(payload) & 0xFFFFFFFF)
+    pt   = crc + payload
+    if HAS_CRYPTO:
+        n    = os.urandom(BSC_NONCE_LEN)
+        blob = n + AESGCMSIV(key).encrypt(n, pt, None)
+    else:
+        ks   = _bsc_keystream(key, BSC_KS_MORSE, len(pt))
+        blob = bytes(b ^ ks[i] for i,b in enumerate(pt))
+    return f"{salt.hex().upper()}:{base64.b32encode(blob).decode('ascii')}"
+
+def _bsc_morse_dec(b32: str, key: bytes) -> Optional[bytes]:
+    try:
+        pad  = (8 - len(b32) % 8) % 8
+        blob = base64.b32decode(b32 + '='*pad, casefold=False)
+        if HAS_CRYPTO:
+            if len(blob) < BSC_NONCE_LEN: return None
+            pt = AESGCMSIV(key).decrypt(blob[:BSC_NONCE_LEN], blob[BSC_NONCE_LEN:], None)
+        else:
+            ks = _bsc_keystream(key, BSC_KS_MORSE, len(blob))
+            pt = bytes(b ^ ks[i] for i,b in enumerate(blob))
+        if len(pt) < 4: return None
+        body = pt[4:]
+        if not hmac.compare_digest(pt[:4],
+               struct.pack('>I', zlib.crc32(body) & 0xFFFFFFFF)):
+            return None
+        return body
+    except Exception:
+        return None
+
+def _bsc_build_kp(cb: int, wb: int, seed: bytes, salt: bytes) -> bytes:
+    sh = hashlib.sha256(seed).hexdigest()[:8].upper()
+    return f"CB{cb}/WB{wb}/SS{sh}/SL{salt.hex().upper()}".encode()
+
+def _bsc_parse_kp(raw: bytes) -> Optional[dict]:
+    try:
+        parts = {p[:2]: p[2:] for p in raw.decode().strip().split('/')}
+        cb, wb = int(parts['CB']), int(parts['WB'])
+        salt   = bytes.fromhex(parts['SL'])
+        if cb not in BSC_VALID_BAUDS or wb not in BSC_VALID_BAUDS or cb==wb: return None
+        if len(salt) != BSC_SALT_LEN: return None
+        return {'cb':cb,'wb':wb,'salt':salt}
+    except Exception:
+        return None
+
+def bsc_encode(plaintext: bytes, passphrase: str) -> str:
+    if len(passphrase) < _OOB_BOUNDS["bsc_passphrase_min"]:
+        _audit("OOB_LENGTH_MISMATCH",
+               f"field=bsc_passphrase supplied={len(passphrase)} "
+               f"expected_min={_OOB_BOUNDS['bsc_passphrase_min']} provenance=REJECTED caller=bsc_encode")
+        raise ValueError(f"Passphrase must be at least {BSC_MIN_PASS} characters")
+    salt             = os.urandom(BSC_SALT_LEN)
+    key_l4,key_m,ks = _bsc_derive(passphrase, salt)
+    zm               = _bsc_zw_map(ks)
+    seed             = hashlib.sha256(key_l4 + salt).digest()
+    enc_bytes        = _bsc_l4_enc(plaintext, key_l4)
+    text_block       = "BSC2CT:" + base64.b85encode(enc_bytes).decode('ascii')
+    ph = _bsc_pad(hashlib.sha256(plaintext).digest(),       BSC_CORRECT_BAUD, BSC_WRONG_BAUD)
+    pm = _bsc_pad(hashlib.sha256(plaintext[::-1]).digest(), BSC_CORRECT_BAUD, BSC_WRONG_BAUD)
+    pf = _bsc_pad(seed,                                     BSC_CORRECT_BAUD, BSC_WRONG_BAUD)
+    padded   = (BSC_DELIM+ph+BSC_DELIM+'\n'+text_block+'\n'+
+                BSC_DELIM+pm+BSC_DELIM+'\n'+BSC_DELIM+pf+BSC_DELIM)
+    frozen   = _bsc_frozen(padded)
+    ks_buf   = _bsc_keystream(seed, BSC_KS_SHUFFLE, len(padded))
+    shuffled = _bsc_shuffle(padded, frozen, ks_buf, True)
+    kp_bytes = _bsc_build_kp(BSC_CORRECT_BAUD, BSC_WRONG_BAUD, seed, salt)
+    morse_in = _bsc_morse_enc(kp_bytes, key_m, salt)
+    zw_stream= _bsc_to_morse(morse_in, zm)
+    return BSC_VERSION_TAG+'\n'+shuffled+BSC_ZW_OPEN+zw_stream+BSC_ZW_CLOSE
+
+def bsc_decode(ciphertext: str, passphrase: str) -> bytes:
+    if len(passphrase) < BSC_MIN_PASS:
+        raise ValueError(f"Passphrase must be at least {BSC_MIN_PASS} characters")
+    lines = ciphertext.split('\n', 1)
+    if not lines[0].startswith('CTW-BSC-V'): raise ValueError("Not a CTW-BSC file")
+    body         = lines[1] if len(lines) > 1 else ''
+    zw_idx       = body.find(BSC_ZW_OPEN)
+    if zw_idx == -1: raise ValueError("ZW block not found")
+    shuffle_zone = body[:zw_idx]
+    zw_section   = body[zw_idx:]
+    inner_start  = len(BSC_ZW_OPEN)
+    inner_end    = zw_section.find(BSC_ZW_CLOSE, inner_start)
+    zw_raw       = zw_section[inner_start:inner_end] if inner_end!=-1 else zw_section[inner_start:]
+    params = None
+    working_salt = None
+    for offset in range(len(BSC_ZW_POOL)):
+        trial_zm = _bsc_zw_map(bytes([offset,0,0,0]))
+        active   = frozenset(trial_zm.values())
+        zw_chars = ''.join(c for c in zw_raw if c in active)
+        if not zw_chars: continue
+        raw_morse = _bsc_from_morse(zw_chars, trial_zm)
+        if not raw_morse or ':' not in raw_morse: continue
+        salt_hex, b32 = raw_morse.split(':', 1)
+        try:
+            candidate_salt = bytes.fromhex(salt_hex.strip())
+        except:
+            continue
+        if not _oob_reject(len(candidate_salt), "bsc_salt", BSC_SALT_LEN, "bsc_decode"):
+            continue
+        _, km, _ = _bsc_derive(passphrase, candidate_salt)
+        dec = _bsc_morse_dec(b32.strip(), km)
+        if dec is None: continue
+        kp = _bsc_parse_kp(dec)
+        if kp and kp['salt'] == candidate_salt:
+            params = kp
+            working_salt = candidate_salt
+            break
+    if not params:
+        raise ValueError("Key recovery failed — wrong passphrase or corrupted file")
+    key_l4,_,_ = _bsc_derive(passphrase, working_salt)
+    seed        = hashlib.sha256(key_l4 + working_salt).digest()
+    frozen      = _bsc_frozen(shuffle_zone)
+    ks_buf      = _bsc_keystream(seed, BSC_KS_SHUFFLE, len(shuffle_zone))
+    unshuffled  = _bsc_shuffle(shuffle_zone, frozen, ks_buf, False)
+    text_block  = None
+    for part in unshuffled.split(BSC_DELIM):
+        c = part.strip('\n')
+        if c.startswith('BSC2CT:'):
+            b85 = c[7:]
+            if not all(ch in BSC_B85 for ch in b85):
+                raise ValueError("Invalid base85 in ciphertext block")
+            text_block = b85
+            break
+    if text_block is None: raise ValueError("Ciphertext block not found")
+    enc_bytes = base64.b85decode(text_block.encode('ascii'))
+    return _bsc_l4_dec(enc_bytes, key_l4)
+
+def bsc_validate_passphrase(passphrase: str) -> Optional[str]:
+    if len(passphrase) < BSC_MIN_PASS:
+        return f"Passphrase must be at least {BSC_MIN_PASS} characters"
+    classes = sum([
+        any(c.isupper()     for c in passphrase),
+        any(c.islower()     for c in passphrase),
+        any(c.isdigit()     for c in passphrase),
+        any(not c.isalnum() for c in passphrase),
+    ])
+    if classes < 2:
+        return "Passphrase must contain at least 2 character classes"
+    return None
+
+# ──────────────────────────────────────────────────────────────
+# CONFIG
+# ──────────────────────────────────────────────────────────────
+
+SECRET_KEY = os.environ.get("CTW_SECRET")
+if not SECRET_KEY:
+    raise RuntimeError(
+        "CTW_SECRET environment variable is not set. "
+        "Refusing to start with a default/placeholder signing key."
+    )
+ALGORITHM    = "HS256"
+TOKEN_EXPIRE = 60 * 24 * 7
+DB_PATH      = Path(os.environ.get("DB_PATH", "/data/ctw.db"))
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+cloudinary.config(
+    cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME", ""),
+    api_key    = os.environ.get("CLOUDINARY_API_KEY",    ""),
+    api_secret = os.environ.get("CLOUDINARY_API_SECRET", ""),
+    secure     = True,
+)
+CLOUDINARY_ENABLED = bool(os.environ.get("CLOUDINARY_CLOUD_NAME"))
+ALLOWED_MIME = {"image/jpeg","image/png","image/gif","image/webp","video/mp4"}
+MAX_UPLOAD   = 20 * 1024 * 1024
+_MIME_EXT = {
+    "image/jpeg": ".jpg", "image/png": ".png",
+    "image/gif": ".gif",  "image/webp": ".webp",
+    "video/mp4": ".mp4",
+}
+
+# ──────────────────────────────────────────────────────────────
+# DATABASE
+# ──────────────────────────────────────────────────────────────
+
+@contextmanager
+def get_db():
+    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+def init_db():
+    with get_db() as db:
+        db.executescript("""
+CREATE TABLE IF NOT EXISTS users (
+            username     TEXT PRIMARY KEY,
+            display_name TEXT NOT NULL,
+            bio          TEXT DEFAULT '',
+            avatar_url   TEXT DEFAULT '',
+            password     TEXT NOT NULL,
+            created_at   INTEGER NOT NULL,
+            min_posts_to_interact INTEGER DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS follows (
+            follower  TEXT NOT NULL,
+            following TEXT NOT NULL,
+            PRIMARY KEY (follower, following),
+            FOREIGN KEY (follower)  REFERENCES users(username) ON DELETE CASCADE,
+            FOREIGN KEY (following) REFERENCES users(username) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS posts (
+            id         TEXT PRIMARY KEY,
+            author     TEXT NOT NULL,
+            content    TEXT NOT NULL,
+            parent_id  TEXT,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (author) REFERENCES users(username) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS media (
+            id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            post_id  TEXT NOT NULL,
+            url      TEXT NOT NULL,
+            mime     TEXT NOT NULL,
+            FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS likes (
+            username TEXT NOT NULL,
+            post_id  TEXT NOT NULL,
+            PRIMARY KEY (username, post_id),
+            FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE,
+            FOREIGN KEY (post_id)  REFERENCES posts(id)       ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS reposts (
+            username TEXT NOT NULL,
+            post_id  TEXT NOT NULL,
+            PRIMARY KEY (username, post_id),
+            FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE,
+            FOREIGN KEY (post_id)  REFERENCES posts(id)       ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS dms (
+            id         TEXT PRIMARY KEY,
+            sender     TEXT NOT NULL,
+            recipient  TEXT NOT NULL,
+            ciphertext TEXT NOT NULL,
+            hint       TEXT DEFAULT '',
+            created_at INTEGER NOT NULL,
+            read       INTEGER DEFAULT 0,
+            FOREIGN KEY (sender)    REFERENCES users(username) ON DELETE CASCADE,
+            FOREIGN KEY (recipient) REFERENCES users(username) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_posts_author  ON posts(author);
+        CREATE INDEX IF NOT EXISTS idx_posts_parent  ON posts(parent_id);
+        CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_dms_sender    ON dms(sender);
+        CREATE INDEX IF NOT EXISTS idx_dms_recipient ON dms(recipient);
+        CREATE INDEX IF NOT EXISTS idx_dms_created   ON dms(created_at);
+        CREATE TABLE IF NOT EXISTS site_stats (
+            key   TEXT PRIMARY KEY,
+            value INTEGER DEFAULT 0
+        );
+        INSERT OR IGNORE INTO site_stats (key, value) VALUES ('visit_count', 1337);
+                CREATE TABLE IF NOT EXISTS geiger_source_signatures (
+            id                  TEXT PRIMARY KEY,
+            source_name         TEXT NOT NULL,
+            username            TEXT NOT NULL,
+            display_name        TEXT NOT NULL,
+
+            method              TEXT NOT NULL,
+            detector            TEXT NOT NULL,
+
+            reading_seconds     INTEGER NOT NULL,
+            reading_minutes     INTEGER NOT NULL,
+            n_readings          INTEGER NOT NULL,
+            independent_samples INTEGER NOT NULL,
+
+            started_at          TEXT,
+            completed_at        TEXT NOT NULL,
+
+            total_counts        INTEGER NOT NULL DEFAULT 0,
+
+            aggregate_json      TEXT NOT NULL,
+            readings_json       TEXT NOT NULL,
+
+            created_at          REAL NOT NULL,
+
+            FOREIGN KEY (username)
+                REFERENCES users(username)
+                ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS
+            idx_geiger_sig_user
+            ON geiger_source_signatures(username);
+
+        CREATE INDEX IF NOT EXISTS
+            idx_geiger_sig_source
+            ON geiger_source_signatures(source_name);
+
+        CREATE INDEX IF NOT EXISTS
+            idx_geiger_sig_completed
+            ON geiger_source_signatures(completed_at DESC);
+        CREATE TABLE IF NOT EXISTS zb_ledger (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts           REAL    NOT NULL,
+            session_id   TEXT    NOT NULL,
+            field        TEXT    NOT NULL,
+            state        TEXT    NOT NULL,
+            disposition  TEXT    NOT NULL,
+            provenance   TEXT    NOT NULL,
+            detail       TEXT    NOT NULL,
+            chain_hash   TEXT    NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_zb_ts    ON zb_ledger(ts DESC);
+        CREATE INDEX IF NOT EXISTS idx_zb_field ON zb_ledger(field);
+        CREATE INDEX IF NOT EXISTS idx_zb_disp  ON zb_ledger(disposition);
+        """)
+
+# ──────────────────────────────────────────────────────────────
+# LIFESPAN
+# ──────────────────────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ── Database init ──────────────────────────────────────────────────────
+    init_db()
+  # ── Zero Byte chain head — load from persisted ledger ─────
+    global _ZB_CHAIN_HEAD
+    _ZB_CHAIN_HEAD = _zb_load_chain_head()
+    print(f"[ZERO_BYTE] Chain head loaded: {_ZB_CHAIN_HEAD[:16]}...")
+    print(f"[ZERO_BYTE] Session ID: {_ZB_SESSION_ID}")
+    with get_db() as db:
+        if not db.execute("SELECT 1 FROM users LIMIT 1").fetchone():
+            now = int(time.time())
+            print("[SEED] Starting database population...")
+            seed_accounts = [
+                ("admin", "Admin",        "Platform administrator."),
+                ("alice", "Alice Nguyen", "Engineer. Coffee addict."),
+                ("bob",   "Bob Martinez", "Security researcher."),
+            ]
+            for username, dn, bio in seed_accounts:
+                random_pw = secrets.token_urlsafe(16)
+                db.execute(
+                    "INSERT OR IGNORE INTO users VALUES (?,?,?,?,?,?,?)",
+                    (username, dn, bio, "", _hash_pw(random_pw), now, 0)
+                )
+                print(f"[SEED] User created -> {username}")
+            db.execute("DELETE FROM posts")
+            seed_posts = [
+                ("admin", "Welcome to CTW Social -- the feed you actually control. #ctw"),
+                ("alice", "Hot take: real-time WebSockets beat polling every time."),
+                ("bob",   "Reminder: TAC 65535 is a reserved value. If you see it in the wild, take note."),
+                ("alice", "Anyone else notice #Band71 anomalies lately? Asking for a friend."),
+            ]
+            for i, (author, content) in enumerate(seed_posts):
+                pid = str(uuid.uuid4())
+                db.execute(
+                    "INSERT INTO posts (id, author, content, parent_id, created_at) "
+                    "VALUES (?,?,?,?,?)",
+                    (pid, author, content, None, now - (i * 3600))
+                )
+                print(f"[SEED] Post created -> {pid} by {author}")
+            print("[SEED] Database population finished.")
+# ── Stack Guard + ELF Sentinel init ───────────────────────
+    sg_init(
+        scan_interval=60.0,
+        raise_on_crit=False,  # Log+reject, never crash the server
+        max_stack=128,
+        max_json=32,
+        max_data=48,
+    )
+    es_init()
+    print("[STACK_GUARD] Active")
+    print("[ELF_SENTINEL] Active")
+    # ── HID provenance guard init ──────────────────────────────────────────
+    # FIX: guard init lives in lifespan, after app is constructed,
+    # NOT as a bare @app.on_event decorator that fires before app exists
+    hid_guard = _hid_get_guard()
+    start_udev_listener(hid_guard)
+    print("[HID_PROV] Guard active, udev listener started.")
+
+    # ── Filename provenance guard init ─────────────────────────────────────
+    fn_guard = get_filename_guard()
+    print("[FILENAME_PROV] Guard active.")
+
+# ── Unicode guard init (self-check fires at import, just log) ──────────
+    print("[UNICODE_GUARD] Guard active.")
+    init_wan_ingress()
+    print("[WAN_INGRESS] Active")
+    async def _geiger_ws_client():
+        import websockets as _ws
+        url = "wss://refrain-blandness-anagram.ngrok-free.dev"
+        while True:
+            try:
+                async with _ws.connect(url) as ws:
+                    print("[GEIGER_WS] Connected to local feed")
+                    async for msg in ws:
+                        try:
+                            rec = json.loads(msg)
+                            if isinstance(rec, dict):
+                                await _geiger_publish(rec)
+                        except Exception:
+                            pass
+            except Exception as e:
+                print(f"[GEIGER_WS] Reconnecting: {e}")
+                await asyncio.sleep(5)
+
+    asyncio.create_task(_geiger_ws_client())
+    print("[GEIGER_WS] Client task started.")
+    establish_baseline(["main.py", "ctw_recon.py"])
+    print("[CTW_RECON] Module baseline established.")
+
+    async def _recon_loop():
+        await asyncio.sleep(60)
+        while True:
+            try:
+                result = run_full_scan(db_path=str(DB_PATH))
+                if result["critical"] > 0 or result["high"] > 0:
+                    _audit("RECON_AUTO_SCAN",
+                           f"total={result['total']} critical={result['critical']} "
+                           f"high={result['high']}")
+            except Exception as e:
+                _audit("RECON_LOOP_ERROR", str(e)[:120])
+            await asyncio.sleep(300)
+
+    asyncio.create_task(_recon_loop())
+    print("[CTW_RECON] Background scan loop started (300s interval).")
+    yield
+    # shutdown — nothing to teardown for these guards
+    sg_shutdown()
+    shutdown_wan_ingress()
+# ──────────────────────────────────────────────────────────────
+# APP — created BEFORE any @app.* decorators
+# ──────────────────────────────────────────────────────────────
+
+app = FastAPI(title="CTW Social", version="4.0.0", lifespan=lifespan)
+
+# ── CORS ──────────────────────────────────────────────────────
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://advancedctresearch.com",
+        "http://localhost:8000",
+    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ── Unicode middleware — scans ALL incoming HTTP before any route sees it ──
+# FIX: registered AFTER CORSMiddleware so it runs on the inner side
+
+
+# ──────────────────────────────────────────────────────────────
+# MODELS
+# ──────────────────────────────────────────────────────────────
+
+class RegisterIn(BaseModel):
+    username:     str = Field(max_length=50)
+    password:     str = Field(max_length=200)
+    display_name: str = Field(default="", max_length=200)
+    bio:          str = Field(default="", max_length=1000)
+
+class LoginIn(BaseModel):
+    username: str
+    password: str
+
+class PostIn(BaseModel):
+    content:   str = Field(max_length=2000)
+    parent_id: Optional[str] = None
+
+class ProfileUpdate(BaseModel):
+    display_name: Optional[str] = None
+    bio:          Optional[str] = None
+    avatar_url:   Optional[str] = None
+
+class DMIn(BaseModel):
+    recipient:  str = Field(max_length=50)
+    ciphertext: str = Field(max_length=200000)
+    hint:       str = Field(default="", max_length=100)
+
+class PassphraseCheckIn(BaseModel):
+    passphrase: str
+
+# ──────────────────────────────────────────────────────────────
+# AUTH
+# ──────────────────────────────────────────────────────────────
+
+def _hash_pw(pw: str) -> str:
+    digest = hashlib.sha256(pw.encode()).hexdigest().encode()
+    return bcrypt.hashpw(digest, bcrypt.gensalt()).decode()
+
+def _verify_pw(plain: str, hashed: str) -> bool:
+    digest = hashlib.sha256(plain.encode()).hexdigest().encode()
+    return bcrypt.checkpw(digest, hashed.encode())
+
+def _make_token(username: str) -> str:
+    return jwt.encode(
+        {"sub": username, "exp": time.time() + TOKEN_EXPIRE * 60},
+        SECRET_KEY, algorithm=ALGORITHM)
+
+def _decode_token(token: str) -> str:
+    try:
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])["sub"]
+    except JWTError:
+        raise HTTPException(401, "Invalid token")
+
+async def current_user(authorization: str = Header(default="")) -> dict:
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Missing bearer token")
+    un = _decode_token(authorization[7:])
+    with get_db() as db:
+        row = db.execute("SELECT * FROM users WHERE username=?", (un,)).fetchone()
+    if not row:
+        raise HTTPException(401, "User not found")
+    return dict(row)
+
+# ──────────────────────────────────────────────────────────────
+# WEBSOCKET MANAGER
+# ──────────────────────────────────────────────────────────────
+
+class WSManager:
+    def __init__(self):
+        self._sockets: dict[str, list[WebSocket]] = {}
+
+    async def connect(self, ws: WebSocket, username: str):
+        await ws.accept()
+        self._sockets.setdefault(username, []).append(ws)
+
+    def disconnect(self, ws: WebSocket, username: str):
+        self._sockets[username] = [
+            s for s in self._sockets.get(username, []) if s != ws]
+
+    async def broadcast(self, event: str, data: dict):
+        payload = json.dumps({"event": event, "data": data})
+        for sockets in list(self._sockets.values()):
+            for ws in list(sockets):
+                try: await ws.send_text(payload)
+                except Exception: pass
+
+    async def send_to(self, username: str, event: str, data: dict):
+        payload = json.dumps({"event": event, "data": data})
+        for ws in list(self._sockets.get(username, [])):
+            try: await ws.send_text(payload)
+            except Exception: pass
+
+mgr = WSManager()
+
+# ──────────────────────────────────────────────────────────────
+# DB HELPERS
+# ──────────────────────────────────────────────────────────────
+
+def _build_post_view(db, p: dict, viewer: Optional[str]=None, _depth: int=0) -> dict:
+    p = dict(p)
+    author_row = db.execute(
+        "SELECT display_name, avatar_url FROM users WHERE username=?",
+        (p.get("author"),)
+    ).fetchone()
+    media_rows = db.execute(
+        "SELECT url, mime FROM media WHERE post_id=?",
+        (p.get("id"),)
+    ).fetchall()
+    like_count = db.execute(
+        "SELECT COUNT(*) FROM likes WHERE post_id=?", (p.get("id"),)
+    ).fetchone()[0]
+    repost_count = db.execute(
+        "SELECT COUNT(*) FROM reposts WHERE post_id=?", (p.get("id"),)
+    ).fetchone()[0]
+    liked = reposted = False
+    if viewer:
+        liked = bool(db.execute(
+            "SELECT 1 FROM likes WHERE username=? AND post_id=?",
+            (viewer, p.get("id"))
+        ).fetchone())
+        reposted = bool(db.execute(
+            "SELECT 1 FROM reposts WHERE username=? AND post_id=?",
+            (viewer, p.get("id"))
+        ).fetchone())
+    children = []
+    if _depth < 10:
+        child_rows = db.execute(
+            "SELECT * FROM posts WHERE parent_id=? ORDER BY created_at ASC",
+            (p.get("id"),)
+        ).fetchall()
+        children = [_build_post_view(db, dict(c), viewer, _depth + 1) for c in child_rows]
+    def safe_str(v, default=""):
+        if v is None: return default
+        return str(v).strip()
+    return {
+        "id":           safe_str(p.get("id")),
+        "content":      safe_str(p.get("content")),
+        "author":       safe_str(p.get("author")),
+        "display_name": safe_str(author_row["display_name"] if author_row else p.get("author"), safe_str(p.get("author"))),
+        "avatar_url":   safe_str(author_row["avatar_url"] if author_row else ""),
+        "created_at":   p.get("created_at") or int(time.time()),
+        "parent_id":    p.get("parent_id"),
+        "media":        [{"url": m["url"], "mime": m["mime"]} for m in media_rows],
+        "like_count":   like_count,
+        "liked":        liked,
+        "repost_count": repost_count,
+        "reposted":     reposted,
+        "children":     children,
+    }
+
+def _get_post(db, post_id: str, viewer: Optional[str]=None) -> Optional[dict]:
+    row = db.execute("SELECT * FROM posts WHERE id=?", (post_id,)).fetchone()
+    if not row: return None
+    return _build_post_view(db, dict(row), viewer)
+
+def _user_view(db, username: str, viewer: Optional[str]=None) -> Optional[dict]:
+    row = db.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
+    if not row: return None
+    row = dict(row)
+    return {
+        "username":        row["username"],
+        "display_name":    row["display_name"],
+        "bio":             row["bio"],
+        "avatar_url":      row["avatar_url"],
+        "created_at":      row["created_at"],
+        "min_posts_to_interact": row["min_posts_to_interact"] if "min_posts_to_interact" in row.keys() else 0,
+        "follower_count":  db.execute(
+            "SELECT COUNT(*) FROM follows WHERE following=?", (username,)).fetchone()[0],
+        "following_count": db.execute(
+            "SELECT COUNT(*) FROM follows WHERE follower=?",  (username,)).fetchone()[0],
+        "post_count":      db.execute(
+            "SELECT COUNT(*) FROM posts WHERE author=?",      (username,)).fetchone()[0],
+        "is_following":    bool(db.execute(
+            "SELECT 1 FROM follows WHERE follower=? AND following=?",
+            (viewer,username)).fetchone()) if viewer else False,
+    }
+  
+@app.get("/api/ingress/stats")
+async def ingress_stats(current_user_dep: dict = Depends(current_user)):
+    return get_ingress_stats()
+
+@app.post("/api/ingress/frame")
+async def ingress_frame(
+    request: Request,
+    current_user_dep: dict = Depends(current_user)
+):
+    raw = await request.body()
+    raw = zb_admit_bytes(raw, "wan_frame", "ingress_frame", SM_MAX_FRAME_BYTES)
+    decision = process_frame(raw)
+    if not decision.accepted:
+        raise HTTPException(400, {
+            "error":        "INGRESS_DROP",
+            "stage_failed": decision.stage_failed,
+            "psn":          decision.psn_records,
+        })
+    return {
+        "accepted":   True,
+        "ratchet":    decision.ratchet,
+        "sequence":   decision.sequence,
+        "elapsed_ns": decision.elapsed_ns,
+    }
+# ──────────────────────────────────────────────────────────────
+# ROUTES — PWA
+# ──────────────────────────────────────────────────────────────
+
+@app.get("/manifest.json")
+async def manifest():
+    return JSONResponse({
+        "name": "CTW Social",
+        "short_name": "CTW",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#000000",
+        "theme_color": "#000000",
+        "icons": [
+            {"src": "https://res.cloudinary.com/YOUR_CLOUD/image/upload/icon192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "https://res.cloudinary.com/YOUR_CLOUD/image/upload/icon512.png", "sizes": "512x512", "type": "image/png"}
+        ]
+    })
+
+# ──────────────────────────────────────────────────────────────
+# ROUTES — AUTH
+# ──────────────────────────────────────────────────────────────
+
+@app.post("/api/register")
+async def register(body: RegisterIn, request: Request):
+    username     = zb_admit(body.username,     "username",     "register", authenticated=False)
+    display_name = zb_admit(body.display_name, "display_name", "register", authenticated=False)
+    bio          = zb_admit(body.bio,          "bio",          "register", authenticated=False)
+    password     = _oob_clamp(body.password, "password", "register")
+    if len(username) < 2 or len(password) < 6:
+        raise HTTPException(400, "Username >=2 chars, password >=6 chars")
+    with get_db() as db:
+        if db.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone():
+            raise HTTPException(400, "Username taken")
+        db.execute(
+            "INSERT INTO users VALUES (?,?,?,?,?,?,?)",
+            (username, display_name or username, bio, "", _hash_pw(password), int(time.time()), 0)
+        )
+        u = _user_view(db, username)
+    _audit("NEW_ACCOUNT", f"username={username} display={display_name}", request.client.host)
+    return {"token": _make_token(username), "user": u}
+
+@app.post("/api/login")
+async def login(body: LoginIn, request: Request):
+    with get_db() as db:
+        row = db.execute("SELECT * FROM users WHERE username=?",
+                         (body.username,)).fetchone()
+        if not row or not _verify_pw(body.password, row["password"]):
+            _audit("LOGIN_FAIL", f"username={body.username}", request.client.host)
+            raise HTTPException(401, "Bad credentials")
+        u = _user_view(db, body.username)
+    _audit("LOGIN_OK", f"username={body.username}", request.client.host)
+    return {"token": _make_token(body.username), "user": u}
+
+@app.get("/api/visit-count")
+async def get_visit_count():
+    with get_db() as db:
+        row = db.execute("SELECT value FROM site_stats WHERE key='visit_count'").fetchone()
+        count = row[0] if row else 1337
+        db.execute("UPDATE site_stats SET value = value + 1 WHERE key='visit_count'")
+    return {"count": count}
+
+# ──────────────────────────────────────────────────────────────
+# ROUTES — FEED
+# ──────────────────────────────────────────────────────────────
+
+@app.get("/api/feed")
+async def get_feed(offset:int=0, limit:int=20,
+                   authorization:str=Header(default="")):
+    viewer = None
+    if authorization.startswith("Bearer "):
+        try: viewer = _decode_token(authorization[7:])
+        except: pass
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT * FROM posts WHERE parent_id IS NULL "
+            "ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (limit,offset)).fetchall()
+        return [_build_post_view(db,dict(r),viewer) for r in rows]
+
+@app.post("/api/posts")
+async def create_post(body: PostIn, user: dict=Depends(current_user)):
+    content = zb_admit(body.content, "post_content", "create_post", authenticated=True)
+    if not content.strip() and not body.parent_id:
+        raise HTTPException(400, "Empty post")
+    pid = str(uuid.uuid4())
+    now = int(time.time())
+    with get_db() as db:
+        db.execute(
+            "INSERT INTO posts (id,author,content,parent_id,created_at) VALUES (?,?,?,?,?)",
+            (pid, user["username"], content, body.parent_id, now))
+        view = _build_post_view(db, {
+            "id":pid, "author":user["username"],
+            "content":content,
+            "parent_id":body.parent_id, "created_at":now
+        }, user["username"])
+    await mgr.broadcast("new_post", view)
+    return view
+  
+@app.get("/api/chess/debug")
+async def chess_debug():
+    import traceback, shutil
+    result = {}
+    result["engine_exe_exists"] = _ENGINE_EXE.exists()
+    result["engine_src_exists"] = _ENGINE_SRC.exists()
+    result["gpp_path"] = shutil.which("g++")
+    if not _ENGINE_EXE.exists():
+        try:
+            ok = _compile_engine()
+            result["compile_ok"] = ok
+            if _ENGINE_EXE.exists():
+                result["engine_exe_exists_after"] = True
+        except Exception as e:
+            result["compile_exception"] = traceback.format_exc()
+    try:
+        import chess as _chess
+        result["chess_module"] = "ok"
+    except Exception as e:
+        result["chess_module"] = str(e)
+    return result
+  
+
+# ──────────────────────────────────────────────────────────────
+# USER AVATAR UPLOAD
+# Stores the resulting image URL in users.avatar_url.
+# Uses the same filename, size, entropy and Cloudinary controls
+# already used by post-media uploads.
+# ──────────────────────────────────────────────────────────────
+@app.post("/api/users/me/avatar")
+async def upload_my_avatar(
+    file: UploadFile = File(...),
+    user: dict = Depends(current_user),
+):
+    username = user["username"]
+
+    # Filename provenance / sanitization
+    fn_result = check_upload_filename(file.filename or "avatar")
+    if not fn_result["allowed"]:
+        _audit(
+            "AVATAR_FILENAME_PROV_BLOCKED",
+            f"username={username} filename={file.filename} "
+            f"violations={[v['type'] for v in fn_result['blocked']]}",
+        )
+        raise HTTPException(
+            400,
+            {
+                "error": "FILENAME_PROVENANCE_VIOLATION",
+                "violations": fn_result["blocked"],
+                "safe_name": fn_result["safe_name"],
+            },
+        )
+
+    raw = await file.read()
+    mime = (file.content_type or "").lower().strip()
+
+    # Avatars are images only.
+    if not mime.startswith("image/"):
+        raise HTTPException(400, "Avatar must be an image")
+
+    # Reuse the application's existing MIME allow-list.
+    if mime not in ALLOWED_MIME:
+        raise HTTPException(400, f"Unsupported image type: {mime}")
+
+    # Keep avatar uploads substantially below the global 20 MB ceiling.
+    # 5 MB is more than sufficient for an avatar while preventing
+    # unnecessarily large image payloads.
+    avatar_limit = min(_OOB_BOUNDS["upload_bytes"], 5 * 1024 * 1024)
+
+    if len(raw) > avatar_limit:
+        _audit(
+            "AVATAR_UPLOAD_REJECTED",
+            f"username={username} supplied={len(raw)} "
+            f"limit={avatar_limit} provenance=REJECTED",
+        )
+        raise HTTPException(413, "Avatar exceeds 5 MB")
+
+    if not raw:
+        raise HTTPException(400, "Empty avatar upload")
+
+    # Existing CTW reconstruction / entropy gate.
+    _recon_verdict = check_upload_entropy(
+        raw,
+        file.filename or "avatar",
+    )
+
+    if _recon_verdict["action"] == REJECTED:
+        _audit(
+            "AVATAR_RECON_UPLOAD_REJECTED",
+            f"username={username} file={file.filename} "
+            f"detail={_recon_verdict['detail']}",
+        )
+        raise HTTPException(
+            400,
+            detail=f"Avatar upload rejected: {_recon_verdict['detail']}",
+        )
+
+    # ----------------------------------------------------------
+    # Cloudinary path — preferred because the application already
+    # has Cloudinary configured for persistent media.
+    # ----------------------------------------------------------
+    if CLOUDINARY_ENABLED:
+        try:
+            result = cloudinary.uploader.upload(
+                raw,
+                folder="ctw-social/avatars",
+                resource_type="image",
+                public_id=f"avatar_{username}_{uuid.uuid4()}",
+                overwrite=False,
+                invalidate=True,
+            )
+
+            url = result.get("secure_url")
+            if not url:
+                raise RuntimeError("Cloudinary returned no secure_url")
+
+        except Exception as e:
+            _audit(
+                "AVATAR_CLOUDINARY_FAILED",
+                f"username={username} error={e}",
+            )
+            raise HTTPException(
+                502,
+                "Avatar storage service failed",
+            )
+
+    # ----------------------------------------------------------
+    # Local fallback — same /uploads mechanism already used by
+    # post-media when Cloudinary is disabled.
+    # ----------------------------------------------------------
+    else:
+        upload_dir = Path("uploads")
+        upload_dir.mkdir(exist_ok=True)
+
+        ext = _MIME_EXT.get(mime, ".img")
+        name = f"avatar_{uuid.uuid4()}{ext}"
+
+        (upload_dir / name).write_bytes(raw)
+        url = f"/uploads/{name}"
+
+    # ----------------------------------------------------------
+    # Store URL in the existing users.avatar_url column.
+    # ----------------------------------------------------------
+    with get_db() as db:
+        row = db.execute(
+            "SELECT username FROM users WHERE username=?",
+            (username,),
+        ).fetchone()
+
+        if not row:
+            raise HTTPException(404, "User not found")
+
+        db.execute(
+            "UPDATE users SET avatar_url=? WHERE username=?",
+            (url, username),
+        )
+
+        updated = db.execute(
+            """
+            SELECT username, display_name, bio, avatar_url, created_at
+            FROM users
+            WHERE username=?
+            """,
+            (username,),
+        ).fetchone()
+
+    _audit(
+        "AVATAR_UPLOAD_OK",
+        f"username={username} mime={mime} bytes={len(raw)} url={url}",
+    )
+
+    return {
+        "ok": True,
+        "url": url,
+        "avatar_url": url,
+        "user": {
+            "username": updated["username"],
+            "display_name": updated["display_name"],
+            "bio": updated["bio"],
+            "avatar_url": updated["avatar_url"],
+            "created_at": updated["created_at"],
+        },
+    }
+
+
+@app.post("/api/posts/{post_id}/media")
+async def attach_media(post_id:str, file:UploadFile=File(...),
+                       user:dict=Depends(current_user)):
+    with get_db() as db:
+        row = db.execute("SELECT * FROM posts WHERE id=?", (post_id,)).fetchone()
+    if not row: raise HTTPException(404,"Post not found")
+    if row["author"] != user["username"]: raise HTTPException(403)
+
+    # ── Filename provenance check ──────────────────────────────────────────
+    fn_result = check_upload_filename(file.filename or "upload")
+    if not fn_result["allowed"]:
+        _audit("FILENAME_PROV_BLOCKED",
+               f"filename={file.filename} "
+               f"violations={[v['type'] for v in fn_result['blocked']]}")
+        raise HTTPException(400, {
+            "error": "FILENAME_PROVENANCE_VIOLATION",
+            "violations": fn_result["blocked"],
+            "safe_name": fn_result["safe_name"],
+        })
+    safe_filename = fn_result["safe_name"]
+
+    raw  = await file.read()
+    mime = file.content_type or "application/octet-stream"
+    if mime not in ALLOWED_MIME: raise HTTPException(400,f"Unsupported: {mime}")
+    upload_limit = _OOB_BOUNDS["upload_bytes"]
+    if len(raw) > upload_limit:
+        _audit("OOB_UPLOAD_REJECTED",
+               f"field=upload_bytes supplied={len(raw)} "
+               f"limit={upload_limit} provenance=REJECTED caller=attach_media")
+        raise HTTPException(413, "File exceeds 20 MB")
+# CTW_RECON: entropy gate before Cloudinary push
+    _recon_verdict = check_upload_entropy(raw, file.filename or "upload")
+    if _recon_verdict["action"] == REJECTED:
+        _audit("RECON_UPLOAD_REJECTED",
+               f"file={file.filename} detail={_recon_verdict['detail']}")
+        raise HTTPException(400, detail=f"Upload rejected: {_recon_verdict['detail']}")
+    if CLOUDINARY_ENABLED:
+        res_type = "video" if mime=="video/mp4" else "image"
+        result   = cloudinary.uploader.upload(
+            raw, folder="ctw-social", resource_type=res_type,
+            public_id=f"media/{uuid.uuid4()}")
+        url = result["secure_url"]
+    else:
+        upload_dir = Path("uploads")
+        upload_dir.mkdir(exist_ok=True)
+        ext  = _MIME_EXT.get(mime, ".bin")
+        # FIX: use safe_filename from provenance check, not raw user-supplied name
+        name = f"{uuid.uuid4()}{ext}"
+        (upload_dir/name).write_bytes(raw)
+        url = f"/uploads/{name}"
+    with get_db() as db:
+        db.execute("INSERT INTO media (post_id,url,mime) VALUES (?,?,?)",
+                   (post_id,url,mime))
+        view = _get_post(db, post_id, user["username"])
+    await mgr.broadcast("post_update", view)
+    return {"url": url}
+
+@app.post("/api/posts/{post_id}/like")
+async def toggle_like(post_id:str, user:dict=Depends(current_user)):
+    un = user["username"]
+    with get_db() as db:
+        if not db.execute("SELECT 1 FROM posts WHERE id=?", (post_id,)).fetchone():
+            raise HTTPException(404)
+        if db.execute("SELECT 1 FROM likes WHERE username=? AND post_id=?",
+                      (un,post_id)).fetchone():
+            db.execute("DELETE FROM likes WHERE username=? AND post_id=?", (un,post_id))
+            liked = False
+        else:
+            db.execute("INSERT INTO likes VALUES (?,?)", (un,post_id))
+            liked = True
+        count = db.execute(
+            "SELECT COUNT(*) FROM likes WHERE post_id=?", (post_id,)).fetchone()[0]
+    payload = {"post_id":post_id,"like_count":count,"liked":liked,"by":un}
+    await mgr.broadcast("like_update", payload)
+    return payload
+
+@app.post("/api/posts/{post_id}/repost")
+async def toggle_repost(post_id:str, user:dict=Depends(current_user)):
+    un = user["username"]
+    with get_db() as db:
+        if not db.execute("SELECT 1 FROM posts WHERE id=?", (post_id,)).fetchone():
+            raise HTTPException(404)
+        if db.execute("SELECT 1 FROM reposts WHERE username=? AND post_id=?",
+                      (un,post_id)).fetchone():
+            db.execute("DELETE FROM reposts WHERE username=? AND post_id=?", (un,post_id))
+            reposted = False
+        else:
+            db.execute("INSERT INTO reposts VALUES (?,?)", (un,post_id))
+            reposted = True
+        count = db.execute(
+            "SELECT COUNT(*) FROM reposts WHERE post_id=?", (post_id,)).fetchone()[0]
+    payload = {"post_id":post_id,"repost_count":count,"reposted":reposted,"by":un}
+    await mgr.broadcast("repost_update", payload)
+    return payload
+
+# ──────────────────────────────────────────────────────────────
+# ROUTES — USERS
+# ──────────────────────────────────────────────────────────────
+
+@app.post("/api/users/me/interact-threshold")
+async def set_interact_threshold(
+    request: Request,
+    user: dict = Depends(current_user)
+):
+    body = await request.json()
+    raw = int(body.get("min_posts", 0))
+    value = max(0, min(raw, _OOB_BOUNDS["min_posts_to_interact"]))
+    with get_db() as db:
+        db.execute(
+            "UPDATE users SET min_posts_to_interact=? WHERE username=?",
+            (value, user["username"])
+        )
+        u = _user_view(db, user["username"])
+    _audit("INTERACT_THRESHOLD_SET",
+           f"user={user['username']} value={value}",
+           request.client.host)
+    return {"min_posts_to_interact": value, "user": u}
+
+@app.patch("/api/users/me")
+async def update_profile(body: ProfileUpdate, user: dict = Depends(current_user)):
+    un = user["username"]
+    with get_db() as db:
+        if body.display_name is not None:
+            dn = zb_admit(body.display_name, "display_name", "update_profile", authenticated=True)
+            db.execute("UPDATE users SET display_name=? WHERE username=?", (dn, un))
+        if body.bio is not None:
+            bio = zb_admit(body.bio, "bio", "update_profile", authenticated=True)
+            db.execute("UPDATE users SET bio=? WHERE username=?", (bio, un))
+        if body.avatar_url is not None:
+            av = zb_admit(body.avatar_url, "avatar_url", "update_profile", authenticated=True)
+            db.execute("UPDATE users SET avatar_url=? WHERE username=?", (av, un))
+        return _user_view(db, un)
+
+@app.get("/api/users/{username}")
+async def get_profile(username:str, authorization:str=Header(default="")):
+    viewer = None
+    if authorization.startswith("Bearer "):
+        try: viewer = _decode_token(authorization[7:])
+        except: pass
+    with get_db() as db:
+        u = _user_view(db, username, viewer)
+        if not u: raise HTTPException(404,"User not found")
+        rows = db.execute(
+            "SELECT * FROM posts WHERE author=? ORDER BY created_at DESC",
+            (username,)).fetchall()
+        u["posts"] = [_build_post_view(db,dict(r),viewer) for r in rows]
+    return u
+
+@app.post("/api/users/{username}/follow")
+async def toggle_follow(username: str, me: dict = Depends(current_user), request: Request = None):
+    if username == me["username"]:
+        raise HTTPException(400, "Can't follow yourself")
+    with get_db() as db:
+        if not db.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone():
+            raise HTTPException(404)
+        post_count = db.execute(
+            "SELECT COUNT(*) FROM posts WHERE author=?",
+            (me["username"],)
+        ).fetchone()[0]
+        target_row = db.execute(
+            "SELECT min_posts_to_interact FROM users WHERE username=?",
+            (username,)
+        ).fetchone()
+        threshold = target_row["min_posts_to_interact"] if target_row else 0
+        if post_count < threshold:
+            _audit("FOLLOW_BLOCKED_THRESHOLD",
+                   f"follower={me['username']} target={username} "
+                   f"posts={post_count} threshold={threshold}",
+                   request.client.host if request else "")
+            raise HTTPException(403,
+                f"This user requires at least {threshold} post(s) before you can follow them. "
+                f"You have {post_count}.")
+        if db.execute("SELECT 1 FROM follows WHERE follower=? AND following=?",
+                      (me["username"], username)).fetchone():
+            db.execute("DELETE FROM follows WHERE follower=? AND following=?",
+                       (me["username"], username))
+            following = False
+        else:
+            db.execute("INSERT INTO follows VALUES (?,?)", (me["username"], username))
+            following = True
+        count = db.execute(
+            "SELECT COUNT(*) FROM follows WHERE following=?", (username,)).fetchone()[0]
+    return {"following": following, "follower_count": count}
+
+# ──────────────────────────────────────────────────────────────
+# ROUTES — SEARCH
+# ──────────────────────────────────────────────────────────────
+
+@app.get("/api/search")
+async def search(q:str="", authorization:str=Header(default="")):
+    q = zb_admit(q, "search_query", "search", authenticated=False)
+    q = q.lower().strip()
+    if not q: return {"users":[],"posts":[]}
+    viewer = None
+    if authorization.startswith("Bearer "):
+        try: viewer = _decode_token(authorization[7:])
+        except: pass
+    with get_db() as db:
+        user_rows = db.execute(
+            "SELECT username FROM users WHERE LOWER(username) LIKE ? "
+            "OR LOWER(display_name) LIKE ? LIMIT 10",
+            (f"%{q}%",f"%{q}%")).fetchall()
+        users = [_user_view(db,r["username"],viewer) for r in user_rows]
+        post_rows = db.execute(
+            "SELECT * FROM posts WHERE LOWER(content) LIKE ? "
+            "AND parent_id IS NULL ORDER BY created_at DESC LIMIT 20",
+            (f"%{q}%",)).fetchall()
+        posts = [_build_post_view(db,dict(r),viewer) for r in post_rows]
+    return {"users":users,"posts":posts}
+
+# ──────────────────────────────────────────────────────────────
+# ROUTES — DMs (zero-knowledge)
+# ──────────────────────────────────────────────────────────────
+
+@app.post("/api/dm/send")
+async def send_dm(body: DMIn, request: Request, user: dict = Depends(current_user)):
+    recipient  = zb_admit(body.recipient, "username", "send_dm", authenticated=True)
+    ciphertext = _oob_clamp(body.ciphertext, "dm_ciphertext", "send_dm")
+    hint       = zb_admit(body.hint, "dm_hint", "send_dm", authenticated=True)
+    with get_db() as db:
+        if not db.execute("SELECT 1 FROM users WHERE username=?", (recipient,)).fetchone():
+            raise HTTPException(404, "Recipient not found")
+        post_count = db.execute(
+            "SELECT COUNT(*) FROM posts WHERE author=?",
+            (user["username"],)
+        ).fetchone()[0]
+        recipient_row = db.execute(
+            "SELECT min_posts_to_interact FROM users WHERE username=?",
+            (recipient,)
+        ).fetchone()
+        threshold = recipient_row["min_posts_to_interact"] if recipient_row else 0
+        if post_count < threshold:
+            _audit("DM_BLOCKED_THRESHOLD",
+                   f"sender={user['username']} recipient={recipient} "
+                   f"posts={post_count} threshold={threshold}",
+                   request.client.host)
+            raise HTTPException(403,
+                f"This user requires at least {threshold} post(s) before you can message them. "
+                f"You have {post_count}.")
+    if recipient == user["username"]:
+        raise HTTPException(400, "Can't DM yourself")
+    if not ciphertext.strip():
+        raise HTTPException(400, "Empty message")
+    mid = str(uuid.uuid4())
+    now = int(time.time())
+    with get_db() as db:
+        db.execute(
+            "INSERT INTO dms (id,sender,recipient,ciphertext,hint,created_at,read) "
+            "VALUES (?,?,?,?,?,?,0)",
+            (mid, user["username"], recipient, ciphertext, hint, now))
+    view = {
+        "id": mid, "sender": user["username"], "recipient": body.recipient,
+        "ciphertext": body.ciphertext, "hint": body.hint[:100],
+        "created_at": now, "read": False,
+    }
+    await mgr.send_to(body.recipient,   "new_dm",  view)
+    await mgr.send_to(user["username"], "dm_sent", view)
+    _audit("DM_SENT", f"from={user['username']} to={body.recipient}", request.client.host)
+    return view
+
+@app.delete("/api/dm/{msg_id}")
+async def delete_dm(msg_id: str, user=Depends(current_user)):
+    with get_db() as db:
+        row = db.execute("SELECT sender FROM dms WHERE id=?", (msg_id,)).fetchone()
+        if not row: raise HTTPException(404, "Not found")
+        if row[0] != user["username"]: raise HTTPException(403, "Not your message")
+        db.execute("DELETE FROM dms WHERE id=?", (msg_id,))
+    return {"ok": True}
+
+@app.delete("/api/dm/conversation/{username}")
+async def delete_conversation(username: str, user=Depends(current_user)):
+    with get_db() as db:
+        db.execute("""DELETE FROM dms WHERE
+            (sender=? AND recipient=?) OR (sender=? AND recipient=?)""",
+            (user["username"], username, username, user["username"]))
+    return {"ok": True}
+
+@app.post("/api/dm/conversation/{username}")
+async def get_conversation(username: str, user: dict = Depends(current_user)):
+    with get_db() as db:
+        if not db.execute("SELECT 1 FROM users WHERE username=?",
+                          (username,)).fetchone():
+            raise HTTPException(404)
+        rows = db.execute(
+            "SELECT * FROM dms WHERE "
+            "(sender=? AND recipient=?) OR (sender=? AND recipient=?) "
+            "ORDER BY created_at ASC",
+            (user["username"],username,username,user["username"])).fetchall()
+        db.execute("UPDATE dms SET read=1 WHERE recipient=? AND sender=?",
+                   (user["username"],username))
+    return [
+        {
+            "id":        row["id"],
+            "sender":    row["sender"],
+            "recipient": row["recipient"],
+            "ciphertext":row["ciphertext"],
+            "hint":      row["hint"],
+            "created_at":row["created_at"],
+            "read":      bool(row["read"]),
+        }
+        for row in rows
+    ]
+
+@app.get("/api/dm/inbox")
+async def get_inbox(user: dict = Depends(current_user)):
+    un = user["username"]
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT * FROM dms WHERE sender=? OR recipient=? "
+            "ORDER BY created_at DESC",
+            (un, un)
+        ).fetchall()
+        convs = {}
+        for row in rows:
+            row = dict(row)
+            other = row["recipient"] if row["sender"] == un else row["sender"]
+            if other not in convs:
+                other_row = db.execute(
+                    "SELECT display_name FROM users WHERE username=?", (other,)
+                ).fetchone()
+                convs[other] = {
+                    "with": other,
+                    "display_name": other_row["display_name"] if other_row else other,
+                    "unread": 0,
+                    "updated_at": row["created_at"],
+                }
+            if row["recipient"] == un and not row["read"]:
+                convs[other]["unread"] += 1
+            if row["created_at"] > convs[other]["updated_at"]:
+                convs[other]["updated_at"] = row["created_at"]
+    return sorted(convs.values(), key=lambda x: x["updated_at"], reverse=True)
+
+# ──────────────────────────────────────────────────────────────
+# ROUTES — HID PROVENANCE
+# FIX: ALL @app.* decorators appear AFTER app = FastAPI(...)
+# ──────────────────────────────────────────────────────────────
+
+@app.post("/api/hid/virtual-key")
+async def virtual_key_event(
+    key: str,
+    action: str = "press",
+    current_user_dep: dict = Depends(current_user)
+):
+    """
+    Game engine virtual keyboard input endpoint.
+    Only the VIRTUAL_KB slot is accepted. Provenance enforced.
+    """
+    hid_guard = _hid_get_guard()
+    result = inject_virtual_key(hid_guard, key, action)
+    if not result["accepted"]:
+        raise HTTPException(status_code=403, detail=result["reason"])
+    return result
+
+@app.get("/api/hid/state")
+async def hid_state(current_user_dep: dict = Depends(current_user)):
+    """Audit dump of current HID provenance slot state."""
+    hid_guard = _hid_get_guard()
+    return hid_guard.dump_state()
+
+@app.get("/api/hid/violations")
+async def hid_violations(current_user_dep: dict = Depends(current_user)):
+    """Return recent PSN HID violation records from log."""
+    try:
+        log = Path("/var/log/ctw_psn_hid.log")
+        if not log.exists():
+            return {"violations": []}
+        lines = log.read_text().splitlines()
+        psn_lines = [l for l in lines if l.startswith("PSN1:HID_")]
+        return {"violations": psn_lines[-100:][::-1]}
+    except OSError:
+        return {"violations": [], "error": "Log unavailable"}
+
+# ──────────────────────────────────────────────────────────────
+# ROUTES — UNICODE / FILENAME VIOLATION LOGS
+# ──────────────────────────────────────────────────────────────
+
+@app.get("/api/violations/unicode")
+async def unicode_violations(current_user_dep: dict = Depends(current_user)):
+    """Return recent PSN Unicode violation records."""
+    try:
+        log = Path("/var/log/ctw_psn_unicode.log")
+        if not log.exists():
+            return {"violations": []}
+        lines = log.read_text().splitlines()
+        psn_lines = [l for l in lines if l.startswith("PSN1:")]
+        return {"violations": psn_lines[-100:][::-1]}
+    except OSError:
+        return {"violations": [], "error": "Log unavailable"}
+
+@app.get("/api/violations/filename")
+async def filename_violations(current_user_dep: dict = Depends(current_user)):
+    """Return recent PSN filename violation records."""
+    try:
+        log = Path("/var/log/ctw_psn_filename.log")
+        if not log.exists():
+            return {"violations": []}
+        lines = log.read_text().splitlines()
+        psn_lines = [l for l in lines if l.startswith("PSN1:FILENAME_")]
+        return {"violations": psn_lines[-100:][::-1]}
+    except OSError:
+        return {"violations": [], "error": "Log unavailable"}
+# ──────────────────────────────────────────────────────────────
+# ROUTES — ZERO BYTE LEDGER
+# Intellectual Property of Christopher T. Williams
+# July 14, 2026, 11:33 AM
+# ──────────────────────────────────────────────────────────────
+
+@app.get("/api/zb/ledger")
+async def zb_ledger(
+    limit:  int = 100,
+    field:  str = "",
+    state:  str = "",
+    disposition: str = "",
+    current_user_dep: dict = Depends(current_user)
+):
+    """
+    Auth-gated Zero Byte ledger query.
+    Supports filtering by field, state, and disposition.
+    """
+    limit = max(1, min(limit, 1000))
+    conditions = []
+    params: list = []
+
+    if field:
+        conditions.append("field = ?")
+        params.append(field[:100])
+    if state:
+        conditions.append("state = ?")
+        params.append(state[:30])
+    if disposition:
+        conditions.append("disposition = ?")
+        params.append(disposition[:20])
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    with get_db() as db:
+        rows = db.execute(
+            f"SELECT id, ts, session_id, field, state, "
+            f"disposition, provenance, detail, chain_hash "
+            f"FROM zb_ledger {where} "
+            f"ORDER BY id DESC LIMIT ?",
+            params + [limit]
+        ).fetchall()
+
+    return {
+        "session_id": _ZB_SESSION_ID,
+        "chain_head": _ZB_CHAIN_HEAD[:16] + "...",
+        "count":      len(rows),
+        "events": [
+            {
+                "id":          r["id"],
+                "ts":          r["ts"],
+                "session_id":  r["session_id"],
+                "field":       r["field"],
+                "state":       r["state"],
+                "disposition": r["disposition"],
+                "provenance":  r["provenance"],
+                "detail":      r["detail"],
+                "chain_hash":  r["chain_hash"][:16] + "...",
+            }
+            for r in rows
+        ]
+    }
+
+
+@app.get("/api/zb/verify")
+async def zb_verify(
+    limit: int = 1000,
+    current_user_dep: dict = Depends(current_user)
+):
+    """
+    Auth-gated chain integrity verification.
+    Walks the last `limit` rows and confirms the hash chain is unbroken.
+    A broken chain means ledger rows were modified or deleted.
+    Daubert-relevant for forensic admissibility.
+    """
+    limit = max(1, min(limit, 10000))
+    return zb_verify_chain(limit)
+
+
+@app.get("/api/zb/status")
+async def zb_status(
+    current_user_dep: dict = Depends(current_user)
+):
+    """
+    Auth-gated Zero Byte session status.
+    Returns per-state and per-disposition counts for this session.
+    """
+    with get_db() as db:
+        total = db.execute(
+            "SELECT COUNT(*) FROM zb_ledger"
+        ).fetchone()[0]
+
+        session_total = db.execute(
+            "SELECT COUNT(*) FROM zb_ledger WHERE session_id=?",
+            (_ZB_SESSION_ID,)
+        ).fetchone()[0]
+
+        by_state = db.execute(
+            "SELECT state, COUNT(*) as n FROM zb_ledger "
+            "WHERE session_id=? GROUP BY state ORDER BY n DESC",
+            (_ZB_SESSION_ID,)
+        ).fetchall()
+
+        by_disp = db.execute(
+            "SELECT disposition, COUNT(*) as n FROM zb_ledger "
+            "WHERE session_id=? GROUP BY disposition ORDER BY n DESC",
+            (_ZB_SESSION_ID,)
+        ).fetchall()
+
+        rejections = db.execute(
+            "SELECT field, detail, ts FROM zb_ledger "
+            "WHERE session_id=? AND disposition IN ('REJECTED','BLOCKED') "
+            "ORDER BY id DESC LIMIT 20",
+            (_ZB_SESSION_ID,)
+        ).fetchall()
+
+    return {
+        "session_id":    _ZB_SESSION_ID,
+        "chain_head":    _ZB_CHAIN_HEAD[:16] + "...",
+        "total_events":  total,
+        "session_events":session_total,
+        "by_state":      [dict(r) for r in by_state],
+        "by_disposition":[dict(r) for r in by_disp],
+        "recent_rejections": [
+            {
+                "field":  r["field"],
+                "detail": r["detail"],
+                "ts":     r["ts"]
+            }
+            for r in rejections
+        ]
+    }
+  
+@app.get("/api/sg/stats")
+async def sg_stats_route(current_user_dep: dict = Depends(current_user)):
+    return {"stack_guard": sg_get_stats(), "elf_sentinel": es_get_stats()}
+
+@app.get("/api/sg/maps")
+async def sg_maps_route(current_user_dep: dict = Depends(current_user)):
+    findings = scan_proc_maps(caller="api_sg_maps")
+    return {"findings": findings, "count": len(findings)}
+
+@app.get("/admin/recon")
+async def recon_report(user: dict = Depends(current_user)):
+    # OOB Guard: INTERNAL provenance only — no user-supplied params
+    if user.get("username") != "admin":
+        raise HTTPException(403, "Admin only")
+    return JSONResponse(content=run_full_scan(db_path=str(DB_PATH)))
+
+@app.post("/api/sg/analyze-elf")
+async def sg_analyze_elf(
+    file: UploadFile = File(...),
+    current_user_dep: dict = Depends(current_user)
+):
+    raw = await file.read()
+    if len(raw) > _OOB_BOUNDS["upload_bytes"]:
+        raise HTTPException(413, "File too large")
+    ctx = analyze_upload(raw, caller="api_sg_analyze_elf")
+    return {
+        "sha256":         ctx.sha256,
+        "classification": ctx.classification,
+        "threat_flags":   int(ctx.threat_flags),
+        "threats":        [t.name for t in ELFThreat if t in ctx.threat_flags],
+        "reason":         ctx.reason,
+        "entropy":        ctx.entropy,
+        "interpreter":    ctx.interpreter,
+        "e_type":         ctx.e_type,
+        "e_entry":        hex(ctx.e_entry) if ctx.e_entry else "0x0",
+        "segments":       len(ctx.phdrs),
+    }
+# ──────────────────────────────────────────────────────────────
+# FIRESIDE READER
+# ──────────────────────────────────────────────────────────────
+
+_APPROVED_DOMAINS = {
+    'avalon.law.yale.edu',
+    'www.gutenberg.org',
+    'gutenberg.org',
+    'founders.archives.gov',
+    'oll.libertyfund.org',
+}
+
+_FIRESIDE_DB_PATH = "/data/ctw.db"
+
+def _fireside_db():
+    conn = sqlite3.connect(_FIRESIDE_DB_PATH)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS fireside_documents (
+            url        TEXT PRIMARY KEY,
+            author     TEXT NOT NULL,
+            title      TEXT NOT NULL,
+            selector   TEXT,
+            text       TEXT NOT NULL,
+            fetched_at REAL NOT NULL
+        )
+    """)
+    return conn
+
+class _TextExtractor(HTMLParser):
+    def __init__(self, selector_tag: str = '', selector_class: str = ''):
+        super().__init__()
+        self.selector_tag   = selector_tag.lower()
+        self.selector_class = selector_class.lower()
+        self.in_target  = False
+        self.depth      = 0
+        self.chunks: list[str] = []
+        self._skip_tags = {'script','style','nav','header','footer','noscript'}
+        self._in_skip   = 0
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        if tag in self._skip_tags:
+            self._in_skip += 1
+            return
+        if self._in_skip: return
+        attrs_dict = dict(attrs)
+        cls = attrs_dict.get('class','').lower()
+        if self.selector_class and self.selector_class in cls:
+            self.in_target = True
+            self.depth = 0
+        if self.in_target:
+            self.depth += 1
+            if tag in ('p','br','h1','h2','h3','h4','li','tr'):
+                self.chunks.append('\n')
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if tag in self._skip_tags:
+            self._in_skip = max(0, self._in_skip - 1)
+            return
+        if self._in_skip: return
+        if self.in_target:
+            self.depth -= 1
+            if self.depth <= 0:
+                self.in_target = False
+
+    def handle_data(self, data):
+        if self._in_skip: return
+        if self.in_target or not self.selector_class:
+            self.chunks.append(data)
+
+    def get_text(self) -> str:
+        raw = ''.join(self.chunks)
+        raw = html.unescape(raw)
+        raw = re.sub(r'[ \t]+', ' ', raw)
+        raw = re.sub(r'\n{4,}', '\n\n\n', raw)
+        lines = [l.rstrip() for l in raw.splitlines()]
+        return '\n'.join(lines).strip()
+
+def _live_fetch_document(url: str, selector_class: str = 'document') -> str:
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    if parsed.netloc not in _APPROVED_DOMAINS:
+        raise ValueError(f"Domain not approved: {parsed.netloc}")
+    headers = {
+        'User-Agent': (
+            'FiresideReader/1.0 (CTW Social Platform; '
+            'educational public-domain text retrieval)'
+        ),
+        'Accept': 'text/html,text/plain,*/*',
+    }
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            content_type = resp.headers.get('Content-Type', '')
+            raw_bytes    = resp.read()
+            enc = 'utf-8'
+            if 'charset=' in content_type:
+                enc = content_type.split('charset=')[-1].strip()
+            try:
+                raw = raw_bytes.decode(enc, errors='replace')
+            except Exception:
+                raw = raw_bytes.decode('utf-8', errors='replace')
+    except urllib.error.HTTPError as e:
+        raise ValueError(f"HTTP {e.code} fetching document")
+    except urllib.error.URLError as e:
+        raise ValueError(f"Network error: {e.reason}")
+
+    if url.endswith('.txt') or 'text/plain' in content_type:
+        text = raw
+        start = text.find('*** START OF')
+        end   = text.find('*** END OF')
+        if start != -1: text = text[start+50:]
+        if end   != -1: text = text[:end]
+        text = re.sub(r'\r\n', '\n', text)
+        text = re.sub(r'\r',   '\n', text)
+        text = re.sub(r'\n{4,}', '\n\n\n', text).strip()
+    else:
+        extractor = _TextExtractor(selector_class=selector_class)
+        extractor.feed(raw)
+        text = extractor.get_text()
+        if len(text.strip()) < 200:
+            extractor2 = _TextExtractor()
+            extractor2.in_target = True
+            extractor2.feed(raw)
+            text = extractor2.get_text()
+
+    if len(text.strip()) < 100:
+        raise ValueError("Document returned empty content")
+    return text
+
+def _get_document(url: str, author: str = "", title: str = "", selector: str = "document") -> str:
+    conn = _fireside_db()
+    row = conn.execute(
+        "SELECT text FROM fireside_documents WHERE url = ?", (url,)
+    ).fetchone()
+    if row:
+        conn.close()
+        return row[0]
+    text = _live_fetch_document(url, selector)
+    conn.execute(
+        "INSERT OR REPLACE INTO fireside_documents "
+        "(url, author, title, selector, text, fetched_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (url, author, title, selector, text, time.time())
+    )
+    conn.commit()
+    conn.close()
+    return text
+
+@app.get("/api/fireside/doc")
+async def fireside_doc(url: str, selector: str = "document"):
+    if not url:
+        raise HTTPException(400, "Missing url parameter")
+    try:
+        text = _get_document(url, selector=selector)
+        return {"text": text, "length": len(text)}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"Fetch failed: {e}")
+
+FIRESIDE_CATALOGUE = [
+    {
+        "name": "George Washington",
+        "docs": [
+            {"title":"Farewell Address 1796",
+             "url":"https://avalon.law.yale.edu/18th_century/washing.asp","selector":"document"},
+            {"title":"First Inaugural Address 1789",
+             "url":"https://avalon.law.yale.edu/18th_century/wash1.asp","selector":"document"},
+            {"title":"Second Inaugural Address 1793",
+             "url":"https://avalon.law.yale.edu/18th_century/wash2.asp","selector":"document"},
+        ]
+    },
+    {
+        "name": "Thomas Jefferson",
+        "docs": [
+            {"title":"Declaration of Independence 1776",
+             "url":"https://avalon.law.yale.edu/18th_century/declare.asp","selector":"document"},
+            {"title":"First Inaugural Address 1801",
+             "url":"https://avalon.law.yale.edu/19th_century/jefinau1.asp","selector":"document"},
+            {"title":"Second Inaugural Address 1805",
+             "url":"https://avalon.law.yale.edu/19th_century/jefinau2.asp","selector":"document"},
+        ]
+    },
+    {
+        "name": "James Madison",
+        "docs": [
+            {"title":"Federalist No. 10",
+             "url":"https://avalon.law.yale.edu/18th_century/fed10.asp","selector":"document"},
+            {"title":"Federalist No. 51",
+             "url":"https://avalon.law.yale.edu/18th_century/fed51.asp","selector":"document"},
+            {"title":"Memorial and Remonstrance 1785",
+             "url":"https://avalon.law.yale.edu/18th_century/madison.asp","selector":"document"},
+        ]
+    },
+    {
+        "name": "Alexander Hamilton",
+        "docs": [
+            {"title":"Federalist No. 1",
+             "url":"https://avalon.law.yale.edu/18th_century/fed01.asp","selector":"document"},
+            {"title":"Federalist No. 9",
+             "url":"https://avalon.law.yale.edu/18th_century/fed09.asp","selector":"document"},
+            {"title":"Federalist No. 70",
+             "url":"https://avalon.law.yale.edu/18th_century/fed70.asp","selector":"document"},
+            {"title":"Federalist No. 78",
+             "url":"https://avalon.law.yale.edu/18th_century/fed78.asp","selector":"document"},
+        ]
+    },
+    {
+        "name": "Benjamin Franklin",
+        "docs": [
+            {"title":"Speech at Constitutional Convention 1787",
+             "url":"https://avalon.law.yale.edu/18th_century/debates_917.asp","selector":"document"},
+            {"title":"Poor Richard's Almanack Selections",
+             "url":"https://www.gutenberg.org/cache/epub/3928/pg3928.txt","selector":""},
+        ]
+    },
+    {
+        "name": "John Adams",
+        "docs": [
+            {"title":"Thoughts on Government 1776",
+             "url":"https://avalon.law.yale.edu/18th_century/thoughts.asp","selector":"document"},
+            {"title":"First Inaugural Address 1797",
+             "url":"https://avalon.law.yale.edu/18th_century/adams.asp","selector":"document"},
+        ]
+    },
+    {
+        "name": "Patrick Henry",
+        "docs": [
+            {"title":"Give Me Liberty or Give Me Death 1775",
+             "url":"https://avalon.law.yale.edu/18th_century/patrick.asp","selector":"document"},
+        ]
+    },
+    {
+        "name": "Thomas Paine",
+        "docs": [
+            {"title":"The American Crisis No. 1 1776",
+             "url":"https://avalon.law.yale.edu/18th_century/crisis1776.asp","selector":"document"},
+            {"title":"Common Sense 1776",
+             "url":"https://www.gutenberg.org/cache/epub/147/pg147.txt","selector":""},
+        ]
+    },
+    {
+        "name": "James Monroe",
+        "docs": [
+            {"title":"Monroe Doctrine 1823",
+             "url":"https://avalon.law.yale.edu/19th_century/monroe.asp","selector":"document"},
+        ]
+    },
+    {
+        "name": "Magna Carta",
+        "docs": [
+            {"title":"Magna Carta 1215",
+             "url":"https://avalon.law.yale.edu/medieval/magna.asp","selector":"document"},
+        ]
+    },
+    {
+        "name": "Recipes - Pies",
+        "docs": [
+            {"title": "Classic Apple Pie",
+             "url": "manual://recipe-apple-pie", "selector": ""},
+        ]
+    },
+    {
+        "name": "Manuals - Knots",
+        "docs": [
+            {"title": "Bowline Knot",
+             "url": "manual://manual-bowline-knot", "selector": ""},
+        ]
+    },
+]
+
+@app.get("/api/fireside/authors")
+async def fireside_authors():
+    return {"authors": FIRESIDE_CATALOGUE}
+
+# ──────────────────────────────────────────────────────────────
+# CHESS ENGINE
+# ──────────────────────────────────────────────────────────────
+
+_ENGINE_EXE = Path("/app/chess_engine")
+_ENGINE_SRC = Path("/app/chess_engine.cpp")
+_UCI_RE = re.compile(r'^[a-h][1-8][a-h][1-8][qrbn]?$')
+_FEN_RE = re.compile(
+    r'^[pnbrqkPNBRQK1-8]+(/[pnbrqkPNBRQK1-8]+){7}'
+    r' [wb] [KQkq-]+ (-|[a-h][36]) \d+ \d+$'
+)
+
+_ENGINE_CPP = r"""
+// CTW Chess Engine — merged single-translation-unit build
+// Order: bitboard → position → movegen → eval → search → entry
+// Inventor: Christopher T. Williams
+
+#include <cstdint>
+#include <vector>
+#include <string>
+#include <algorithm>
+#include <cmath>
+#include <random>
+#include <sstream>
+#include <cctype>
+#include <cstdlib>
+#include <cstring>
+#include <chrono>
+#include <numeric>
+#include <cstdio>
+#include <iostream>
+
+using U64 = uint64_t;
+
+static const int INF_SCORE = 1000000;
+static const int NO_PIECE  = 0;
+static const int WHITE = 0;
+static const int BLACK = 1;
+
+static const int PAWN   = 1;
+static const int KNIGHT = 2;
+static const int BISHOP = 3;
+static const int ROOK   = 4;
+static const int QUEEN  = 5;
+static const int KING   = 6;
+
+static const int WK_CASTLE=1, WQ_CASTLE=2, BK_CASTLE=4, BQ_CASTLE=8;
+static const int MATE_SCORE = 32000;
+static const int MAX_PLY = 128;
+
+static const int A1=0,H1=7,A8=56,H8=63,
+                 E1=4,F1=5,G1=6,D1=3,C1=2,B1=1,
+                 E8=60,F8=61,G8=62,D8=59,C8=58,B8=57;
+
+inline int file_of(int sq){ return sq & 7; }
+inline int rank_of(int sq){ return sq >> 3; }
+inline int square(int f,int r){ return r*8+f; }
+inline int pieceTypeOf(int pc){ return pc & 7; }
+inline int pieceColorOf(int pc){ return pc >> 3; }
+inline int makePiece(int c,int t){ return (c<<3)|t; }
+
+struct Move {
+    int from=0,to=0,promotion=NO_PIECE;
+    bool isCapture=false,isEnPassant=false,isCastleK=false,isCastleQ=false,isDoublePush=false;
+    bool valid() const { return from!=to; }
+};
+inline bool sameMove(const Move&a,const Move&b){
+    return a.from==b.from&&a.to==b.to&&a.promotion==b.promotion;
+}
+
+struct StateInfo {
+    int castlingRights,epSquare,halfmoveClock,capturedPiece;
+    U64 zobristKey;
+};
+
+enum TTFlag { EXACT, LOWERBOUND, UPPERBOUND };
+
+struct TTEntry {
+    U64 key=0;
+    int16_t depth=-1,score=0;
+    uint8_t flag=0,age=0;
+    Move bestMove;
+};
+
+class TranspositionTable {
+public:
+    std::vector<TTEntry> table;
+    size_t mask_=0;
+    uint8_t currentAge=0;
+    void resize(size_t mb){
+        size_t entries=(mb*1024*1024)/sizeof(TTEntry);
+        size_t sz=1; while(sz*2<=entries) sz*=2;
+        table.assign(sz,TTEntry{});
+        mask_=sz-1;
+    }
+    TTEntry* probe(U64 key){
+        TTEntry& e=table[key&mask_];
+        return (e.key==key)?&e:nullptr;
+    }
+    void store(U64 key,int depth,int score,int flag,Move best){
+        TTEntry& e=table[key&mask_];
+        if(e.key!=key||depth>=e.depth||e.age!=currentAge){
+            e.key=key; e.depth=(int16_t)depth; e.score=(int16_t)score;
+            e.flag=(uint8_t)flag; e.bestMove=best; e.age=currentAge;
+        }
+    }
+    void newSearch(){ currentAge++; }
+};
+
+enum EGType { EG_NONE,EG_KPK,EG_KRK,EG_KQK,EG_KBBK,EG_KBPvK,EG_KRBvKR };
+struct EGInfo { EGType type; int atk,def; };
+
+// ── Attack tables (defined as arrays) ────────────────────────────────────────
+U64 pawnAttacks[2][64];
+U64 knightAttacks_arr[64];
+U64 kingAttacks_arr[64];
+std::vector<U64> rookAttackTable[64];
+std::vector<U64> bishopAttackTable[64];
+U64 rookMasks[64],bishopMasks[64];
+U64 rookMagics[64],bishopMagics[64];
+int rookShifts[64],bishopShifts[64];
+int lmrTable[64][64];
+
+// Inline accessors so call sites use familiar names
+inline U64 knightAttacks(int sq){ return knightAttacks_arr[sq]; }
+inline U64 kingAttacks(int sq){ return kingAttacks_arr[sq]; }
+
+// Forward declarations
+U64 rookAttacks(int sq, U64 occ);
+U64 bishopAttacks(int sq, U64 occ);
+inline U64 queenAttacks(int sq,U64 occ){ return rookAttacks(sq,occ)|bishopAttacks(sq,occ); }
+
+struct Position {
+    int board[64];
+    int sideToMove,castlingRights,epSquare,halfmoveClock,fullmoveNumber;
+    U64 zobristKey,pieceBB[16],colorBB[2],allBB;
+    std::vector<StateInfo> history;
+    std::vector<U64> positionHistory;
+
+    U64 pieces(int color,int type) const { return pieceBB[makePiece(color,type)]; }
+    U64 occupancy() const { return allBB; }
+    int kingSquare(int color) const {
+        U64 bb=pieces(color,KING);
+        return bb?__builtin_ctzll(bb):0;
+    }
+    bool hasNonPawnMaterial(int color) const {
+        return (colorBB[color]&~pieces(color,PAWN)&~pieces(color,KING))!=0;
+    }
+    void removePiece(int sq);
+    void placePiece(int sq,int piece);
+    void movePiece(int from,int to);
+    void setFromFEN(const std::string& fen);
+    void makeMove(const Move& m);
+    void unmakeMove(const Move& m);
+    void makeNullMove();
+    void unmakeNullMove();
+};
+
+// Forward declarations for functions defined later
+bool isSquareAttacked(const Position& pos,int sq,int bySide);
+U64 attackersTo(const Position& pos,int sq,U64 occupied);
+std::vector<Move> generateLegalMoves(Position& pos);
+std::vector<Move> generateLegalCaptures(Position& pos);
+int seeMove(Position& pos,const Move& m);
+bool isHanging(Position& pos,const Move& m);
+int evaluate(const Position& pos);
+EGInfo classifyEndgame(const Position& pos);
+bool isAbsolutePin(const Position& pos,int sq);
+bool isRelativePin(const Position& pos,int sq);
+bool isPieceTrapped(const Position& pos,int sq);
+bool entersAttackPath(const Position& pos,const Move& m);
+int negamax(Position& pos,int depth,int alpha,int beta,int ply,bool nullOk);
+
+TranspositionTable tt;
+uint64_t nodeCount=0;
+bool stopSearch=false;
+int64_t searchStartTime=0,searchTimeLimitMs=0;
+
+// ── Zobrist ───────────────────────────────────────────────────────────────────
+U64 zobristPieceSquare[2][7][64];
+U64 zobristCastling[16];
+U64 zobristEnPassantFile[8];
+U64 zobristSideToMove;
+
+void initZobrist(){
+    std::mt19937_64 rng(4148921830764ULL);
+    for(int c=0;c<2;c++) for(int t=1;t<=6;t++) for(int s=0;s<64;s++)
+        zobristPieceSquare[c][t][s]=rng();
+    for(int i=0;i<16;i++) zobristCastling[i]=rng();
+    for(int i=0;i<8;i++) zobristEnPassantFile[i]=rng();
+    zobristSideToMove=rng();
+}
+
+// ── Position methods ──────────────────────────────────────────────────────────
+void Position::removePiece(int sq){
+    int piece=board[sq]; if(piece==NO_PIECE) return;
+    U64 bit=1ULL<<sq;
+    pieceBB[piece]^=bit; colorBB[pieceColorOf(piece)]^=bit; allBB^=bit;
+    zobristKey^=zobristPieceSquare[pieceColorOf(piece)][pieceTypeOf(piece)][sq];
+    board[sq]=NO_PIECE;
+}
+void Position::placePiece(int sq,int piece){
+    U64 bit=1ULL<<sq;
+    pieceBB[piece]|=bit; colorBB[pieceColorOf(piece)]|=bit; allBB|=bit;
+    zobristKey^=zobristPieceSquare[pieceColorOf(piece)][pieceTypeOf(piece)][sq];
+    board[sq]=piece;
+}
+void Position::movePiece(int from,int to){
+    int piece=board[from]; removePiece(from); placePiece(to,piece);
+}
+
+void Position::setFromFEN(const std::string& fen){
+    history.clear(); positionHistory.clear();
+    std::fill(std::begin(board),std::end(board),NO_PIECE);
+    std::fill(std::begin(pieceBB),std::end(pieceBB),0ULL);
+    colorBB[0]=colorBB[1]=0ULL; allBB=0ULL; zobristKey=0ULL;
+    std::istringstream ss(fen);
+    std::string bp,sp,cp,ep; int half=0,full=1;
+    ss>>bp>>sp>>cp>>ep>>half>>full;
+    int sq=56;
+    for(char c:bp){
+        if(c=='/') sq-=16;
+        else if(isdigit((unsigned char)c)) sq+=(c-'0');
+        else {
+            int color=isupper((unsigned char)c)?WHITE:BLACK;
+            int type; char lc=tolower(c);
+            if(lc=='p')type=PAWN; else if(lc=='n')type=KNIGHT;
+            else if(lc=='b')type=BISHOP; else if(lc=='r')type=ROOK;
+            else if(lc=='q')type=QUEEN; else type=KING;
+            placePiece(sq,makePiece(color,type)); sq++;
+        }
+    }
+    sideToMove=(sp=="w")?WHITE:BLACK;
+    castlingRights=0;
+    for(char c:cp){
+        if(c=='K')castlingRights|=WK_CASTLE; if(c=='Q')castlingRights|=WQ_CASTLE;
+        if(c=='k')castlingRights|=BK_CASTLE; if(c=='q')castlingRights|=BQ_CASTLE;
+    }
+    epSquare=(ep=="-"||ep.size()<2)?-1:(ep[0]-'a')+8*(ep[1]-'1');
+    halfmoveClock=half; fullmoveNumber=full>0?full:1;
+    zobristKey^=zobristCastling[castlingRights];
+    if(epSquare!=-1) zobristKey^=zobristEnPassantFile[file_of(epSquare)];
+    if(sideToMove==BLACK) zobristKey^=zobristSideToMove;
+    positionHistory.push_back(zobristKey);
+}
+
+void Position::makeMove(const Move& m){
+    StateInfo st;
+    st.castlingRights=castlingRights; st.epSquare=epSquare;
+    st.halfmoveClock=halfmoveClock; st.zobristKey=zobristKey;
+    st.capturedPiece=NO_PIECE; history.push_back(st);
+    int us=sideToMove;
+    int pt=pieceTypeOf(board[m.from]);
+    if(epSquare!=-1) zobristKey^=zobristEnPassantFile[file_of(epSquare)];
+    if(m.isEnPassant){
+        int capSq=m.to+(us==WHITE?-8:8);
+        history.back().capturedPiece=board[capSq]; removePiece(capSq);
+    } else if(board[m.to]!=NO_PIECE){
+        history.back().capturedPiece=board[m.to]; removePiece(m.to);
+    }
+    movePiece(m.from,m.to);
+    if(m.promotion!=NO_PIECE){ removePiece(m.to); placePiece(m.to,makePiece(us,m.promotion)); }
+    if(m.isCastleK||m.isCastleQ){
+        int rFrom,rTo;
+        if(us==WHITE){rFrom=m.isCastleK?H1:A1; rTo=m.isCastleK?F1:D1;}
+        else         {rFrom=m.isCastleK?H8:A8; rTo=m.isCastleK?F8:D8;}
+        movePiece(rFrom,rTo);
+    }
+    zobristKey^=zobristCastling[castlingRights];
+    if(pt==KING) castlingRights&=(us==WHITE?~(WK_CASTLE|WQ_CASTLE):~(BK_CASTLE|BQ_CASTLE));
+    if(m.from==A1||m.to==A1) castlingRights&=~WQ_CASTLE;
+    if(m.from==H1||m.to==H1) castlingRights&=~WK_CASTLE;
+    if(m.from==A8||m.to==A8) castlingRights&=~BQ_CASTLE;
+    if(m.from==H8||m.to==H8) castlingRights&=~BK_CASTLE;
+    zobristKey^=zobristCastling[castlingRights];
+    epSquare=-1;
+    if(pt==PAWN&&std::abs(m.to-m.from)==16){
+        epSquare=(m.from+m.to)/2;
+        zobristKey^=zobristEnPassantFile[file_of(epSquare)];
+    }
+    halfmoveClock=(pt==PAWN||history.back().capturedPiece!=NO_PIECE)?0:halfmoveClock+1;
+    if(us==BLACK) fullmoveNumber++;
+    sideToMove=!us; zobristKey^=zobristSideToMove;
+    positionHistory.push_back(zobristKey);
+}
+
+void Position::unmakeMove(const Move& m){
+    positionHistory.pop_back();
+    sideToMove=!sideToMove; int us=sideToMove;
+    StateInfo st=history.back(); history.pop_back();
+    if(m.promotion!=NO_PIECE){ removePiece(m.to); placePiece(m.from,makePiece(us,PAWN)); }
+    else if(m.isCastleK||m.isCastleQ){
+        movePiece(m.to,m.from);
+        int rFrom,rTo;
+        if(us==WHITE){rFrom=m.isCastleK?H1:A1; rTo=m.isCastleK?F1:D1;}
+        else         {rFrom=m.isCastleK?H8:A8; rTo=m.isCastleK?F8:D8;}
+        movePiece(rTo,rFrom);
+    } else { movePiece(m.to,m.from); }
+    if(st.capturedPiece!=NO_PIECE){
+        int capSq=m.isEnPassant?(m.to+(us==WHITE?-8:8)):m.to;
+        placePiece(capSq,st.capturedPiece);
+    }
+    castlingRights=st.castlingRights; epSquare=st.epSquare;
+    halfmoveClock=st.halfmoveClock; zobristKey=st.zobristKey;
+    if(us==BLACK) fullmoveNumber--;
+}
+
+void Position::makeNullMove(){
+    StateInfo st; st.castlingRights=castlingRights; st.epSquare=epSquare;
+    st.halfmoveClock=halfmoveClock; st.zobristKey=zobristKey; st.capturedPiece=NO_PIECE;
+    history.push_back(st);
+    if(epSquare!=-1) zobristKey^=zobristEnPassantFile[file_of(epSquare)];
+    epSquare=-1; sideToMove=!sideToMove; zobristKey^=zobristSideToMove;
+    positionHistory.push_back(zobristKey);
+}
+void Position::unmakeNullMove(){
+    positionHistory.pop_back();
+    StateInfo st=history.back(); history.pop_back();
+    sideToMove=!sideToMove; epSquare=st.epSquare; zobristKey=st.zobristKey;
+}
+
+// ── Magic bitboards ───────────────────────────────────────────────────────────
+static U64 rookMaskSlow(int sq){
+    U64 m=0; int f=file_of(sq),r=rank_of(sq);
+    for(int rr=r+1;rr<=6;rr++) m|=1ULL<<square(f,rr);
+    for(int rr=r-1;rr>=1;rr--) m|=1ULL<<square(f,rr);
+    for(int ff=f+1;ff<=6;ff++) m|=1ULL<<square(ff,r);
+    for(int ff=f-1;ff>=1;ff--) m|=1ULL<<square(ff,r);
+    return m;
+}
+static U64 bishopMaskSlow(int sq){
+    U64 m=0; int f=file_of(sq),r=rank_of(sq);
+    for(int ff=f+1,rr=r+1;ff<=6&&rr<=6;ff++,rr++) m|=1ULL<<square(ff,rr);
+    for(int ff=f+1,rr=r-1;ff<=6&&rr>=1;ff++,rr--) m|=1ULL<<square(ff,rr);
+    for(int ff=f-1,rr=r+1;ff>=1&&rr<=6;ff--,rr++) m|=1ULL<<square(ff,rr);
+    for(int ff=f-1,rr=r-1;ff>=1&&rr>=1;ff--,rr--) m|=1ULL<<square(ff,rr);
+    return m;
+}
+static U64 rookAttacksSlow(int sq,U64 blk){
+    U64 a=0; int f=file_of(sq),r=rank_of(sq);
+    for(int rr=r+1;rr<=7;rr++){int s=square(f,rr);a|=1ULL<<s;if(blk&(1ULL<<s))break;}
+    for(int rr=r-1;rr>=0;rr--){int s=square(f,rr);a|=1ULL<<s;if(blk&(1ULL<<s))break;}
+    for(int ff=f+1;ff<=7;ff++){int s=square(ff,r);a|=1ULL<<s;if(blk&(1ULL<<s))break;}
+    for(int ff=f-1;ff>=0;ff--){int s=square(ff,r);a|=1ULL<<s;if(blk&(1ULL<<s))break;}
+    return a;
+}
+static U64 bishopAttacksSlow(int sq,U64 blk){
+    U64 a=0; int f=file_of(sq),r=rank_of(sq);
+    for(int ff=f+1,rr=r+1;ff<=7&&rr<=7;ff++,rr++){int s=square(ff,rr);a|=1ULL<<s;if(blk&(1ULL<<s))break;}
+    for(int ff=f+1,rr=r-1;ff<=7&&rr>=0;ff++,rr--){int s=square(ff,rr);a|=1ULL<<s;if(blk&(1ULL<<s))break;}
+    for(int ff=f-1,rr=r+1;ff>=0&&rr<=7;ff--,rr++){int s=square(ff,rr);a|=1ULL<<s;if(blk&(1ULL<<s))break;}
+    for(int ff=f-1,rr=r-1;ff>=0&&rr>=0;ff--,rr--){int s=square(ff,rr);a|=1ULL<<s;if(blk&(1ULL<<s))break;}
+    return a;
+}
+static std::vector<U64> subsetsOf(U64 mask){
+    std::vector<U64> subs; U64 s=0;
+    do{subs.push_back(s);s=(s-mask)&mask;}while(s);
+    return subs;
+}
+static std::mt19937_64 magicRng(88172645463325252ULL);
+static U64 randFewBits(){ return magicRng()&magicRng()&magicRng(); }
+static bool tryMagic(U64 magic,const std::vector<U64>& subs,const std::vector<U64>& atks,int bits,std::vector<U64>& table){
+    size_t size=1ULL<<bits;
+    table.assign(size,0ULL);
+    std::vector<char> used(size,0);
+    for(size_t i=0;i<subs.size();i++){
+        int idx=(int)((subs[i]*magic)>>(64-bits));
+        if(used[idx]){if(table[idx]!=atks[i])return false;}
+        else{used[idx]=1;table[idx]=atks[i];}
+    }
+    return true;
+}
+static U64 findMagic(int sq,bool bishop,std::vector<U64>& table,int& shiftOut,U64& maskOut){
+    U64 mask=bishop?bishopMaskSlow(sq):rookMaskSlow(sq);
+    int bits=__builtin_popcountll(mask);
+    auto subs=subsetsOf(mask);
+    std::vector<U64> atks(subs.size());
+    for(size_t i=0;i<subs.size();i++) atks[i]=bishop?bishopAttacksSlow(sq,subs[i]):rookAttacksSlow(sq,subs[i]);
+    maskOut=mask; shiftOut=64-bits;
+    for(int tries=0;tries<10000000;tries++){
+        U64 magic=randFewBits();
+        if(__builtin_popcountll((mask*magic)&0xFF00000000000000ULL)<6) continue;
+        if(tryMagic(magic,subs,atks,bits,table)) return magic;
+    }
+    return 0;
+}
+void initMagics(){
+    // Using direct computation instead of magic bitboards
+    // Correct and deterministic at the cost of some speed
+}
+U64 rookAttacks(int sq,U64 occ){
+    return rookAttacksSlow(sq,occ);
+}
+U64 bishopAttacks(int sq,U64 occ){
+    return bishopAttacksSlow(sq,occ);
+}
+
+void initAttackTables(){
+    for(int sq=0;sq<64;sq++){
+        int f=file_of(sq),r=rank_of(sq);
+        U64 w=0,b=0;
+        if(r<7){if(f>0)w|=1ULL<<square(f-1,r+1);if(f<7)w|=1ULL<<square(f+1,r+1);}
+        if(r>0){if(f>0)b|=1ULL<<square(f-1,r-1);if(f<7)b|=1ULL<<square(f+1,r-1);}
+        pawnAttacks[WHITE][sq]=w; pawnAttacks[BLACK][sq]=b;
+        static const int kdx[]={1,1,-1,-1,2,2,-2,-2},kdy[]={2,-2,2,-2,1,-1,1,-1};
+        U64 kn=0;
+        for(int i=0;i<8;i++){int nf=f+kdx[i],nr=r+kdy[i];if(nf>=0&&nf<8&&nr>=0&&nr<8)kn|=1ULL<<square(nf,nr);}
+        knightAttacks_arr[sq]=kn;
+        U64 ki=0;
+        for(int dx=-1;dx<=1;dx++) for(int dy=-1;dy<=1;dy++){
+            if(!dx&&!dy) continue;
+            int nf=f+dx,nr=r+dy;
+            if(nf>=0&&nf<8&&nr>=0&&nr<8) ki|=1ULL<<square(nf,nr);
+        }
+        kingAttacks_arr[sq]=ki;
+    }
+}
+
+void initLMR(){
+    for(int d=0;d<64;d++)
+        for(int m=0;m<64;m++)
+            lmrTable[d][m]=(d==0||m==0)?0:(int)(0.75+std::log((double)d)*std::log((double)m)/2.25);
+}
+
+void initAll(){
+    initAttackTables();
+    initMagics();
+    initZobrist();
+    initLMR();
+    tt.resize(64);
+}
+
+// ── Move generation ───────────────────────────────────────────────────────────
+bool isSquareAttacked(const Position& pos,int sq,int bySide){
+    if(pawnAttacks[!bySide][sq]&pos.pieces(bySide,PAWN)) return true;
+    if(knightAttacks(sq)&pos.pieces(bySide,KNIGHT)) return true;
+    if(kingAttacks(sq)&pos.pieces(bySide,KING)) return true;
+    U64 occ=pos.occupancy();
+    if(rookAttacks(sq,occ)&(pos.pieces(bySide,ROOK)|pos.pieces(bySide,QUEEN))) return true;
+    if(bishopAttacks(sq,occ)&(pos.pieces(bySide,BISHOP)|pos.pieces(bySide,QUEEN))) return true;
+    return false;
+}
+
+U64 attackersTo(const Position& pos,int sq,U64 occupied){
+    U64 att=0;
+    att|=pawnAttacks[BLACK][sq]&pos.pieces(WHITE,PAWN);
+    att|=pawnAttacks[WHITE][sq]&pos.pieces(BLACK,PAWN);
+    att|=knightAttacks(sq)&(pos.pieces(WHITE,KNIGHT)|pos.pieces(BLACK,KNIGHT));
+    att|=kingAttacks(sq)&(pos.pieces(WHITE,KING)|pos.pieces(BLACK,KING));
+    U64 r=rookAttacks(sq,occupied);
+    att|=r&(pos.pieces(WHITE,ROOK)|pos.pieces(BLACK,ROOK)|pos.pieces(WHITE,QUEEN)|pos.pieces(BLACK,QUEEN));
+    U64 b=bishopAttacks(sq,occupied);
+    att|=b&(pos.pieces(WHITE,BISHOP)|pos.pieces(BLACK,BISHOP)|pos.pieces(WHITE,QUEEN)|pos.pieces(BLACK,QUEEN));
+    return att;
+}
+
+static void addMove(std::vector<Move>& moves,int from,int to,int promo,bool cap,bool ep=false,bool ck=false,bool cq=false,bool dp=false){
+    Move m; m.from=from; m.to=to; m.promotion=promo; m.isCapture=cap;
+    m.isEnPassant=ep; m.isCastleK=ck; m.isCastleQ=cq; m.isDoublePush=dp;
+    moves.push_back(m);
+}
+
+void generatePseudoLegalMoves(Position& pos,std::vector<Move>& moves,bool capturesOnly){
+    int us=pos.sideToMove,them=!us;
+    U64 own=pos.colorBB[us],enemy=pos.colorBB[them],occ=pos.allBB;
+    int forward=(us==WHITE)?8:-8;
+    int startRank=(us==WHITE)?1:6;
+    int promoRank=(us==WHITE)?7:0;
+    U64 bb=pos.pieces(us,PAWN);
+    while(bb){
+        int from=__builtin_ctzll(bb); bb&=bb-1;
+        if(!capturesOnly){
+            int to=from+forward;
+            if(to>=0&&to<64&&!(occ&(1ULL<<to))){
+                if(rank_of(to)==promoRank){
+                    addMove(moves,from,to,QUEEN,false); addMove(moves,from,to,ROOK,false);
+                    addMove(moves,from,to,BISHOP,false); addMove(moves,from,to,KNIGHT,false);
+                } else addMove(moves,from,to,NO_PIECE,false);
+                if(rank_of(from)==startRank){
+                    int to2=from+2*forward;
+                    if(!(occ&(1ULL<<to2))) addMove(moves,from,to2,NO_PIECE,false,false,false,false,true);
+                }
+            }
+        }
+        U64 caps=pawnAttacks[us][from]&enemy;
+        while(caps){
+            int cto=__builtin_ctzll(caps); caps&=caps-1;
+            if(rank_of(cto)==promoRank){
+                addMove(moves,from,cto,QUEEN,true); addMove(moves,from,cto,ROOK,true);
+                addMove(moves,from,cto,BISHOP,true); addMove(moves,from,cto,KNIGHT,true);
+            } else addMove(moves,from,cto,NO_PIECE,true);
+        }
+        if(pos.epSquare!=-1&&(pawnAttacks[us][from]&(1ULL<<pos.epSquare)))
+            addMove(moves,from,pos.epSquare,NO_PIECE,true,true);
+    }
+    bb=pos.pieces(us,KNIGHT);
+    while(bb){int from=__builtin_ctzll(bb);bb&=bb-1;U64 att=knightAttacks(from)&~own;if(capturesOnly)att&=enemy;while(att){int to=__builtin_ctzll(att);att&=att-1;addMove(moves,from,to,NO_PIECE,(bool)(enemy&(1ULL<<to)));}}
+    bb=pos.pieces(us,BISHOP);
+    while(bb){int from=__builtin_ctzll(bb);bb&=bb-1;U64 att=bishopAttacks(from,occ)&~own;if(capturesOnly)att&=enemy;while(att){int to=__builtin_ctzll(att);att&=att-1;addMove(moves,from,to,NO_PIECE,(bool)(enemy&(1ULL<<to)));}}
+    bb=pos.pieces(us,ROOK);
+    while(bb){int from=__builtin_ctzll(bb);bb&=bb-1;U64 att=rookAttacks(from,occ)&~own;if(capturesOnly)att&=enemy;while(att){int to=__builtin_ctzll(att);att&=att-1;addMove(moves,from,to,NO_PIECE,(bool)(enemy&(1ULL<<to)));}}
+    bb=pos.pieces(us,QUEEN);
+    while(bb){int from=__builtin_ctzll(bb);bb&=bb-1;U64 att=(rookAttacks(from,occ)|bishopAttacks(from,occ))&~own;if(capturesOnly)att&=enemy;while(att){int to=__builtin_ctzll(att);att&=att-1;addMove(moves,from,to,NO_PIECE,(bool)(enemy&(1ULL<<to)));}}
+    {
+        int from=pos.kingSquare(us);
+        U64 att=kingAttacks(from)&~own; if(capturesOnly)att&=enemy;
+        while(att){int to=__builtin_ctzll(att);att&=att-1;addMove(moves,from,to,NO_PIECE,(bool)(enemy&(1ULL<<to)));}
+        if(!capturesOnly){
+            if(us==WHITE){
+                if((pos.castlingRights&WK_CASTLE)&&!(occ&((1ULL<<F1)|(1ULL<<G1)))&&!isSquareAttacked(pos,E1,BLACK)&&!isSquareAttacked(pos,F1,BLACK)&&!isSquareAttacked(pos,G1,BLACK)) addMove(moves,E1,G1,NO_PIECE,false,false,true,false);
+                if((pos.castlingRights&WQ_CASTLE)&&!(occ&((1ULL<<D1)|(1ULL<<C1)|(1ULL<<B1)))&&!isSquareAttacked(pos,E1,BLACK)&&!isSquareAttacked(pos,D1,BLACK)&&!isSquareAttacked(pos,C1,BLACK)) addMove(moves,E1,C1,NO_PIECE,false,false,false,true);
+            } else {
+                if((pos.castlingRights&BK_CASTLE)&&!(occ&((1ULL<<F8)|(1ULL<<G8)))&&!isSquareAttacked(pos,E8,WHITE)&&!isSquareAttacked(pos,F8,WHITE)&&!isSquareAttacked(pos,G8,WHITE)) addMove(moves,E8,G8,NO_PIECE,false,false,true,false);
+                if((pos.castlingRights&BQ_CASTLE)&&!(occ&((1ULL<<D8)|(1ULL<<C8)|(1ULL<<B8)))&&!isSquareAttacked(pos,E8,WHITE)&&!isSquareAttacked(pos,D8,WHITE)&&!isSquareAttacked(pos,C8,WHITE)) addMove(moves,E8,C8,NO_PIECE,false,false,false,true);
+            }
+        }
+    }
+}
+
+std::vector<Move> generateLegalMoves(Position& pos){
+    std::vector<Move> pseudo,legal;
+    generatePseudoLegalMoves(pos,pseudo,false);
+    int us=pos.sideToMove;
+    for(auto& m:pseudo){pos.makeMove(m);if(!isSquareAttacked(pos,pos.kingSquare(us),!us))legal.push_back(m);pos.unmakeMove(m);}
+    return legal;
+}
+std::vector<Move> generateLegalCaptures(Position& pos){
+    std::vector<Move> pseudo,legal;
+    generatePseudoLegalMoves(pos,pseudo,true);
+    int us=pos.sideToMove;
+    for(auto& m:pseudo){pos.makeMove(m);if(!isSquareAttacked(pos,pos.kingSquare(us),!us))legal.push_back(m);pos.unmakeMove(m);}
+    return legal;
+}
+
+// ── SEE ───────────────────────────────────────────────────────────────────────
+static const int seeValue[7]={0,100,320,330,500,900,20000};
+
+static int lvaSquare(const Position& pos,U64 attackers,int side){
+    for(int t=PAWN;t<=KING;t++){U64 bb=attackers&pos.pieces(side,t);if(bb)return __builtin_ctzll(bb);}
+    return -1;
+}
+static int seeSwapOff(Position& pos,int to,int side,U64 occ,int lastVal){
+    U64 atk=attackersTo(pos,to,occ)&pos.colorBB[side]&occ;
+    if(!atk) return 0;
+    int sq=lvaSquare(pos,atk,side);
+    int myVal=seeValue[pieceTypeOf(pos.board[sq])];
+    U64 newOcc=occ^(1ULL<<sq);
+    int gain=lastVal-seeSwapOff(pos,to,!side,newOcc,myVal);
+    return std::max(0,gain);
+}
+int seeMove(Position& pos,const Move& m){
+    int to=m.to; U64 occ=pos.occupancy(); int us=pos.sideToMove;
+    if(!m.isEnPassant&&pos.board[to]==NO_PIECE) return 0;
+    int capType=m.isEnPassant?PAWN:pieceTypeOf(pos.board[to]);
+    int capVal=seeValue[capType];
+    occ^=(1ULL<<m.from);
+    if(m.isEnPassant) occ^=(1ULL<<(to+(us==WHITE?-8:8)));
+    int atkVal=(m.promotion!=NO_PIECE)?seeValue[QUEEN]:seeValue[pieceTypeOf(pos.board[m.from])];
+    return capVal-seeSwapOff(pos,to,!us,occ,atkVal);
+}
+
+bool isHanging(Position& pos,const Move& m){
+    int to=m.to; int piece=pos.board[m.from];
+    if(piece==NO_PIECE) return false;
+    int us=pos.sideToMove,them=!us;
+    U64 occ=pos.occupancy(); occ^=(1ULL<<m.from); occ|=(1ULL<<to);
+    U64 theirAtk=attackersTo(pos,to,occ)&pos.colorBB[them]&occ;
+    if(!theirAtk) return false;
+    int pieceVal=seeValue[pieceTypeOf(piece)];
+    int cheapestTheirVal=20000;
+    for(int t=PAWN;t<=KING;t++){if(theirAtk&pos.pieces(them,t)){cheapestTheirVal=seeValue[t];break;}}
+    if(cheapestTheirVal>=pieceVal) return false;
+    U64 ourDef=attackersTo(pos,to,occ)&pos.colorBB[us]&occ; ourDef&=~(1ULL<<m.from);
+    if(!ourDef) return true;
+    return (cheapestTheirVal<pieceVal);
+}
+
+// ── Eval ──────────────────────────────────────────────────────────────────────
+static const int mgValue[7]={0,100,320,330,500,900,20000};
+static const int pawnPST[64]={0,0,0,0,0,0,0,0,50,50,50,50,50,50,50,50,10,10,20,30,30,20,10,10,5,5,10,25,25,10,5,5,0,0,0,20,20,0,0,0,5,-5,-10,0,0,-10,-5,5,5,10,10,-20,-20,10,10,5,0,0,0,0,0,0,0,0};
+static const int knightPST[64]={-50,-40,-30,-30,-30,-30,-40,-50,-40,-20,0,0,0,0,-20,-40,-30,0,10,15,15,10,0,-30,-30,5,15,20,20,15,5,-30,-30,0,15,20,20,15,0,-30,-30,5,10,15,15,10,5,-30,-40,-20,0,5,5,0,-20,-40,-50,-40,-30,-30,-30,-30,-40,-50};
+static const int bishopPST[64]={-20,-10,-10,-10,-10,-10,-10,-20,-10,0,0,0,0,0,0,-10,-10,0,5,10,10,5,0,-10,-10,5,5,10,10,5,5,-10,-10,0,10,10,10,10,0,-10,-10,10,10,10,10,10,10,-10,-10,5,0,0,0,0,5,-10,-20,-10,-10,-10,-10,-10,-10,-20};
+static const int rookPST[64]={0,0,0,0,0,0,0,0,5,10,10,10,10,10,10,5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,0,0,0,5,5,0,0,0};
+static const int queenPST[64]={-20,-10,-10,-5,-5,-10,-10,-20,-10,0,0,0,0,0,0,-10,-10,0,5,5,5,5,0,-10,-5,0,5,5,5,5,0,-5,0,0,5,5,5,5,0,-5,-10,5,5,5,5,5,0,-10,-10,0,5,0,0,0,0,-10,-20,-10,-10,-5,-5,-10,-10,-20};
+static const int kingMGPST[64]={-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-20,-30,-30,-40,-40,-30,-30,-20,-10,-20,-20,-20,-20,-20,-20,-10,20,20,0,0,0,0,20,20,20,30,10,0,0,10,30,20};
+
+static int countPieces(const Position& pos,int color,int type){
+    U64 bb=pos.pieces(color,type); return bb?__builtin_popcountll(bb):0;
+}
+static int manhattan(int a,int b){
+    return std::abs(file_of(a)-file_of(b))+std::abs(rank_of(a)-rank_of(b));
+}
+
+bool isAbsolutePin(const Position& pos,int sq){
+    int pc=pos.board[sq]; if(pc==NO_PIECE) return false;
+    int us=pieceColorOf(pc); int kingSq=pos.kingSquare(us);
+    bool sameFile=file_of(sq)==file_of(kingSq);
+    bool sameRank=rank_of(sq)==rank_of(kingSq);
+    bool sameDiag=(file_of(sq)-rank_of(sq))==(file_of(kingSq)-rank_of(kingSq))||
+                  (file_of(sq)+rank_of(sq))==(file_of(kingSq)+rank_of(kingSq));
+    if(!sameFile&&!sameRank&&!sameDiag) return false;
+    U64 occ=pos.occupancy()^(1ULL<<sq);
+    return (attackersTo(pos,kingSq,occ)&pos.colorBB[us^1])!=0;
+}
+
+bool isRelativePin(const Position& pos,int sq){
+    int pc=pos.board[sq]; if(pc==NO_PIECE) return false;
+    int us=pieceColorOf(pc),them=us^1;
+    U64 occ=pos.occupancy();
+    U64 lines=rookAttacks(sq,occ)|bishopAttacks(sq,occ);
+    U64 enemySliders=pos.pieces(them,ROOK)|pos.pieces(them,BISHOP)|pos.pieces(them,QUEEN);
+    if(!(lines&enemySliders)) return false;
+    U64 occWithout=occ^(1ULL<<sq);
+    for(int tsq=0;tsq<64;tsq++){
+        int tpc=pos.board[tsq]; if(tpc==NO_PIECE) continue;
+        if(pieceColorOf(tpc)!=us) continue;
+        int pt=pieceTypeOf(tpc);
+        if(pt==KING||pt==QUEEN||pt==ROOK)
+            if(attackersTo(pos,tsq,occWithout)&enemySliders) return true;
+    }
+    return false;
+}
+
+static bool squareIsSafe(const Position& pos,int sq,int us){
+    int them=us^1; U64 occ=pos.occupancy();
+    U64 atk=attackersTo(pos,sq,occ)&pos.colorBB[them];
+    U64 def=attackersTo(pos,sq,occ)&pos.colorBB[us];
+    if(atk&&!def) return false;
+    return true;
+}
+
+bool isPieceTrapped(const Position& pos,int sq){
+    int pc=pos.board[sq]; if(pc==NO_PIECE) return false;
+    int us=pieceColorOf(pc);
+    if(isAbsolutePin(pos,sq)) return true;
+    U64 occ=pos.occupancy();
+    int pt=pieceTypeOf(pc);
+    U64 esc=0;
+    switch(pt){
+        case KNIGHT: esc=knightAttacks(sq); break;
+        case BISHOP: esc=bishopAttacks(sq,occ); break;
+        case ROOK:   esc=rookAttacks(sq,occ); break;
+        case QUEEN:  esc=bishopAttacks(sq,occ)|rookAttacks(sq,occ); break;
+        case KING:   esc=kingAttacks(sq); break;
+        default: return false;
+    }
+    esc&=~pos.colorBB[us];
+    if(!esc) return true;
+    for(int tsq=0;tsq<64;tsq++){
+        if(!(esc&(1ULL<<tsq))) continue;
+        if(squareIsSafe(pos,tsq,us)) return false;
+    }
+    return true;
+}
+
+struct PieceSafetyInfo { int sq,color; bool hanging,overloaded,pinned,heavilyAttacked; };
+PieceSafetyInfo analyzePieceSafety(const Position& pos,int sq){
+    PieceSafetyInfo info{}; int pc=pos.board[sq];
+    if(pc==NO_PIECE){info.sq=sq;return info;}
+    info.sq=sq; info.color=pieceColorOf(pc);
+    int us=info.color,them=us^1; U64 occ=pos.occupancy();
+    U64 atk=attackersTo(pos,sq,occ)&pos.colorBB[them];
+    U64 def=attackersTo(pos,sq,occ)&pos.colorBB[us];
+    int atkN=__builtin_popcountll(atk),defN=__builtin_popcountll(def);
+    info.hanging=(atkN>0&&defN==0);
+    info.heavilyAttacked=(atkN>=2);
+    info.overloaded=(defN>0&&atkN>defN);
+    info.pinned=isAbsolutePin(pos,sq)||isRelativePin(pos,sq);
+    return info;
+}
+
+EGInfo classifyEndgame(const Position& pos){
+    int wP=countPieces(pos,WHITE,PAWN),bP=countPieces(pos,BLACK,PAWN);
+    int wN=countPieces(pos,WHITE,KNIGHT),bN=countPieces(pos,BLACK,KNIGHT);
+    int wB=countPieces(pos,WHITE,BISHOP),bB=countPieces(pos,BLACK,BISHOP);
+    int wR=countPieces(pos,WHITE,ROOK),bR=countPieces(pos,BLACK,ROOK);
+    int wQ=countPieces(pos,WHITE,QUEEN),bQ=countPieces(pos,BLACK,QUEEN);
+    if(wP==1&&wN+wB+wR+wQ==0&&bP==0&&bN+bB+bR+bQ==0) return {EG_KPK,WHITE,BLACK};
+    if(bP==1&&bN+bB+bR+bQ==0&&wP==0&&wN+wB+wR+wQ==0) return {EG_KPK,BLACK,WHITE};
+    if(wR==1&&wP+wN+wB+wQ==0&&bP+bN+bB+bR+bQ==0)     return {EG_KRK,WHITE,BLACK};
+    if(bR==1&&bP+bN+bB+bQ==0&&wP+wN+wB+wR+wQ==0)     return {EG_KRK,BLACK,WHITE};
+    if(wQ==1&&wP+wN+wB+wR==0&&bP+bN+bB+bR+bQ==0)     return {EG_KQK,WHITE,BLACK};
+    if(bQ==1&&bP+bN+bB+bR==0&&wP+wN+wB+wR+wQ==0)     return {EG_KQK,BLACK,WHITE};
+    if(wB==2&&wP+wN+wR+wQ==0&&bP+bN+bB+bR+bQ==0)     return {EG_KBBK,WHITE,BLACK};
+    if(bB==2&&bP+bN+bR+bQ==0&&wP+wN+wB+wR+wQ==0)     return {EG_KBBK,BLACK,WHITE};
+    if(wP==1&&wB==1&&wN+wR+wQ==0&&bP+bN+bB+bR+bQ==0) return {EG_KBPvK,WHITE,BLACK};
+    if(bP==1&&bB==1&&bN+bR+bQ==0&&wP+wN+wB+wR+wQ==0) return {EG_KBPvK,BLACK,WHITE};
+    if(wR==1&&wB==1&&wP+wN+wQ==0&&bR==1&&bP+bN+bB+bQ==0) return {EG_KRBvKR,WHITE,BLACK};
+    if(bR==1&&bB==1&&bP+bN+bQ==0&&wR==1&&wP+wN+wB+wQ==0) return {EG_KRBvKR,BLACK,WHITE};
+    return {EG_NONE,WHITE,BLACK};
+}
+
+static int evalKPK(const Position& pos,int atk,int def){
+    int pSq=__builtin_ctzll(pos.pieces(atk,PAWN));
+    int aK=pos.kingSquare(atk),dK=pos.kingSquare(def);
+    int pr=(atk==WHITE)?7:0,pSqPromo=square(file_of(pSq),pr);
+    int adv=(atk==WHITE)?rank_of(pSq):(7-rank_of(pSq));
+    bool win=(manhattan(dK,pSqPromo)>std::abs(pr-rank_of(pSq))+1)||
+             (manhattan(aK,pSqPromo)+std::abs(pr-rank_of(pSq))<manhattan(dK,pSqPromo));
+    int sc=win?(300+adv*20):0;
+    return (pos.sideToMove==atk)?sc:-sc;
+}
+static int evalKRK(const Position& pos,int atk,int def){
+    int aK=pos.kingSquare(atk),dK=pos.kingSquare(def);
+    int rSq=__builtin_ctzll(pos.pieces(atk,ROOK));
+    int de=std::min({file_of(dK),7-file_of(dK),rank_of(dK),7-rank_of(dK)});
+    int sc=800+(3-de)*200+(8-manhattan(rSq,dK))*20+(8-manhattan(aK,dK))*20;
+    return (pos.sideToMove==atk)?sc:-sc;
+}
+static int evalKQK(const Position& pos,int atk,int def){
+    int aK=pos.kingSquare(atk),dK=pos.kingSquare(def);
+    int qSq=__builtin_ctzll(pos.pieces(atk,QUEEN));
+    int de=std::min({file_of(dK),7-file_of(dK),rank_of(dK),7-rank_of(dK)});
+    int sc=2000+(3-de)*300+(8-std::max(1,manhattan(qSq,dK)))*40+(8-manhattan(aK,dK))*40;
+    return (pos.sideToMove==atk)?sc:-sc;
+}
+static int evalKBBK(const Position& pos,int atk,int def){
+    int dK=pos.kingSquare(def); U64 bbs=pos.pieces(atk,BISHOP);
+    int b1=__builtin_ctzll(bbs);
+    bool lm=((file_of(b1)+rank_of(b1))%2==0);
+    int corners[4]={A1,H1,A8,H8},best=999;
+    for(int c:corners){ bool cl=((file_of(c)+rank_of(c))%2==0); if(cl!=lm) continue; best=std::min(best,manhattan(dK,c)); }
+    int sc=1800+(8-best)*200;
+    return (pos.sideToMove==atk)?sc:-sc;
+}
+static int evalKBPvK(const Position& pos,int atk,int def){
+    int pSq=__builtin_ctzll(pos.pieces(atk,PAWN));
+    int bSq=__builtin_ctzll(pos.pieces(atk,BISHOP));
+    int prSq=square(file_of(pSq),(atk==WHITE)?7:0);
+    bool match=((file_of(prSq)+rank_of(prSq))%2)==((file_of(bSq)+rank_of(bSq))%2);
+    if(!match) return 0;
+    int dK=pos.kingSquare(def),adv=(atk==WHITE)?rank_of(pSq):(7-rank_of(pSq));
+    int sc=300+adv*30+(8-manhattan(dK,prSq))*20;
+    return (pos.sideToMove==atk)?sc:-sc;
+}
+static int evalKRBvKR(const Position& pos,int atk,int def){
+    int aK=pos.kingSquare(atk),dK=pos.kingSquare(def);
+    int aR=__builtin_ctzll(pos.pieces(atk,ROOK)),aB=__builtin_ctzll(pos.pieces(atk,BISHOP));
+    int dR=__builtin_ctzll(pos.pieces(def,ROOK));
+    int de=std::min({file_of(dK),7-file_of(dK),rank_of(dK),7-rank_of(dK)});
+    int sc=200+(3-de)*200+(8-manhattan(aK,dK))*20+(8-manhattan(aR,dK))*20
+              +(8-manhattan(aB,dK))*10+manhattan(dR,dK)*15;
+    return (pos.sideToMove==atk)?sc:-sc;
+}
+
+int evaluate(const Position& pos){
+    EGInfo eg=classifyEndgame(pos);
+    switch(eg.type){
+        case EG_KPK:    return evalKPK(pos,eg.atk,eg.def);
+        case EG_KRK:    return evalKRK(pos,eg.atk,eg.def);
+        case EG_KQK:    return evalKQK(pos,eg.atk,eg.def);
+        case EG_KBBK:   return evalKBBK(pos,eg.atk,eg.def);
+        case EG_KBPvK:  return evalKBPvK(pos,eg.atk,eg.def);
+        case EG_KRBvKR: return evalKRBvKR(pos,eg.atk,eg.def);
+        default: break;
+    }
+    int score=0;
+    for(int sq=0;sq<64;sq++){
+        int pc=pos.board[sq]; if(pc==NO_PIECE) continue;
+        int c=pieceColorOf(pc),pt=pieceTypeOf(pc);
+        int pstSq=(c==WHITE)?(sq^56):sq,pstVal=0;
+        switch(pt){
+            case PAWN:   pstVal=pawnPST[pstSq];   break;
+            case KNIGHT: pstVal=knightPST[pstSq];  break;
+            case BISHOP: pstVal=bishopPST[pstSq];  break;
+            case ROOK:   pstVal=rookPST[pstSq];    break;
+            case QUEEN:  pstVal=queenPST[pstSq];   break;
+            case KING:   pstVal=kingMGPST[pstSq];  break;
+        }
+        int val=mgValue[pt]+pstVal;
+        score+=(c==WHITE)?val:-val;
+    }
+    if(countPieces(pos,WHITE,BISHOP)>=2) score+=30;
+    if(countPieces(pos,BLACK,BISHOP)>=2) score-=30;
+    // Passed pawns
+    for(int sq=0;sq<64;sq++){
+        int pc=pos.board[sq]; if(pc==NO_PIECE) continue;
+        if(pieceTypeOf(pc)!=PAWN) continue;
+        int c=pieceColorOf(pc),f=file_of(sq),r=rank_of(sq);
+        bool passed=true; int dir=(c==WHITE)?1:-1;
+        for(int nr=(c==WHITE)?r+1:r-1;nr>=0&&nr<8;nr+=dir){
+            for(int nf=std::max(0,f-1);nf<=std::min(7,f+1);nf++){
+                int tpc=pos.board[square(nf,nr)];
+                if(tpc!=NO_PIECE&&pieceTypeOf(tpc)==PAWN&&pieceColorOf(tpc)!=c){passed=false;break;}
+            }
+            if(!passed) break;
+        }
+        if(passed){int adv=(c==WHITE)?r:(7-r);score+=(c==WHITE)?(adv*15):-(adv*15);}
+    }
+    // King shield
+    for(int c=0;c<2;c++){
+        int ksq=pos.kingSquare(c),kf=file_of(ksq),kr=rank_of(ksq),dir=(c==WHITE)?1:-1;
+        int shr=kr+dir; if(shr>=0&&shr<8){
+            int sh=0;
+            for(int df=-1;df<=1;df++){int sf=kf+df;if(sf<0||sf>7)continue;int tpc=pos.board[square(sf,shr)];if(tpc!=NO_PIECE&&pieceTypeOf(tpc)==PAWN&&pieceColorOf(tpc)==c)sh++;}
+            score+=(c==WHITE)?(sh*10):-(sh*10);
+        }
+    }
+    // Piece safety
+    for(int sq=0;sq<64;sq++){
+        int pc=pos.board[sq]; if(pc==NO_PIECE) continue;
+        if(pieceTypeOf(pc)==KING) continue;
+        int c=pieceColorOf(pc); int sign=(c==WHITE)?-1:1;
+        PieceSafetyInfo s=analyzePieceSafety(pos,sq);
+        if(s.hanging)         score+=sign*200;
+        if(s.overloaded)      score+=sign*80;
+        if(s.pinned)          score+=sign*120;
+        if(s.heavilyAttacked) score+=sign*60;
+    }
+    for(int sq=0;sq<64;sq++){
+        int pc=pos.board[sq]; if(pc==NO_PIECE) continue;
+        if(pieceTypeOf(pc)==KING) continue;
+        int c=pieceColorOf(pc); int sign=(c==WHITE)?-1:1;
+        if(isPieceTrapped(pos,sq)) score+=sign*200;
+    }
+    return (pos.sideToMove==WHITE)?score:-score;
+}
+
+// ── Search ────────────────────────────────────────────────────────────────────
+static int historyTable[2][64][64];
+static Move killers[128][2];
+
+static int64_t timeNow(){
+    using namespace std::chrono;
+    return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+}
+
+bool moveBreaksPin(const Position& pos,const Move& m){
+    return isAbsolutePin(pos,m.from)||isRelativePin(pos,m.from);
+}
+bool entersAttackPath(const Position& pos,const Move& m){
+    int us=pos.sideToMove,them=us^1;
+    U64 occ=pos.occupancy(); occ^=(1ULL<<m.from); occ|=(1ULL<<m.to);
+    if(attackersTo(pos,m.to,occ)&pos.colorBB[them]&occ) return true;
+    U64 lines=rookAttacks(m.from,occ)|bishopAttacks(m.from,occ);
+    if(lines&pos.colorBB[them]) return true;
+    return false;
+}
+bool moveLeadsToTrap(const Position& pos,const Move& m){
+    Position tmp=pos; tmp.makeMove(m);
+    bool t=isPieceTrapped(tmp,m.to); tmp.unmakeMove(m); return t;
+}
+bool allowsFork(const Position& pos,const Move& m){
+    int us=pos.sideToMove,them=us^1;
+    Position tmp=pos; tmp.makeMove(m);
+    U64 occ=tmp.occupancy();
+    int targets[16]; int tCount=0;
+    for(int sq=0;sq<64;sq++){int pc=tmp.board[sq];if(pc==NO_PIECE||pieceColorOf(pc)!=us)continue;int pt=pieceTypeOf(pc);if(pt!=KING)targets[tCount++]=sq;}
+    for(int sq=0;sq<64;sq++){
+        int pc=tmp.board[sq]; if(pc==NO_PIECE||pieceColorOf(pc)!=them) continue;
+        int pt=pieceTypeOf(pc); U64 moves=0;
+        switch(pt){case KNIGHT:moves=knightAttacks(sq);break;case BISHOP:moves=bishopAttacks(sq,occ);break;case ROOK:moves=rookAttacks(sq,occ);break;case QUEEN:moves=bishopAttacks(sq,occ)|rookAttacks(sq,occ);break;case KING:moves=kingAttacks(sq);break;}
+        int hit=0; for(int i=0;i<tCount;i++) if(moves&(1ULL<<targets[i])) if(++hit>=2){tmp.unmakeMove(m);return true;}
+    }
+    tmp.unmakeMove(m); return false;
+}
+bool isBadTrade(Position& pos,const Move& m){
+    if(!m.isCapture) return false;
+    if(seeMove(pos,m)>0) return false;
+    Position tmp=pos; tmp.makeMove(m);
+    int sc=-evaluate(tmp); tmp.unmakeMove(m);
+    return sc<=evaluate(pos);
+}
+bool isStrategicSacAdvantage(Position& pos,const Move& m){
+    if(seeMove(pos,m)>=0) return true;
+    Position tmp=pos; tmp.makeMove(m);
+    int sb=evaluate(pos),sa=evaluate(tmp);
+    if(sa<=sb+50){tmp.unmakeMove(m);return false;}
+    int verify=-negamax(tmp,2,-INF_SCORE,INF_SCORE,0,false);
+    tmp.unmakeMove(m);
+    return verify>sb+50;
+}
+
+static void orderMoves(Position& pos,std::vector<Move>& moves,const Move& ttMove,int ply){
+    std::vector<int> score(moves.size());
+    for(size_t i=0;i<moves.size();i++){
+        const Move& m=moves[i]; int s=0;
+        if(sameMove(m,ttMove)) s=10000000;
+        else if(m.isCapture){int see=seeMove(pos,m);s=(see>=0)?6000000+see:2000000+see;}
+        else if(m.promotion!=NO_PIECE) s=5000000;
+        else {
+            if(sameMove(m,killers[ply][0])) s=4000000;
+            else if(sameMove(m,killers[ply][1])) s=3900000;
+            else {
+                int h=historyTable[pos.sideToMove][m.from][m.to]; s=h;
+                if(isHanging(pos,const_cast<Move&>(m))||entersAttackPath(pos,m)) s=-99999999;
+            }
+        }
+        score[i]=s;
+    }
+    for(size_t i=0;i<moves.size();i++) for(size_t j=i+1;j<moves.size();j++) if(score[j]>score[i]){std::swap(score[i],score[j]);std::swap(moves[i],moves[j]);}
+}
+
+static int quiescence(Position& pos,int alpha,int beta,int ply){
+    nodeCount++;
+    int stand=evaluate(pos);
+    if(stand>=beta) return beta;
+    if(stand>alpha) alpha=stand;
+    std::vector<Move> caps=generateLegalCaptures(pos);
+    orderMoves(pos,caps,Move{},ply);
+    for(auto& m:caps){
+        if(seeMove(pos,m)<-50) continue;
+        pos.makeMove(m);
+        int score=-quiescence(pos,-beta,-alpha,ply+1);
+        pos.unmakeMove(m);
+        if(score>=beta) return beta;
+        if(score>alpha) alpha=score;
+    }
+    return alpha;
+}
+
+int negamax(Position& pos,int depth,int alpha,int beta,int ply,bool nullOk){
+    nodeCount++;
+    if(stopSearch||(searchTimeLimitMs>0&&timeNow()-searchStartTime>=searchTimeLimitMs)){stopSearch=true;return 0;}
+    if(pos.halfmoveClock>=100) return 0;
+    U64 curKey=pos.zobristKey; int repCount=0;
+    for(auto& k:pos.positionHistory) if(k==curKey) repCount++;
+    if(repCount>=2) return 0;
+    if(depth<=0) return quiescence(pos,alpha,beta,ply);
+    bool inCheck=isSquareAttacked(pos,pos.kingSquare(pos.sideToMove),pos.sideToMove^1);
+    if(inCheck) depth++;
+    TTEntry* tte=tt.probe(pos.zobristKey);
+    Move ttMove{};
+    if(tte&&tte->key==pos.zobristKey){
+        ttMove=tte->bestMove;
+        if(tte->depth>=depth){
+            int tts=tte->score;
+            if(tte->flag==EXACT) return tts;
+            if(tte->flag==LOWERBOUND&&tts>alpha) alpha=tts;
+            if(tte->flag==UPPERBOUND&&tts<beta)  beta=tts;
+            if(alpha>=beta) return tts;
+        }
+    }
+    bool isPV=(beta-alpha>1);
+    int staticEval=evaluate(pos);
+    EGInfo eg=classifyEndgame(pos);
+    if(nullOk&&!inCheck&&!isPV&&depth>=3&&staticEval>=beta&&pos.hasNonPawnMaterial(pos.sideToMove)&&eg.type==EG_NONE){
+        int R=3+(depth/6); pos.makeNullMove();
+        int score=-negamax(pos,depth-R-1,-beta,-beta+1,ply+1,false);
+        pos.unmakeNullMove();
+        if(score>=beta) return beta;
+    }
+    bool futPrune=(!isPV&&!inCheck&&depth<=4&&staticEval+80*depth<=alpha&&eg.type==EG_NONE);
+    std::vector<Move> moves=generateLegalMoves(pos);
+    if(moves.empty()) return inCheck?(-INF_SCORE+ply):0;
+    orderMoves(pos,moves,ttMove,ply);
+    int best=-INF_SCORE; Move bestMove{}; int searched=0,origAlpha=alpha;
+    for(auto& m:moves){
+        bool isCap=m.isCapture||m.isEnPassant,isPromo=m.promotion!=NO_PIECE;
+        if(futPrune&&searched>0&&!isCap&&!isPromo&&!inCheck){ searched++;continue;}
+        if(!isCap&&!isPromo&&moveBreaksPin(pos,m))    {searched++;continue;}
+        if(!isCap&&!isPromo&&entersAttackPath(pos,m)) {searched++;continue;}
+        if(!isCap&&!isPromo&&isHanging(pos,m))        {searched++;continue;}
+        if(!isCap&&!isPromo&&moveLeadsToTrap(pos,m))  {searched++;continue;}
+        if(allowsFork(pos,m))                         {searched++;continue;}
+        if(isCap&&isBadTrade(pos,m)&&!isStrategicSacAdvantage(pos,m)){searched++;continue;}
+        if(!isPV&&isCap&&!inCheck&&depth<=8&&searched>0&&seeMove(pos,m)<-30*depth){searched++;continue;}
+        pos.makeMove(m);
+        int score,red=0;
+        if(depth>=3&&searched>=4&&!isCap&&!inCheck&&!isPromo&&eg.type==EG_NONE)
+            red=lmrTable[std::min(depth,63)][std::min(searched,63)];
+        if(searched==0) score=-negamax(pos,depth-1,-beta,-alpha,ply+1,true);
+        else {
+            score=-negamax(pos,depth-1-red,-alpha-1,-alpha,ply+1,true);
+            if(score>alpha&&score<beta) score=-negamax(pos,depth-1,-beta,-alpha,ply+1,true);
+        }
+        pos.unmakeMove(m);
+        if(stopSearch) return 0;
+        if(score>best){best=score;bestMove=m;}
+        if(score>alpha){
+            alpha=score;
+            if(!isCap){int& h=historyTable[pos.sideToMove][m.from][m.to];h+=depth*depth;if(h>400000)h=400000;}
+        }
+        if(alpha>=beta){
+            if(!isCap){killers[ply][1]=killers[ply][0];killers[ply][0]=m;}
+            tt.store(pos.zobristKey,depth,beta,LOWERBOUND,bestMove);
+            return beta;
+        }
+        searched++;
+    }
+    int flag=(best<=origAlpha)?UPPERBOUND:(best>=beta?LOWERBOUND:EXACT);
+    tt.store(pos.zobristKey,depth,best,flag,bestMove);
+    return best;
+}
+
+void moveToUCI(const Move& m,char* buf){
+    buf[0]='a'+file_of(m.from); buf[1]='1'+rank_of(m.from);
+    buf[2]='a'+file_of(m.to);   buf[3]='1'+rank_of(m.to);
+    int i=4;
+    if(m.promotion!=NO_PIECE){char pc='q';switch(m.promotion){case KNIGHT:pc='n';break;case BISHOP:pc='b';break;case ROOK:pc='r';break;default:pc='q';break;}buf[i++]=pc;}
+    buf[i]=0;
+}
+
+uint64_t perft(Position& pos,int depth){
+    if(depth==0) return 1;
+    auto moves=generateLegalMoves(pos);
+    if(depth==1) return moves.size();
+    uint64_t nodes=0;
+    for(auto& m:moves){pos.makeMove(m);nodes+=perft(pos,depth-1);pos.unmakeMove(m);}
+    return nodes;
+}
+
+Move iterativeDeepening(Position& pos,int maxDepth,int timeLimitMs){
+    tt.newSearch(); nodeCount=0; stopSearch=false;
+    searchStartTime=timeNow(); searchTimeLimitMs=timeLimitMs;
+    std::memset(killers,0,sizeof(killers));
+    std::memset(historyTable,0,sizeof(historyTable));
+    std::vector<Move> legal=generateLegalMoves(pos);
+    if(legal.empty()) return Move{};
+    if(legal.size()==1) return legal[0];
+    Move bestMove=legal[0]; int bestScore=0;
+    for(int depth=1;depth<=maxDepth;depth++){
+        int alpha=-INF_SCORE,beta=INF_SCORE;
+        if(depth>=5){alpha=bestScore-50;beta=bestScore+50;}
+        int score=negamax(pos,depth,alpha,beta,0,true);
+        if(stopSearch) break;
+        if(score<=alpha||score>=beta) score=negamax(pos,depth,-INF_SCORE,INF_SCORE,0,true);
+        if(stopSearch) break;
+        bestScore=score;
+        TTEntry* tte=tt.probe(pos.zobristKey);
+        if(tte&&tte->key==pos.zobristKey&&tte->bestMove.valid()&&!sameMove(tte->bestMove,Move{}))
+            bestMove=tte->bestMove;
+        if(timeNow()-searchStartTime>=timeLimitMs*85/100) break;
+    }
+    return bestMove;
+}
+
+// ── Entry point (called by main.py via subprocess) ────────────────────────────
+int main(int argc,char* argv[]){
+    initAll();
+    if(argc<2){ std::cout<<"e2e4"<<std::endl; return 0; }
+    std::string fen=argv[1];
+    int depth=(argc>=3)?std::stoi(argv[2]):10;
+    int tms=(argc>=4)?std::stoi(argv[3]):2000;
+    Position pos; pos.setFromFEN(fen);
+    Move m=iterativeDeepening(pos,depth,tms);
+    char buf[8]; moveToUCI(m,buf);
+    std::cout<<buf<<" nodes="<<nodeCount<<std::endl;
+    return 0;
+}
+"""
+def _compile_engine() -> bool:
+    try:
+        _ENGINE_SRC.write_text(_ENGINE_CPP, encoding="utf-8")
+        result = subprocess.run(
+            sanitize_subprocess_args(
+                ["g++", "-std=c++17", "-O2", "-o", str(_ENGINE_EXE), str(_ENGINE_SRC)]
+            ),
+            capture_output=True, text=True, timeout=60
+        )
+        if result.returncode == 0:
+            _ENGINE_EXE.chmod(0o755)
+            _audit("ENGINE_COMPILED", f"size={_ENGINE_EXE.stat().st_size}")
+            return True
+        else:
+            _audit("ENGINE_COMPILE_FAIL", result.stderr[:200])
+            return False
+    except Exception as e:
+        _audit("ENGINE_COMPILE_ERROR", str(e)[:200])
+        return False
+
+def _random_move(fen: str) -> str:
+    import chess as _chess
+    try:
+        board = _chess.Board(fen) if fen else _chess.Board()
+    except Exception:
+        board = _chess.Board()
+    moves = list(board.legal_moves)
+    if not moves:
+        return "e2e4"
+    return random.choice(moves).uci()
+
+@app.post("/api/chess/bestmove")
+async def chess_bestmove(request: Request):
+    body  = await request.json()
+    fen = zb_admit(str(body.get("fen", "")).strip(), "fen_string", "chess_bestmove", authenticated=False)
+    depth = max(1, min(int(body.get("depth", 8)), 16))
+    tms   = max(100, min(int(body.get("time_ms", 2000)), 10000))
+    if not fen:
+        raise HTTPException(400, "FEN required")
+    if not _FEN_RE.match(fen):
+        _audit("OOB_FORMAT_REJECTED",
+               f"field=fen_string len={len(fen)} provenance=REJECTED caller=chess_bestmove")
+        raise HTTPException(400, "Invalid FEN")
+    if not _ENGINE_EXE.exists():
+        try:
+            ok = await asyncio.get_event_loop().run_in_executor(None, _compile_engine)
+        except Exception:
+            ok = False
+        if not ok or not _ENGINE_EXE.exists():
+            try:
+                return {"move": _random_move(fen), "nodes": 0, "engine": "fallback"}
+            except Exception as fe:
+                raise HTTPException(500, f"Engine unavailable and fallback failed: {fe}")
+    try:
+        result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: subprocess.run(
+                sanitize_subprocess_args(
+                    [str(_ENGINE_EXE), fen, str(depth), str(tms)]
+                ),
+                capture_output=True, text=True, timeout=(tms/1000)+3
+            )
+        )
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip())
+        raw = result.stdout.strip().split()[0]
+        if not _UCI_RE.match(raw):
+            raise RuntimeError(f"bad output: {raw!r}")
+        nodes = 0
+        m = re.search(r'nodes=(\d+)', result.stdout)
+        if m:
+            nodes = int(m.group(1))
+        return {"move": raw, "nodes": nodes, "engine": "native"}
+    except subprocess.TimeoutExpired:
+        return {"move": _random_move(fen), "nodes": 0, "engine": "fallback-timeout"}
+    except Exception as e:
+        _audit("ENGINE_ERROR", str(e)[:120])
+        return {"move": _random_move(fen), "nodes": 0, "engine": "fallback-error"}
+# ──────────────────────────────────────────────────────────────
+# DEBUG ROUTES
+# ──────────────────────────────────────────────────────────────
+
+
+# ──────────────────────────────────────────────────────────────
+# WEBSOCKET
+# ──────────────────────────────────────────────────────────────
+
+@app.websocket("/ws")
+async def ws_endpoint(ws: WebSocket, token: str = ""):
+    username = "anonymous"
+    if token:
+        try:
+            username = _decode_token(token)
+        except Exception:
+            pass
+    await mgr.connect(ws, username)
+    try:
+        while True:
+            data = await ws.receive_text()
+            if data and data != 'ping':
+                # FIX: Unicode guard on WS messages before any parsing
+                ws_result = scan_ws_message(data, context="ws_message")
+                if ws_result.blocked:
+                    # Silently drop — PSN record already emitted by scan_ws_message
+                    continue
+                data = ws_result.sanitized
+                try:
+                    msg = json.loads(data)
+                    if msg.get('type') == 'auth' and msg.get('token'):
+                        try:
+                            new_username = _decode_token(msg['token'])
+                            if new_username != username:
+                                mgr.disconnect(ws, username)
+                                username = new_username
+                                mgr._sockets.setdefault(username, []).append(ws)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+    except WebSocketDisconnect:
+        mgr.disconnect(ws, username)
+
+# ──────────────────────────────────────────────────────────────
+# STATIC + FRONTEND
+# ──────────────────────────────────────────────────────────────
+
+if Path("uploads").exists():
+    app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+if Path("/data/static").exists():
+    app.mount("/static", StaticFiles(directory="/data/static"), name="static")
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)
+
+@app.get("/battlechess")
+async def serve_battlechess():
+    return FileResponse("battlechess.html")
+
+@app.get("/keen")
+async def serve_keen():
+    return FileResponse("keen.html")
+
+@app.get("/crime")
+async def serve_crime():
+    return FileResponse("crime.html")
+
+@app.get("/wolf")
+async def serve_wolf():
+    return FileResponse("wolf.html")
+
+@app.get("/tetris")
+async def serve_tetris():
+    return FileResponse("tetris.html")
+
+@app.get("/heros")
+async def serve_hero():
+    return FileResponse("heros.html")
+
+@app.get("/OMF")
+async def serve_OMF():
+    return FileResponse("OMF.html")
+
+@app.get("/monkey")
+async def serve_monkey():
+    return FileResponse("monkey.html")
+
+@app.get("/gnss/nmea")
+async def gnss_nmea_viewer():
+    p = Path(__file__).parent / "gnss_nmea_viewer.html"
+    if p.exists():
+        return FileResponse(str(p))
+    raise HTTPException(404, "gnss_nmea_viewer.html not found")
+
+# ──────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────
+# FS-5000 GEIGER BRIDGE + Floor→Peak three-column metrics
+# (ported from MainWindow.xaml.cs green-box state machine)
+# ──────────────────────────────────────────────────────────────
+
+_geiger_records: deque = deque(maxlen=7200)
+_geiger_subscribers: list = []
+_geiger_lock = asyncio.Lock()
+_geiger_session_meta: dict = {}
+
+# Floor→Peak state (same constants/logic as MainWindow.xaml.cs)
+_FP_FLOOR_BAND   = 0.10    # arm when DR ≤ this
+_FP_DROP_CONFIRM = 0.02    # peak confirmed when high − current ≥ this
+_FP_MAX_PAIRS    = 40
+
+_fp_pairs: deque = deque(maxlen=_FP_MAX_PAIRS)
+_fp_state: dict = {
+    "armed": False,
+    "confirmed": False,
+    "floor_dr": None,
+    "floor_idx": -1,
+    "floor_ts": 0.0,      # wall_ns or monotonic ns
+    "high_dr": 0.0,
+    "high_idx": -1,
+    "high_ts": 0.0,
+    "sample_idx": 0,
+}
+
+
+def _fp_process_reading(rec: dict) -> Optional[dict]:
+    """
+    Floor→peak state machine (MainWindow.xaml.cs green-box logic).
+    A measurement is recorded ONLY when (peak - floor) >= 0.1 µSv/h.
+    Smaller rises are noise and are discarded on the drop.
+    """
+    try:
+        dr = float(rec.get("dr") or 0.0)
+    except (TypeError, ValueError):
+        return None
+
+    wall_ns = rec.get("wall_ns")
+    if wall_ns is None:
+        wall_ns = int(time.time() * 1e9)
+    else:
+        try:
+            wall_ns = int(wall_ns)
+        except (TypeError, ValueError):
+            wall_ns = int(time.time() * 1e9)
+
+    st = _fp_state
+    st["sample_idx"] = int(st.get("sample_idx", 0)) + 1
+    idx = st["sample_idx"]
+
+    MIN_HILL = 0.1          # peak − floor must be ≥ this (µSv/h)
+    FLOOR_BAND = 0.10       # arm when DR ≤ this
+    DROP_CONFIRM = 0.02     # peak confirmed when high − current ≥ this
+
+    # Arm on a low floor
+    if not st["armed"] and not st["confirmed"] and dr <= FLOOR_BAND:
+        st["armed"] = True
+        st["floor_dr"] = dr
+        st["floor_idx"] = idx
+        st["floor_ts"] = wall_ns
+        st["high_dr"] = dr
+        st["high_idx"] = idx
+        st["high_ts"] = wall_ns
+        st["confirmed"] = False
+
+    if st["armed"] and not st["confirmed"]:
+        # Track rising high
+        if dr > st["high_dr"]:
+            st["high_dr"] = dr
+            st["high_idx"] = idx
+            st["high_ts"] = wall_ns
+
+        # Allow floor to settle lower while still near-flat
+        if (
+            st["floor_dr"] is not None
+            and dr < st["floor_dr"]
+            and (st["high_dr"] - st["floor_dr"]) < 0.015
+        ):
+            st["floor_dr"] = dr
+            st["floor_idx"] = idx
+            st["floor_ts"] = wall_ns
+            st["high_dr"] = dr
+            st["high_idx"] = idx
+            st["high_ts"] = wall_ns
+
+        # Drop from high → candidate peak
+        if st["high_dr"] > 0.001 and (st["high_dr"] - dr) >= DROP_CONFIRM:
+            hill = st["high_dr"] - (st["floor_dr"] if st["floor_dr"] is not None else 0.0)
+
+            if hill >= MIN_HILL:
+                # Valid hill — record measurement
+                st["confirmed"] = True
+                f_val = float(st["floor_dr"])
+                p_val = float(st["high_dr"])
+                dt_sec = max(0.0, (st["high_ts"] - st["floor_ts"]) / 1e9)
+                peak_hr_eq = p_val * (3600.0 / dt_sec) if dt_sec > 0.1 else 0.0
+                pair = {
+                    "fVal": f_val,
+                    "pVal": p_val,
+                    "dtSec": round(dt_sec, 3),
+                    "peakHrEq": round(peak_hr_eq, 2),
+                    "hill": round(hill, 4),
+                    "floorIdx": st["floor_idx"],
+                    "peakIdx": st["high_idx"],
+                    "floorTs": st["floor_ts"],
+                    "peakTs": st["high_ts"],
+                    "t": datetime.datetime.utcnow().strftime("%H:%M:%S"),
+                }
+                _fp_pairs.append(pair)
+                st["armed"] = False
+                st["confirmed"] = False
+                st["floor_dr"] = None
+                st["high_dr"] = 0.0
+                return pair
+            else:
+                # Sub-threshold rise — discard, re-arm from current level
+                st["armed"] = False
+                st["confirmed"] = False
+                st["floor_dr"] = None
+                st["high_dr"] = 0.0
+                if dr <= FLOOR_BAND:
+                    st["armed"] = True
+                    st["floor_dr"] = dr
+                    st["floor_idx"] = idx
+                    st["floor_ts"] = wall_ns
+                    st["high_dr"] = dr
+                    st["high_idx"] = idx
+                    st["high_ts"] = wall_ns
+
+    # Disarm if we crash far below tracked floor without a real peak
+    if (
+        st["armed"]
+        and st["floor_dr"] is not None
+        and dr < st["floor_dr"] - 0.05
+    ):
+        st["armed"] = False
+        st["confirmed"] = False
+        st["floor_dr"] = None
+        st["high_dr"] = 0.0
+
+    return None
+
+
+def _fp_snapshot() -> list:
+    return list(_fp_pairs)
+
+
+async def _geiger_publish(rec: dict) -> None:
+    """Append record, run FP machine, fan-out to SSE subscribers."""
+    pair = _fp_process_reading(rec)
+    # Attach current FP pairs so the client can render without local state
+    out = dict(rec)
+    out["fp_pairs"] = _fp_snapshot()
+    if pair is not None:
+        out["fp_new"] = pair
+
+    async with _geiger_lock:
+        _geiger_records.append(out)
+        msg = f"data: {_json.dumps(out)}\n\n"
+        _geiger_subscribers[:] = [q for q in _geiger_subscribers if not q.full()]
+        for q in _geiger_subscribers:
+            try:
+                q.put_nowait(msg)
+            except Exception:
+                pass
+
+# ──────────────────────────────────────────────────────────────
+# GEIGER SOURCE REFERENCE SIGNATURES
+#
+# One completed record = three independent 10-minute samples.
+#
+# Ownership is determined ONLY from current_user().
+# The browser cannot choose the owning username.
+# ──────────────────────────────────────────────────────────────
+
+@app.post("/api/geiger/source-signatures")
+async def geiger_source_signature(
+    request: Request,
+    user: dict = Depends(current_user),
+):
+    body = await request.json()
+
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Source signature must be a JSON object")
+
+    source = str(body.get("source", "")).strip()
+
+    if not source:
+        raise HTTPException(400, "Source name required")
+
+    source = psn_scan(
+        _oob_clamp(source, "display_name", "geiger_source_signature"),
+        "geiger_source_name",
+        "geiger_source_signature",
+    ).strip()
+
+    readings = body.get("readings")
+
+    if not isinstance(readings, list):
+        raise HTTPException(400, "readings must be an array")
+
+    if len(readings) != 3:
+        raise HTTPException(
+            400,
+            "Exactly three completed independent samples are required"
+        )
+
+    # Every sample must be an actual ten-minute sample.
+    for idx, reading in enumerate(readings, start=1):
+
+        if not isinstance(reading, dict):
+            raise HTTPException(
+                400,
+                f"reading {idx} must be an object"
+            )
+
+        duration = int(reading.get("duration_s", 0))
+
+        if duration != 600:
+            raise HTTPException(
+                400,
+                f"reading {idx} must have duration_s=600"
+            )
+
+        n = int(reading.get("n", 0))
+
+        if n <= 0:
+            raise HTTPException(
+                400,
+                f"reading {idx} contains no detector samples"
+            )
+
+        sequence = reading.get("cps_sequence", [])
+
+        if not isinstance(sequence, list):
+            raise HTTPException(
+                400,
+                f"reading {idx} cps_sequence must be an array"
+            )
+
+    aggregate = body.get("aggregate")
+
+    if not isinstance(aggregate, dict):
+        raise HTTPException(
+            400,
+            "aggregate object required"
+        )
+
+    completed_at = str(
+        body.get("completed_at") or
+        datetime.datetime.now(datetime.timezone.utc).isoformat()
+    )
+
+    started_at = None
+
+    if readings:
+        started_at = readings[0].get("started_at")
+
+    signature_id = str(uuid.uuid4())
+
+    now = time.time()
+
+    username = str(user["username"])
+    display_name = str(
+        user.get("display_name") or username
+    )
+
+    method = str(
+        body.get(
+            "method",
+            "time-weighted-GM-statistical-envelope-plus-CPS-temporal-signature"
+        )
+    )
+
+    detector = str(
+        body.get("detector", "Geiger-Muller")
+    )
+
+    reading_seconds = int(
+        body.get("reading_seconds", 600)
+    )
+
+    reading_minutes = int(
+        body.get("reading_minutes", 10)
+    )
+
+    n_readings = int(
+        body.get("n_readings", 3)
+    )
+
+    independent_samples = bool(
+        body.get("independent_samples", True)
+    )
+
+    if (
+        reading_seconds != 600
+        or reading_minutes != 10
+        or n_readings != 3
+        or not independent_samples
+    ):
+        raise HTTPException(
+            400,
+            "Reference records must be 3 independent 10-minute samples"
+        )
+
+    total_counts = int(
+        aggregate.get("total_counts", 0)
+    )
+
+    if total_counts < 0:
+        raise HTTPException(
+            400,
+            "Invalid total count"
+        )
+
+    aggregate_json = json.dumps(
+        aggregate,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+    readings_json = json.dumps(
+        readings,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+    with get_db() as db:
+        db.execute(
+            """
+            INSERT INTO geiger_source_signatures (
+                id,
+                source_name,
+                username,
+                display_name,
+                method,
+                detector,
+                reading_seconds,
+                reading_minutes,
+                n_readings,
+                independent_samples,
+                started_at,
+                completed_at,
+                total_counts,
+                aggregate_json,
+                readings_json,
+                created_at
+            )
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                signature_id,
+                source,
+                username,
+                display_name,
+                method,
+                detector,
+                reading_seconds,
+                reading_minutes,
+                n_readings,
+                1,
+                started_at,
+                completed_at,
+                total_counts,
+                aggregate_json,
+                readings_json,
+                now,
+            ),
+        )
+
+    _audit(
+        "GEIGER_SOURCE_SIGNATURE",
+        (
+            f"id={signature_id} "
+            f"source={source} "
+            f"user={username} "
+            f"samples=3 "
+            f"duration=600s"
+        ),
+        request.client.host if request.client else "",
+    )
+
+    return {
+        "ok": True,
+        "id": signature_id,
+        "source": source,
+        "username": username,
+        "samples": 3,
+        "duration_seconds": 600,
+        "master_repository": True,
+    }
+@app.post("/api/geiger/ingest")
+async def geiger_ingest(request: Request):
+    secret = os.environ.get("INGEST_SECRET", "")
+    auth = request.headers.get("Authorization", "")
+    if not secret or auth != f"Bearer {secret}":
+        raise HTTPException(401)
+    data = await request.json()
+    records = data if isinstance(data, list) else [data]
+    for rec in records:
+        if not isinstance(rec, dict):
+            continue
+        await _geiger_publish(rec)
+    return Response(status_code=204)
+
+
+@app.post("/api/geiger/session")
+async def geiger_session(request: Request):
+    secret = os.environ.get("INGEST_SECRET", "")
+    if secret:
+        auth = request.headers.get("Authorization", "")
+        if auth != f"Bearer {secret}":
+            raise HTTPException(401)
+    global _geiger_session_meta
+    _geiger_session_meta = await request.json()
+    msg = f"data: {_json.dumps({'type': 'log_found', 'path': _geiger_session_meta.get('serial_log', 'live')})}\n\n"
+    for q in _geiger_subscribers:
+        try:
+            q.put_nowait(msg)
+        except Exception:
+            pass
+    return Response(status_code=204)
+
+
+@app.get("/geiger")
+async def geiger_live():
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse("<script>window.location.href='/';</script>")
+
+
+@app.get("/api/geiger/stream")
+async def geiger_stream(request: Request):
+    queue: asyncio.Queue = asyncio.Queue(maxsize=500)
+    _geiger_subscribers.append(queue)
+
+    async def generate():
+        async with _geiger_lock:
+            recent = list(_geiger_records)
+        for rec in recent:
+            yield f"data: {_json.dumps(rec)}\n\n"
+        # Always push current FP pairs on connect
+        yield f"data: {_json.dumps({'type': 'fp_pairs', 'fp_pairs': _fp_snapshot()})}\n\n"
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    msg = await asyncio.wait_for(queue.get(), timeout=25)
+                    yield msg
+                except asyncio.TimeoutError:
+                    yield ": heartbeat\n\n"
+        finally:
+            try:
+                _geiger_subscribers.remove(queue)
+            except ValueError:
+                pass
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/api/geiger/status")
+async def geiger_status():
+    return {
+        "records": len(_geiger_records),
+        "session": _geiger_session_meta,
+        "live": len(_geiger_subscribers) > 0,
+        "fp_pairs": _fp_snapshot(),
+        "fp_state": {
+            "armed": _fp_state["armed"],
+            "floor_dr": _fp_state["floor_dr"],
+            "high_dr": _fp_state["high_dr"],
+            "sample_idx": _fp_state["sample_idx"],
+        },
+    }
+
+
+@app.get("/api/geiger/fp-pairs")
+async def geiger_fp_pairs():
+    """Three-column metrics: Δt | floor→peak | peak·hr eq."""
+    return {
+        "pairs": _fp_snapshot(),
+        "columns": ["dtSec", "fVal→pVal", "peakHrEq"],
+        "state": {
+            "armed": _fp_state["armed"],
+            "floor_dr": _fp_state["floor_dr"],
+            "high_dr": _fp_state["high_dr"],
+        },
+    }
+
+# ──────────────────────────────────────────────────────────────
+# GNSS NMEA SCAN
+# ──────────────────────────────────────────────────────────────
+
+try:
+    from docx import Document as _DocxDocument
+    from docx.shared import Pt as _Pt, RGBColor as _RGBColor, Inches as _Inches
+    from docx.enum.text import WD_ALIGN_PARAGRAPH as _WD_ALIGN
+    from docx.oxml.ns import qn as _qn
+    from docx.oxml import OxmlElement as _OxmlElement
+    _DOCX_OK = True
+except ImportError:
+    _DOCX_OK = False
+
+_G_SNR_LOW      = 25
+_G_GHOST_SNR    = 3
+_G_GHOST_DUR    = 30
+_G_NW_MIN       = 270
+_G_NW_MAX       = 345
+_G_NW_ELEV_MAX  = 10
+_G_ZENITH_MIN   = 60
+_G_RSRQ_MAX     = 34
+_G_COLLAPSE_DB  = 8
+_G_COLLAPSE_WIN = 30
+_G_PULSE_SNR    = 5
+_G_DISP_THRESH  = 100
+
+_G_STATUTES = {
+    "333":   "47 U.S.C. § 333 -- Willful interference with authorized radio communications",
+    "301":   "47 U.S.C. § 301 -- Operation without FCC license",
+    "15.5b": "47 C.F.R. § 15.5(b) -- Harmful interference to authorized communications",
+    "2.803": "47 C.F.R. § 2.803 -- Operation of RF jamming device",
+    "1367":  "18 U.S.C. § 1367 -- Interference with satellite signal",
+    "1030":  "18 U.S.C. § 1030 (CFAA) -- Unauthorized access to protected computer",
+    "2511":  "18 U.S.C. § 2511 -- Interception of electronic communications",
+    "1512":  "18 U.S.C. § 1512 -- Tampering with evidence",
+    "241":   "18 U.S.C. § 241 -- Conspiracy against civil rights",
+    "1052":  "10 U.S.C. § 1052 / DOD 4650.1 -- GPS dual-use military asset",
+    "325":   "47 U.S.C. § 325 -- Unauthorized rebroadcast",
+}
+
+def _g_dec(value, direction):
+    if not value or len(value) < 4:
+        return None
+    try:
+        if direction in ("N", "S"):
+            deg = float(value[:2]); mins = float(value[2:])
+        else:
+            deg = float(value[:3]); mins = float(value[3:])
+        dec = deg + mins / 60.0
+        if direction in ("S", "W"):
+            dec = -dec
+        return dec
+    except Exception:
+        return None
+
+def _g_haversine(lat1, lon1, lat2, lon2):
+    R = 6371000
+    p1 = math.radians(lat1); p2 = math.radians(lat2)
+    dp = math.radians(lat2 - lat1); dl = math.radians(lon2 - lon1)
+    a = math.sin(dp/2)**2 + math.cos(p1)*math.cos(p2)*math.sin(dl/2)**2
+    return 2 * R * math.asin(math.sqrt(a))
+
+def _g_expected_snr(elev):
+    if elev <= 0:   return 20.0
+    elif elev < 10: return 25.0 + elev * 0.5
+    elif elev < 30: return 30.0 + (elev - 10) * 0.4
+    elif elev < 60: return 38.0 + (elev - 30) * 0.167
+    else:           return 43.0 + (elev - 60) * 0.05
+
+def _g_atm_loss(elev):
+    if elev <= 0: return 99
+    return 10 * math.log10(1.0 / math.sin(math.radians(elev)))
+
+def _g_parse_nmea(text: str):
+    positions, gsv_obs = [], []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(",", 1)
+        if len(parts) < 2:
+            continue
+        ts_str, sentence = parts[0], parts[1]
+        fields = sentence.split(",")
+        msg = fields[0]
+        try:
+            ts = datetime.datetime.fromisoformat(ts_str)
+        except Exception:
+            ts = None
+        if "GGA" in msg and len(fields) >= 10:
+            lat = _g_dec(fields[2], fields[3])
+            lon = _g_dec(fields[4], fields[5])
+            if lat is not None and lon is not None:
+                positions.append({
+                    "ts": ts, "lat": lat, "lon": lon,
+                    "fix": fields[6] if len(fields) > 6 else "0",
+                    "displacement_m": 0.0,
+                })
+        elif "GSV" in msg:
+            i = 4
+            while i + 3 <= len(fields):
+                try:
+                    prn_raw = fields[i].strip()
+                    elev    = fields[i+1].strip()
+                    azim    = fields[i+2].strip()
+                    snr_raw = fields[i+3].split("*")[0].strip()
+                    if prn_raw:
+                        prn = str(int(prn_raw)) if prn_raw.isdigit() else prn_raw
+                        gsv_obs.append({
+                            "ts":   ts,
+                            "prn":  prn,
+                            "snr":  float(snr_raw) if snr_raw else 0.0,
+                            "elev": float(elev)    if elev    else 0.0,
+                            "azim": float(azim)    if azim    else 0.0,
+                        })
+                except Exception:
+                    pass
+                i += 4
+    return positions, gsv_obs
+
+def _g_ghost(gsv_obs):
+    findings = []
+    by_prn = defaultdict(list)
+    for o in gsv_obs:
+        by_prn[o["prn"]].append(o)
+    for prn, obs in by_prn.items():
+        obs.sort(key=lambda x: x["ts"] or datetime.datetime.min)
+        ghost = [o for o in obs if o["snr"] <= _G_GHOST_SNR]
+        total = len(obs)
+        if total < 5 or len(ghost) < 5:
+            continue
+        gpct = len(ghost) / total * 100
+        if gpct < 50:
+            continue
+        ts_l = [o["ts"] for o in obs if o["ts"]]
+        dur  = (max(ts_l) - min(ts_l)).total_seconds() if len(ts_l) >= 2 else 0
+        if dur < _G_GHOST_DUR:
+            continue
+        azims  = [o["azim"] for o in obs if o["azim"] > 0]
+        elevs  = [o["elev"] for o in obs if o["elev"] > 0]
+        avg_az = sum(azims)/len(azims) if azims else 0
+        avg_el = sum(elevs)/len(elevs) if elevs else 0
+        az_rng = max(azims)-min(azims) if azims else 0
+        in_nw  = _G_NW_MIN <= avg_az <= _G_NW_MAX
+        sev    = ("CRITICAL" if gpct > 95 and in_nw and avg_el < 5
+                  else "HIGH" if gpct > 80 and avg_el < 10
+                  else "MODERATE")
+        stats  = ["333","1367","301"] + (["2.803","1052"] if in_nw else [])
+        findings.append({
+            "type":       "GHOST_SATELLITE",
+            "severity":   sev,
+            "label":      f"PRN{prn} Ghost -- {avg_az:.0f}deg az -- SNR=0 for {gpct:.1f}% of {dur:.0f}s",
+            "prn":        prn,
+            "ghost_pct":  gpct,
+            "duration":   dur,
+            "avg_azim":   avg_az,
+            "avg_elev":   avg_el,
+            "azim_range": az_rng,
+            "in_nw":      in_nw,
+            "statutes":   stats,
+            "explanation": (
+                f"PRN{prn} tracked {dur:.0f}s with SNR<={_G_GHOST_SNR} dBHz "
+                f"{gpct:.1f}% of observations. Azimuth {avg_az:.0f}deg (range {az_rng:.1f}deg). "
+                "Fixed azimuth over session duration rules out an orbital body. "
+                + ("NW corridor confirmed. " if in_nw else "")
+            ),
+        })
+    return findings
+
+def _g_deficits(gsv_obs):
+    findings = []
+    by_prn = defaultdict(list)
+    for o in gsv_obs:
+        if o["elev"] > 5 and o["snr"] > 0:
+            by_prn[o["prn"]].append(o)
+    for prn, obs in by_prn.items():
+        if len(obs) < 10:
+            continue
+        deficits = []
+        for o in obs:
+            exp  = _g_expected_snr(o["elev"])
+            atm  = _g_atm_loss(o["elev"])
+            unex = (exp - o["snr"]) - (atm + 3)
+            if unex > 5:
+                deficits.append({**o, "expected": exp, "deficit": exp - o["snr"], "unexplained": unex})
+        if not deficits or len(deficits)/len(obs)*100 < 30:
+            continue
+        avg_el  = sum(o["elev"] for o in obs)/len(obs)
+        avg_az  = sum(o["azim"] for o in obs)/len(obs)
+        max_def = max(d["deficit"]     for d in deficits)
+        max_unx = max(d["unexplained"] for d in deficits)
+        min_snr = min(o["snr"]         for o in obs)
+        max_snr = max(o["snr"]         for o in obs)
+        exp_snr = _g_expected_snr(avg_el)
+        atm_l   = _g_atm_loss(avg_el)
+        is_zen  = avg_el >= _G_ZENITH_MIN
+        in_nw   = _G_NW_MIN <= avg_az <= _G_NW_MAX
+        lin_sup = 10 ** (max_def / 10)
+        if is_zen and max_def >= 15:
+            sev = "CRITICAL"
+        elif max_def >= 20:
+            sev = "CRITICAL"
+        elif max_def >= 12:
+            sev = "HIGH"
+        else:
+            continue
+        stats = ["333","15.5b","1367"] + (["1052"] if is_zen else []) + (["2.803"] if in_nw else [])
+        findings.append({
+            "type":        "SNR_DEFICIT",
+            "severity":    sev,
+            "label":       f"PRN{prn} SNR deficit -- {avg_el:.0f}deg elev -- {max_def:.0f} dB below expected ({lin_sup:.0f}x)",
+            "prn":         prn,
+            "avg_elev":    avg_el,
+            "avg_azim":    avg_az,
+            "max_deficit": max_def,
+            "unexplained": max_unx,
+            "min_snr":     min_snr,
+            "max_snr":     max_snr,
+            "expected_snr":exp_snr,
+            "atm_loss":    atm_l,
+            "lin_suppress":lin_sup,
+            "is_zenith":   is_zen,
+            "in_nw":       in_nw,
+            "statutes":    stats,
+            "explanation": (
+                f"PRN{prn} at {avg_el:.0f}deg shows SNR {min_snr:.0f}-{max_snr:.0f} dBHz. "
+                f"Expected ~{exp_snr:.0f} dBHz. Max deficit {max_def:.0f} dB = {lin_sup:.0f}x suppression. "
+                f"Atmospheric loss at {avg_el:.0f}deg: {atm_l:.2f} dB. Unexplained: {max_unx:.2f} dB. "
+                + ("Near-zenith obstruction impossible outdoors. " if is_zen else "")
+            ),
+        })
+    return findings
+
+def _g_collapses(gsv_obs):
+    by_prn = defaultdict(list)
+    for o in gsv_obs:
+        if o["elev"] > 10 and o["snr"] > 0 and o["ts"]:
+            by_prn[o["prn"]].append(o)
+    worst: dict = {}
+    for prn, obs in by_prn.items():
+        obs.sort(key=lambda x: x["ts"])
+        for i in range(len(obs)):
+            for j in range(i+1, len(obs)):
+                dt = (obs[j]["ts"] - obs[i]["ts"]).total_seconds()
+                if dt < 1: continue
+                if dt > _G_COLLAPSE_WIN: break
+                drop = obs[i]["snr"] - obs[j]["snr"]
+                if drop < _G_COLLAPSE_DB: continue
+                rate  = drop / (dt / 60.0)
+                ratio = rate / 0.5
+                if ratio < 10: continue
+                if prn not in worst or ratio > worst[prn]["ratio"]:
+                    in_nw = _G_NW_MIN <= obs[i]["azim"] <= _G_NW_MAX
+                    worst[prn] = {
+                        "type":      "SNR_COLLAPSE",
+                        "severity":  "CRITICAL" if ratio > 100 else "HIGH",
+                        "label":     f"PRN{prn} SNR collapse -- {obs[i]['snr']:.0f} to {obs[j]['snr']:.0f} dBHz in {dt:.0f}s -- {ratio:.0f}x faster than natural",
+                        "prn":       prn,
+                        "drop":      drop,
+                        "duration":  dt,
+                        "rate":      rate,
+                        "ratio":     ratio,
+                        "elev":      obs[i]["elev"],
+                        "azim":      obs[i]["azim"],
+                        "in_nw":     in_nw,
+                        "statutes":  ["333","15.5b","2.803"] + (["1052"] if in_nw else []),
+                        "explanation": (
+                            f"PRN{prn} dropped {drop:.0f} dB in {dt:.0f}s at {obs[i]['elev']:.0f}deg elev. "
+                            f"Rate {rate:.1f} dB/min vs 0.5 dB/min natural max -- {ratio:.0f}x faster. "
+                            "Consistent with jamming source increasing transmit power."
+                        ),
+                    }
+                break
+    return list(worst.values())
+
+def _g_pulses(gsv_obs):
+    by_prn = defaultdict(list)
+    for o in gsv_obs:
+        by_prn[o["prn"]].append(o)
+    worst: dict = {}
+    for prn, obs in by_prn.items():
+        obs.sort(key=lambda x: x["ts"] or datetime.datetime.min)
+        snr_vals = [o["snr"] for o in obs if o["snr"] > 0]
+        if len(snr_vals) < 5: continue
+        avg = sum(snr_vals)/len(snr_vals)
+        for i, o in enumerate(obs):
+            if o["snr"] > _G_PULSE_SNR or o["elev"] < 10: continue
+            prev_ok = i > 0 and obs[i-1]["snr"] > 20
+            next_ok = i < len(obs)-1 and obs[i+1]["snr"] > 20
+            if not (prev_ok or next_ok): continue
+            if prn not in worst or o["snr"] < worst[prn]["snr"]:
+                in_nw = _G_NW_MIN <= o["azim"] <= _G_NW_MAX
+                worst[prn] = {
+                    "type":      "PULSE_INTERFERENCE",
+                    "severity":  "HIGH",
+                    "label":     f"PRN{prn} pulse event -- SNR={o['snr']:.0f} dBHz at {o['elev']:.0f}deg -- {o['ts']}",
+                    "prn":       prn,
+                    "snr":       o["snr"],
+                    "elev":      o["elev"],
+                    "azim":      o["azim"],
+                    "avg_snr":   avg,
+                    "in_nw":     in_nw,
+                    "statutes":  ["333","2.803"],
+                    "explanation": (
+                        f"Single-epoch SNR collapse to {o['snr']:.0f} dBHz at {o['elev']:.0f}deg at {o['ts']}. "
+                        f"Session avg {avg:.1f} dBHz. Single-epoch collapse consistent with burst RF transmission."
+                    ),
+                }
+    return list(worst.values())
+
+def _g_nw_corridor(gsv_obs):
+    nw: dict = defaultdict(list)
+    for o in gsv_obs:
+        if _G_NW_MIN <= o["azim"] <= _G_NW_MAX and o["elev"] <= _G_NW_ELEV_MAX:
+            nw[o["prn"]].append(o)
+    if not nw:
+        return []
+    sigs = []
+    for prn, obs in nw.items():
+        ts_l = [o["ts"] for o in obs if o["ts"]]
+        sigs.append({
+            "prn":      prn,
+            "count":    len(obs),
+            "avg_snr":  sum(o["snr"] for o in obs)/len(obs),
+            "avg_azim": sum(o["azim"] for o in obs)/len(obs),
+            "avg_elev": sum(o["elev"] for o in obs)/len(obs),
+            "duration": (max(ts_l)-min(ts_l)).total_seconds() if len(ts_l)>=2 else 0,
+        })
+    return [{
+        "type":      "NW_CORRIDOR_CONVERGENCE",
+        "severity":  "CRITICAL",
+        "label":     f"NW corridor convergence -- {len(nw)} PRNs in {_G_NW_MIN}-{_G_NW_MAX}deg arc at low elevation",
+        "signals":   sigs,
+        "statutes":  ["333","301","1367","1052","241"],
+        "explanation": (
+            f"{len(nw)} PRNs detected in {_G_NW_MIN}-{_G_NW_MAX}deg az arc (NW quadrant) "
+            f"at elevation <={_G_NW_ELEV_MAX}deg. Confirms fixed terrestrial installation."
+        ),
+    }]
+
+def _g_position_disp(positions, home_lat, home_lon):
+    if home_lat is None or not positions:
+        return []
+    disp = [p for p in positions if p["displacement_m"] > _G_DISP_THRESH]
+    if not disp:
+        return []
+    mx = max(p["displacement_m"] for p in disp)
+    av = sum(p["displacement_m"] for p in disp)/len(disp)
+    return [{
+        "type":      "POSITION_DISPLACEMENT",
+        "severity":  "CRITICAL" if mx > 500 else "HIGH",
+        "label":     f"GPS displacement -- {len(disp)} events -- max {mx:.0f}m from session centroid",
+        "count":     len(disp),
+        "total":     len(positions),
+        "max_disp":  mx,
+        "avg_disp":  av,
+        "statutes":  ["333","1030","1512","1367"],
+        "explanation": (
+            f"{len(disp)} of {len(positions)} fixes displaced >{_G_DISP_THRESH}m from centroid. "
+            f"Max {mx:.0f}m. Hardware GPS displacement while stationary requires active manipulation."
+        ),
+    }]
+
+def _g_build_docx(findings_all: dict, positions, gsv_obs,
+                  session_info: dict, complainant: str,
+                  home_lat, home_lon) -> bytes:
+    if not _DOCX_OK:
+        raise RuntimeError("python-docx not installed on server")
+    doc = _DocxDocument()
+    for sec in doc.sections:
+        sec.top_margin    = _Inches(0.9)
+        sec.bottom_margin = _Inches(0.9)
+        sec.left_margin   = _Inches(1.2)
+        sec.right_margin  = _Inches(0.9)
+    def _h(text, level=1, color="B71C1C"):
+        p = doc.add_paragraph()
+        r = p.add_run(text)
+        r.bold = True
+        r.font.size = _Pt(14 if level == 1 else 12)
+        r.font.color.rgb = _RGBColor(*bytes.fromhex(color))
+        return p
+    def _run(para, text, bold=False, color=None, size=10):
+        r = para.add_run(text)
+        r.bold = bold
+        r.font.size = _Pt(size)
+        if color:
+            r.font.color.rgb = _RGBColor(*bytes.fromhex(color))
+        return r
+    t = doc.add_paragraph()
+    t.alignment = _WD_ALIGN.CENTER
+    _run(t, "GNSS INTERFERENCE EVIDENCE REPORT", bold=True, color="B71C1C", size=18)
+    sub = doc.add_paragraph()
+    sub.alignment = _WD_ALIGN.CENTER
+    _run(sub, "FCC Enforcement Bureau -- Auto-generated by CTW GNSS Scanner\n", size=11)
+    _run(sub, f"Generated: {datetime.datetime.utcnow().isoformat()} UTC", size=10)
+    total = sum(len(v) for v in findings_all.values())
+    crit  = sum(1 for v in findings_all.values() for f in v if f.get("severity")=="CRITICAL")
+    high  = sum(1 for v in findings_all.values() for f in v if f.get("severity")=="HIGH")
+    _h("I. SESSION SUMMARY")
+    tbl = doc.add_table(rows=0, cols=2)
+    tbl.style = "Table Grid"
+    for label, val in [
+        ("Complainant",      complainant),
+        ("Session start",    str(session_info.get("start", "unknown"))),
+        ("Session end",      str(session_info.get("end",   "unknown"))),
+        ("Duration",         f"{session_info.get('duration_sec', 0):.0f} seconds"),
+        ("GPS centroid",     f"{home_lat}, {home_lon}" if home_lat else "derived from fixes"),
+        ("Position fixes",   str(len(positions))),
+        ("GSV observations", str(len(gsv_obs))),
+        ("Total findings",   f"{total}  ({crit} CRITICAL, {high} HIGH)"),
+    ]:
+        row = tbl.add_row()
+        row.cells[0].text = label
+        row.cells[1].text = val
+    doc.add_paragraph()
+    _h("II. FINDINGS")
+    sev_colors = {"CRITICAL":"B71C1C","HIGH":"E65100","MODERATE":"F57F17"}
+    all_statutes: set = set()
+    n = 0
+    for cat, flist in findings_all.items():
+        for f in flist:
+            n += 1
+            for s in f.get("statutes", []):
+                all_statutes.add(s)
+            col = sev_colors.get(f.get("severity",""), "000000")
+            _h(f"Finding {n}: {f['label']}", level=2, color=col)
+            p = doc.add_paragraph()
+            _run(p, f.get("explanation",""), size=10)
+            sp = doc.add_paragraph()
+            _run(sp, "Statutes: ", bold=True, size=10, color="B71C1C")
+            for code in f.get("statutes", []):
+                if code in _G_STATUTES:
+                    _run(sp, f"\n  {_G_STATUTES[code]}", size=10)
+            doc.add_paragraph()
+    _h("III. STATUTE SUMMARY")
+    for code in sorted(all_statutes):
+        if code not in _G_STATUTES:
+            continue
+        hits = [f["label"] for v in findings_all.values() for f in v if code in f.get("statutes",[])]
+        sp = doc.add_paragraph()
+        _run(sp, f"{_G_STATUTES[code]}\n", bold=True, color="B71C1C", size=10)
+        for h_label in hits:
+            _run(sp, f"  - {h_label}\n", size=10)
+    _h("IV. CERTIFICATION")
+    cert = doc.add_paragraph()
+    _run(cert, f"I, {complainant}, declare under penalty of perjury (28 U.S.C. 1746) "
+               "that all values in this report are extracted directly and without alteration "
+               "from machine-generated NMEA instrument data.\n\n"
+               f"Report generated: {datetime.datetime.utcnow().isoformat()} UTC", size=11)
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+@app.post("/api/gnss/nmea")
+async def gnss_nmea_scan(
+    nmea_file:   UploadFile = File(...),
+    complainant: str = "",
+):
+    raw = await nmea_file.read()
+    nmea_limit = _OOB_BOUNDS["nmea_bytes"]
+    if len(raw) > nmea_limit:
+        _audit("OOB_UPLOAD_REJECTED",
+               f"field=nmea_bytes supplied={len(raw)} "
+               f"limit={nmea_limit} provenance=REJECTED caller=gnss_nmea_scan")
+        raise HTTPException(413, "NMEA file too large (max 20 MB)")
+    complainant = zb_admit(complainant, "complainant", "gnss_nmea_scan", authenticated=False)
+    try:
+        text = raw.decode("utf-8", errors="replace")
+    except Exception as e:
+        raise HTTPException(400, f"Could not decode file: {e}")
+    positions, gsv_obs = _g_parse_nmea(text)
+    if not gsv_obs and not positions:
+        raise HTTPException(400, "No NMEA data found")
+    home_lat = home_lon = None
+    if positions:
+        lats = [p["lat"] for p in positions]
+        lons = [p["lon"] for p in positions]
+        home_lat = round(sum(lats)/len(lats), 6)
+        home_lon = round(sum(lons)/len(lons), 6)
+        for p in positions:
+            p["displacement_m"] = _g_haversine(home_lat, home_lon, p["lat"], p["lon"])
+    ts_list = [o["ts"] for o in gsv_obs if o["ts"]]
+    session_info = {
+        "start":        min(ts_list) if ts_list else None,
+        "end":          max(ts_list) if ts_list else None,
+        "duration_sec": (max(ts_list)-min(ts_list)).total_seconds() if len(ts_list)>=2 else 0,
+    }
+    findings_all = {
+        "ghost":       _g_ghost(gsv_obs),
+        "deficits":    _g_deficits(gsv_obs),
+        "collapses":   _g_collapses(gsv_obs),
+        "pulses":      _g_pulses(gsv_obs),
+        "nw_corridor": _g_nw_corridor(gsv_obs),
+        "position":    _g_position_disp(positions, home_lat, home_lon),
+    }
+    total = sum(len(v) for v in findings_all.values())
+    crit  = sum(1 for v in findings_all.values() for f in v if f.get("severity")=="CRITICAL")
+    high  = sum(1 for v in findings_all.values() for f in v if f.get("severity")=="HIGH")
+    all_statutes: set = set()
+    for v in findings_all.values():
+        for f in v:
+            for s in f.get("statutes", []):
+                all_statutes.add(s)
+    flat = []
+    for cat, flist in findings_all.items():
+        for f in flist:
+            flat.append({
+                "category":    cat,
+                "type":        f.get("type"),
+                "severity":    f.get("severity"),
+                "label":       f.get("label"),
+                "explanation": f.get("explanation"),
+                "statutes":    f.get("statutes", []),
+            })
+    docx_b64 = ""
+    docx_err = ""
+    if _DOCX_OK:
+        try:
+            docx_bytes = _g_build_docx(
+                findings_all, positions, gsv_obs,
+                session_info, complainant or "Unknown",
+                home_lat, home_lon,
+            )
+            docx_b64 = base64.b64encode(docx_bytes).decode("ascii")
+        except Exception as e:
+            docx_err = str(e)
+    else:
+        docx_err = "python-docx not installed"
+    return {
+        "filename":       nmea_file.filename,
+        "positions":      len(positions),
+        "gsv_obs":        len(gsv_obs),
+        "session_start":  str(session_info.get("start", "")),
+        "session_end":    str(session_info.get("end", "")),
+        "duration_sec":   session_info.get("duration_sec", 0),
+        "home_lat":       home_lat,
+        "home_lon":       home_lon,
+        "total_findings": total,
+        "critical":       crit,
+        "high":           high,
+        "statutes_hit":   sorted(all_statutes),
+        "findings":       flat,
+        "docx_b64":       docx_b64,
+        "docx_error":     docx_err,
+    }
+
+# ──────────────────────────────────────────────────────────────
+# GNSS FORENSIC MAP VIEWER
+# ──────────────────────────────────────────────────────────────
+
+_GNSS_RESERVED_TACS = {0, 65535, 0xFFFE}
+_GNSS_RSRQ_MAX      = 34
+
+_GNSS_CATEGORY_STYLE = {
+    "reserved_tac":  ("#111111", "Reserved/phantom TAC (0 or 65535)"),
+    "pci_collision": ("#e53935", "PCI collision - same PCI on multiple EARFCNs"),
+    "flash_cell":    ("#e67e22", "Flash cell - ECI seen only once in session"),
+    "rsrq_invalid":  ("#8e44ad", "RSRQ out of LTE spec (index > 34)"),
+    "normal":        ("#1a7bcc", ""),
+    "no_data":       ("#888888", "No cell data"),
+}
+
+def _gnss_safe(val):
+    if val is None or str(val).strip() in ("", "nan", "None", "NULL"):
+        return "-"
+    return str(val).strip()
+
+def _gnss_iget(row, col, default=None):
+    v = row.get(col, "")
+    if v is None or str(v).strip() in ("", "nan", "None"):
+        return default
+    try:
+        return int(float(str(v).strip()))
+    except Exception:
+        return default
+
+def _gnss_fget(row, col, default=None):
+    v = row.get(col, "")
+    if v is None or str(v).strip() in ("", "nan", "None"):
+        return default
+    try:
+        return float(str(v).strip())
+    except Exception:
+        return default
+
+def _gnss_classify(row, collision_pcis, flash_ecis, pci_earfcn_counts):
+    flags = []
+    tac  = _gnss_iget(row, "Cell_TAC")
+    pci  = _gnss_iget(row, "Cell_PCI")
+    eci  = _gnss_iget(row, "Cell_ECI")
+    rsrq = _gnss_fget(row, "Cell_RSRQ")
+    if tac is None and pci is None and eci is None:
+        return "no_data", flags
+    if tac is not None and tac in _GNSS_RESERVED_TACS:
+        flags.append(f"Reserved/phantom TAC: {tac}")
+    if pci is not None and pci in collision_pcis:
+        n = pci_earfcn_counts.get(pci, 2)
+        flags.append(f"PCI {pci} collision - seen on {n} different EARFCNs")
+    if eci is not None and eci in flash_ecis:
+        flags.append(f"Flash cell - ECI {eci} appears only once in session")
+    if rsrq is not None and rsrq > _GNSS_RSRQ_MAX:
+        flags.append(f"RSRQ {rsrq:.1f} exceeds LTE spec max ({_GNSS_RSRQ_MAX})")
+    if tac is not None and tac in _GNSS_RESERVED_TACS:
+        return "reserved_tac", flags
+    if pci is not None and pci in collision_pcis:
+        return "pci_collision", flags
+    if eci is not None and eci in flash_ecis:
+        return "flash_cell", flags
+    if flags:
+        return "rsrq_invalid", flags
+    return "normal", flags
+
+def _gnss_parse_nmea(text: str) -> list:
+    """Parse GNSSLogger NMEA format into rows compatible with _gnss_build_map_html."""
+    rows = []
+    seq  = 0
+    # State accumulated per epoch
+    cur  = {}
+    def _nmea_coord(val, hemi):
+        if not val: return None
+        try:
+            v = float(val)
+            d = int(v / 100)
+            m = v - d * 100
+            dec = d + m / 60.0
+            if hemi in ('S', 'W'): dec = -dec
+            return dec
+        except: return None
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        # GNSSLogger format: "NMEA,$GP...,<timestamp>"
+        if line.startswith('NMEA,'):
+            parts = line.split(',', 1)
+            if len(parts) < 2: continue
+            nmea = parts[1]
+            # strip trailing timestamp after last * checksum field
+            # format: $GPGGA,...*HH,<timestamp>  — drop the trailing ,<ts>
+            nmea_parts = nmea.split(',')
+        else:
+            nmea_parts = line.split(',')
+        if not nmea_parts: continue
+        tag = nmea_parts[0].split('*')[0] if nmea_parts else ''
+        # $GPGGA — primary fix
+        if tag in ('$GPGGA', '$GNGGA'):
+            try:
+                lat = _nmea_coord(nmea_parts[2], nmea_parts[3])
+                lon = _nmea_coord(nmea_parts[4], nmea_parts[5])
+                fix = int(nmea_parts[6]) if nmea_parts[6] else 0
+                sats = int(nmea_parts[7]) if nmea_parts[7] else 0
+                hdop = float(nmea_parts[8]) if nmea_parts[8] else None
+                # alt — field 9, units field 10
+                alt_str = nmea_parts[9] if len(nmea_parts) > 9 else ''
+                alt = float(alt_str) if alt_str else None
+                utc = nmea_parts[1] if nmea_parts[1] else ''
+                if lat is not None and lon is not None and fix > 0:
+                    cur.update({
+                        'Latitude':       lat,
+                        'Longitude':      lon,
+                        'AltitudeMeters': alt,
+                        'AccuracyMeters': hdop,
+                        'UtcTime':        utc,
+                        'SatCount':       sats,
+                    })
+            except (IndexError, ValueError): pass
+        # $GPRMC — speed/date
+        elif tag in ('$GPRMC', '$GNRMC'):
+            try:
+                spd_knots = float(nmea_parts[7]) if len(nmea_parts) > 7 and nmea_parts[7] else 0
+                cur['SpeedMps'] = spd_knots * 0.51444
+                date = nmea_parts[9] if len(nmea_parts) > 9 else ''
+                if date and 'UtcTime' in cur:
+                    cur['UtcTime'] = cur['UtcTime'] + ' ' + date
+            except (IndexError, ValueError): pass
+        # $GPGSA — DOP + active satellites
+        elif tag in ('$GPGSA', '$GNGSA'):
+            try:
+                hdop = float(nmea_parts[16].split('*')[0]) if len(nmea_parts) > 16 and nmea_parts[16].split('*')[0] else None
+                if hdop: cur['HDOP'] = hdop
+            except (IndexError, ValueError): pass
+        # Emit a row when we have a fix — use RMC sentence as epoch boundary
+        if tag in ('$GPRMC', '$GNRMC') and 'Latitude' in cur:
+            seq += 1
+            row = dict(cur)
+            row['LineNumber'] = seq
+            # No cell data in pure NMEA
+            row['Cell_TAC']    = None
+            row['Cell_ECI']    = None
+            row['Cell_PCI']    = None
+            row['Cell_EARFCN'] = None
+            row['Cell_RSRP']   = None
+            row['Cell_Lat']    = None
+            row['Cell_Lon']    = None
+            rows.append(row)
+            cur = {}
+    return rows
+
+def _gnss_row_time(r):
+    """Epoch seconds for chronological ordering (earliest → 1)."""
+    for k in ("UtcTime", "timestamp", "time", "wall_ns", "ts"):
+        v = r.get(k)
+        if v is None or str(v).strip() in ("", "nan", "None"):
+            continue
+        s = str(v).strip()
+        try:
+            x = float(s)
+            if x > 1e18:
+                return x / 1e9
+            if x > 1e15:
+                return x / 1e6
+            if x > 1e12:
+                return x / 1e3
+            return x
+        except Exception:
+            pass
+        from datetime import datetime as _dt
+        for fmt in (
+            "%H%M%S.%f", "%H%M%S",
+            "%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ",
+            "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S",
+            "%d%m%y %H%M%S", "%d%m%y",
+        ):
+            try:
+                return _dt.strptime(s[:26], fmt).timestamp()
+            except Exception:
+                continue
+    ln = _gnss_iget(r, "LineNumber")
+    return float(ln) if ln is not None else 0.0
+
+
+def _gnss_hue_hex(t: float) -> str:
+    """Full visible spectrum: t in [0,1] → red … violet."""
+    import colorsys as _cs
+    t = max(0.0, min(1.0, float(t)))
+    r, g, b = _cs.hsv_to_rgb(t * 0.83, 0.95, 1.0)
+    return f"#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}"
+
+
+def _gnss_track_stops(n_pts: int, min_distinct: int = 10):
+    n_stops = max(min_distinct, max(1, n_pts - 1))
+    return [_gnss_hue_hex(i / max(1, n_stops - 1)) for i in range(n_stops)]
+
+
+def _gnss_track_color(i: int, n_pts: int, stops: list) -> str:
+    if n_pts <= 1:
+        return stops[0]
+    t = i / (n_pts - 1)
+    idx = int(round(t * (len(stops) - 1)))
+    return stops[idx]
+
+
+def _gnss_build_map_html(rows: list,
+                         truth_lat: Optional[float] = None,
+                         truth_lon: Optional[float] = None) -> str:
+    pci_earfcns: dict = {}
+    for r in rows:
+        pci    = _gnss_iget(r, "Cell_PCI")
+        earfcn = _gnss_iget(r, "Cell_EARFCN")
+        if pci is not None and earfcn is not None:
+            pci_earfcns.setdefault(pci, set()).add(earfcn)
+    collision_pcis    = {p for p, e in pci_earfcns.items() if len(e) > 1}
+    pci_earfcn_counts = {p: len(e) for p, e in pci_earfcns.items()}
+    eci_counts: dict = {}
+    for r in rows:
+        eci = _gnss_iget(r, "Cell_ECI")
+        if eci is not None:
+            eci_counts[eci] = eci_counts.get(eci, 0) + 1
+    flash_ecis = {e for e, c in eci_counts.items() if c == 1}
+    lats = [_gnss_fget(r, "Latitude")  for r in rows if _gnss_fget(r, "Latitude")  is not None]
+    lons = [_gnss_fget(r, "Longitude") for r in rows if _gnss_fget(r, "Longitude") is not None]
+    if not lats:
+        return "<p>No valid coordinates in CSV.</p>"
+    clat = sum(lats) / len(lats)
+    clon = sum(lons) / len(lons)
+    span = max(max(lats) - min(lats), max(lons) - min(lons))
+    zoom = (18 if span < 0.001 else 16 if span < 0.005 else
+            15 if span < 0.02  else 13 if span < 0.1   else
+            11 if span < 0.5   else 9)
+
+    # Chronological points for sequence + spectrum path
+    geo_rows = []
+    for r in rows:
+        _lat = _gnss_fget(r, "Latitude")
+        _lon = _gnss_fget(r, "Longitude")
+        if _lat is None or _lon is None:
+            continue
+        geo_rows.append(r)
+    geo_rows.sort(key=_gnss_row_time)
+    n_pts = len(geo_rows)
+    if n_pts == 0:
+        return "<p>No valid coordinates in CSV.</p>"
+    grad_stops = _gnss_track_stops(n_pts, min_distinct=10)
+
+    features       = []
+    track_coords   = []
+    track_segments = []
+    tower_seen: set = set()
+    tower_features = []
+
+    for i, r in enumerate(geo_rows):
+        lat = _gnss_fget(r, "Latitude")
+        lon = _gnss_fget(r, "Longitude")
+        seq = i + 1  # earliest = 1
+        track_coords.append([lon, lat])
+        if i > 0:
+            prev = geo_rows[i - 1]
+            track_segments.append({
+                "from":  [_gnss_fget(prev, "Latitude"), _gnss_fget(prev, "Longitude")],
+                "to":    [lat, lon],
+                "color": _gnss_track_color(i - 1, n_pts, grad_stops),
+            })
+        category, flags = _gnss_classify(r, collision_pcis, flash_ecis, pci_earfcn_counts)
+        color, _ = _GNSS_CATEGORY_STYLE[category]
+        flag_html = ""
+        if flags:
+            flag_html = "".join(
+                f'<div style="color:#c0392b;font-weight:bold">! {f}</div>'
+                for f in flags
+            )
+            flag_html += '<hr style="margin:4px 0">'
+        d_m  = _gnss_fget(r, "DistToTruth_m")
+        d_ft = _gnss_fget(r, "DistToTruth_ft")
+        d_str = f"{d_m:.1f} m ({d_ft:.1f} ft)" if d_m is not None else "—"
+        track_col = _gnss_track_color(i, n_pts, grad_stops)
+        popup_html = (
+            '<div style="font-family:monospace;font-size:12px;min-width:310px;line-height:1.65">'
+            f'<b style="color:{track_col}">Sequence #{seq} / {n_pts}</b> '
+            f'<span style="color:#888">(earliest→latest)</span><br>'
+            f'<b>Point #{_gnss_safe(r.get("LineNumber", seq))}</b><br>'
+            f'{flag_html}'
+            f'<b>Spoofing Displacement</b><br>'
+            f'&nbsp;Distance from truth: <b style="color:#e74c3c">{d_str}</b><br>'
+            f'<hr style="margin:4px 0;border-color:#333">'
+            f'<b>Reported Position (FALSE FIX)</b><br>'
+            f'&nbsp;Lat: {lat:.8f}<br>'
+            f'&nbsp;Lon: {lon:.8f}<br>'
+            f'&nbsp;Alt: {_gnss_safe(r.get("AltitudeMeters"))} m'
+            f'&nbsp;Accuracy: {_gnss_safe(r.get("AccuracyMeters"))} m<br>'
+            f'&nbsp;UTC: {_gnss_safe(r.get("UtcTime"))}<br>'
+            f'&nbsp;Provider: {_gnss_safe(r.get("Provider"))} ({_gnss_safe(r.get("ProviderClass"))})<br>'
+            f'<hr style="margin:4px 0;border-color:#333">'
+            f'<b>Cell tower</b><br>'
+            f'&nbsp;MCC/MNC: {_gnss_safe(r.get("Cell_MCC"))}/{_gnss_safe(r.get("Cell_MNC"))}<br>'
+            f'&nbsp;TAC: {_gnss_safe(r.get("Cell_TAC"))}'
+            f'&nbsp;ECI: {_gnss_safe(r.get("Cell_ECI"))}<br>'
+            f'&nbsp;PCI: {_gnss_safe(r.get("Cell_PCI"))}'
+            f'&nbsp;EARFCN: {_gnss_safe(r.get("Cell_EARFCN"))}<br>'
+            f'&nbsp;RSRP: {_gnss_safe(r.get("Cell_RSRP"))} dBm<br>'
+            f'&nbsp;Dist to tower: {_gnss_safe(r.get("Cell_DistMeters"))} m<br>'
+            '</div>'
+        )
+        tooltip = (
+            f"#{seq}/{n_pts}  "
+            f"PCI {_gnss_safe(r.get('Cell_PCI'))}  "
+            f"RSRP {_gnss_safe(r.get('Cell_RSRP'))} dBm"
+        )
+        features.append({
+            "lat": lat, "lon": lon,
+            "seq": seq,
+            "n": n_pts,
+            "color": color,
+            "trackColor": track_col,
+            "radius": 8 if category in ("reserved_tac",) else 6,
+            "popup": popup_html.replace("`", "&#96;").replace("\\", "\\\\"),
+            "tooltip": tooltip.replace("'", "\\'"),
+        })
+        clat2 = _gnss_fget(r, "Cell_Lat")
+        clon2 = _gnss_fget(r, "Cell_Lon")
+        if clat2 is not None and clon2 is not None:
+            key = (round(clat2, 6), round(clon2, 6))
+            if key not in tower_seen:
+                tower_seen.add(key)
+                tpci = _gnss_iget(r, "Cell_PCI")
+                ttac = _gnss_iget(r, "Cell_TAC")
+                tc = ("#e53935" if tpci == 242 else
+                      "#111111" if (ttac in _GNSS_RESERVED_TACS if ttac is not None else False)
+                      else "#333333")
+                tower_features.append({
+                    "lat": clat2, "lon": clon2, "color": tc,
+                    "tooltip": (
+                        f"Tower ECI:{_gnss_safe(r.get('Cell_ECI'))} "
+                        f"PCI:{_gnss_safe(r.get('Cell_PCI'))} "
+                        f"TAC:{_gnss_safe(r.get('Cell_TAC'))}"
+                    ).replace("'", "\\'"),
+                })
+
+
+    present: set = set()
+    for r in rows:
+        cat, _ = _gnss_classify(r, collision_pcis, flash_ecis, pci_earfcn_counts)
+        present.add(cat)
+    legend_rows = ""
+    for cat, (hexcol, label) in _GNSS_CATEGORY_STYLE.items():
+        if cat in present:
+            lbl = label if label else "(no anomaly flags)"
+            legend_rows += f'<span style="color:{hexcol};font-size:16px">&#x25CF;</span> {lbl}<br>\n'
+
+    import math as _math
+    import json as _json
+
+    def _hav_m(lat1, lon1, lat2, lon2):
+        R = 6_371_000.0
+        p1, p2 = _math.radians(lat1), _math.radians(lat2)
+        dp = _math.radians(lat2 - lat1); dl = _math.radians(lon2 - lon1)
+        a = _math.sin(dp/2)**2 + _math.cos(p1)*_math.cos(p2)*_math.sin(dl/2)**2
+        return R * 2 * _math.atan2(_math.sqrt(a), _math.sqrt(1 - a))
+
+    def _bearing(lat1, lon1, lat2, lon2):
+        p1, p2 = _math.radians(lat1), _math.radians(lat2)
+        dl = _math.radians(lon2 - lon1)
+        x = _math.sin(dl) * _math.cos(p2)
+        y = _math.cos(p1)*_math.sin(p2) - _math.sin(p1)*_math.cos(p2)*_math.cos(dl)
+        return (_math.degrees(_math.atan2(x, y)) + 360) % 360
+
+    def _fget(r, k):
+        try:
+            v = r.get(k, '')
+            if v in (None, '', 'nan'): return None
+            return float(v)
+        except: return None
+
+    # Priority: 1) caller-supplied  2) CSV TruthLat/TruthLon column  3) centroid
+    if truth_lat is None or truth_lon is None:
+        truth_lat = sum(lats) / len(lats)
+        truth_lon = sum(lons) / len(lons)
+        for r in rows:
+            tl = _fget(r, 'TruthLat'); tn = _fget(r, 'TruthLon')
+            if tl and tn:
+                truth_lat = tl
+                truth_lon = tn
+                break
+
+    displacements = []
+    for r in rows:
+        lat = _fget(r, 'Latitude'); lon = _fget(r, 'Longitude')
+        if lat is None or lon is None:
+            displacements.append(None)
+            continue
+        d = _fget(r, 'DistToTruth_m')
+        if d is None: d = _hav_m(truth_lat, truth_lon, lat, lon)
+        displacements.append(d)
+    valid_d   = [d for d in displacements if d is not None]
+    max_disp  = max(valid_d)  if valid_d else 0
+    mean_disp = sum(valid_d) / len(valid_d) if valid_d else 0
+
+    def _disp_color(d):
+        if d is None: return '#888'
+        if d < 25:   return '#2ecc71'
+        if d < 100:  return '#f1c40f'
+        if d < 250:  return '#e67e22'
+        return '#e74c3c'
+
+    pts_js      = _json.dumps(features)
+    towers_js   = _json.dumps(tower_features)
+    track_js    = _json.dumps(track_coords)
+    segments_js = _json.dumps(track_segments)
+    grad_js     = _json.dumps(grad_stops)
+
+    vectors = []
+    for i, r in enumerate(rows):
+        lat = _fget(r, 'Latitude'); lon = _fget(r, 'Longitude')
+        if lat is None or lon is None: continue
+        d   = displacements[i]
+        brg = _bearing(truth_lat, truth_lon, lat, lon) if d else 0
+        vectors.append({
+            'from':    [truth_lat, truth_lon],
+            'to':      [lat, lon],
+            'color':   _disp_color(d),
+            'dist':    round(d, 1) if d else 0,
+            'bearing': round(brg, 1),
+        })
+    vectors_js = _json.dumps(vectors)
+
+    _map_html = """<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="referrer" content="origin">
+<title>GNSS Forensic Map - CTW</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet-minimap/dist/Control.MiniMap.min.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-minimap/dist/Control.MiniMap.min.js"></script>
+<style>
+  html,body,#map{margin:0;padding:0;height:100vh;width:100vw;}
+  #legend{position:fixed;bottom:40px;right:12px;z-index:1000;
+    background:rgba(10,10,10,0.95);border:1px solid #333;border-radius:6px;
+    padding:10px 14px;font-family:monospace;font-size:11px;line-height:1.9;
+    box-shadow:0 2px 8px rgba(0,0,0,0.6);max-width:340px;color:#ccc;}
+  #legend b{color:#fff;}
+  #pt-count{position:fixed;top:10px;left:50%;transform:translateX(-50%);
+    z-index:1000;background:rgba(0,0,0,0.75);color:#00e5ff;
+    font-family:monospace;font-size:12px;padding:4px 14px;
+    border-radius:12px;letter-spacing:1px;}
+  #cursor-pos{position:fixed;bottom:8px;left:50%;transform:translateX(-50%);
+    z-index:1000;background:rgba(0,0,0,0.7);color:#aaa;
+    font-family:monospace;font-size:11px;padding:2px 10px;border-radius:8px;}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="pt-count">Loading...</div>
+<div id="cursor-pos">Lat: — Lon: —</div>
+<div id="legend">
+  <b>GNSS Spoofing Displacement Map</b><br>
+  <span style="color:#2ecc71">&#9678;</span> Ground truth (actual location)<br>
+  <span style="color:#2ecc71">&#9644;</span> 25 m accuracy envelope<br>
+  <hr style="margin:4px 0;border-color:#333">
+  <b>Displacement vectors</b><br>
+  <span style="color:#2ecc71">&#9644;</span> &lt; 25 m (within GPS accuracy)<br>
+  <span style="color:#f1c40f">&#9644;</span> 25–100 m (suspicious)<br>
+  <span style="color:#e67e22">&#9644;</span> 100–250 m (significant)<br>
+  <span style="color:#e74c3c">&#9644;</span> &gt; 250 m (severe / anomalous)<br>
+  <hr style="margin:4px 0;border-color:#333">
+  <hr style="margin:4px 0;border-color:#333">
+  <b>Track path (time order)</b><br>
+  <div id="grad-bar" style="display:flex;height:12px;border-radius:3px;overflow:hidden;border:1px solid #555;margin:4px 0 2px;"></div>
+  <div style="display:flex;justify-content:space-between;font-size:10px;opacity:.9">
+    <span style="color:#ff0000">#1 EARLIEST</span>
+    <span style="color:#cc00ff">LATEST</span>
+  </div>
+  Numbers inside dots = sequence (1 = first fix)<br>
+  <hr style="margin:4px 0;border-color:#333">
+  <b>Point color (cell anomaly)</b><br>
+
+  LEGEND_ROWS
+  <hr style="margin:4px 0;border-color:#333">
+  <b>Session: PT_COUNT fixes &nbsp;|&nbsp; Max: MAX_DISP m &nbsp;|&nbsp; Mean: MEAN_DISP m</b><br>
+  Click point for full detail &nbsp;|&nbsp; Hover for summary
+</div>
+<script>
+const map = L.map('map',{zoomControl:true}).setView([CENTER_LAT, CENTER_LON], ZOOM_LEVEL);
+const dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+  {attribution:'CartoDB',maxZoom:19});
+const sat  = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  {attribution:'Esri',maxZoom:19});
+const osm  = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {attribution:'OpenStreetMap',maxZoom:19});
+dark.addTo(map);
+L.control.layers({'Dark':dark,'Satellite':sat,'Street':osm},{},{position:'topright'}).addTo(map);
+L.control.scale({position:'bottomleft'}).addTo(map);
+new L.Control.MiniMap(L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'),
+  {toggleDisplay:true,position:'bottomright',zoomLevelOffset:-5}).addTo(map);
+map.on('mousemove',function(e){
+  document.getElementById('cursor-pos').textContent=
+    'Lat: '+e.latlng.lat.toFixed(6)+'  Lon: '+e.latlng.lng.toFixed(6);
+});
+const lgVectors = L.layerGroup().addTo(map);
+const lgTrack   = L.layerGroup().addTo(map);
+const lgPoints  = L.layerGroup().addTo(map);
+const lgTowers  = L.layerGroup().addTo(map);
+const lgTruth   = L.layerGroup().addTo(map);
+L.control.layers({},{
+  'Track path':lgTrack,
+  'Displacement vectors':lgVectors,
+  'False fix points':lgPoints,
+  'Cell towers':lgTowers,
+  'Ground truth':lgTruth
+},{position:'topright',collapsed:false}).addTo(map);
+const trackSegs = TRACK_SEGS_JSON;
+const gradStops = GRAD_STOPS_JSON;
+(function(){
+  const bar = document.getElementById('grad-bar');
+  if(bar && gradStops && gradStops.length){
+    bar.innerHTML = gradStops.map(c =>
+      '<div style="flex:1;height:100%;background:'+c+'"></div>'
+    ).join('');
+  }
+})();
+const track = TRACK_JSON;
+if(track.length>1)
+  L.polyline(track.map(c=>[c[1],c[0]]),{color:'#000',weight:4,opacity:0.35})
+   .addTo(lgTrack);
+trackSegs.forEach(s=>{
+  L.polyline([s.from, s.to], {
+    color: s.color, weight: 3.5, opacity: 0.95,
+    lineCap: 'round', lineJoin: 'round'
+  }).addTo(lgTrack);
+});
+const vectors = VECTORS_JSON;
+vectors.forEach(v=>{
+  L.polyline([v.from,v.to],{color:v.color,weight:1.5,opacity:0.65})
+   .bindTooltip(`Displacement: ${v.dist} m  |  Bearing: ${v.bearing}°`,{sticky:true})
+   .addTo(lgVectors);
+});
+const pts = PTS_JSON;
+pts.forEach(p=>{
+  const size = (p.radius >= 8) ? 22 : 18;
+  const icon = L.divIcon({
+    className: '',
+    iconSize: [size, size],
+    iconAnchor: [size/2, size/2],
+    html: `<div style="
+      width:${size}px;height:${size}px;border-radius:50%;
+      background:${p.trackColor};color:#000;
+      border:2px solid ${p.color};
+      box-shadow:0 0 4px rgba(0,0,0,.7);
+      display:flex;align-items:center;justify-content:center;
+      font:${Math.max(9, size/2-1)}px/1 system-ui,sans-serif;font-weight:800;
+    ">${p.seq}</div>`
+  });
+  L.marker([p.lat, p.lon], {icon})
+    .bindPopup(p.popup, {maxWidth: 380})
+    .bindTooltip(p.tooltip, {sticky: true})
+    .addTo(lgPoints);
+});
+const towers = TOWERS_JSON;
+const towerIcon = color => L.divIcon({
+  html:`<div style="background:${color};width:12px;height:12px;border-radius:2px;border:2px solid #fff;box-shadow:0 0 4px rgba(0,0,0,.5)"></div>`,
+  iconSize:[14,14],iconAnchor:[7,7],className:''
+});
+towers.forEach(t=>{
+  L.marker([t.lat,t.lon],{icon:towerIcon(t.color)})
+   .bindTooltip(t.tooltip,{sticky:true}).addTo(lgTowers);
+});
+const truthLat=TRUTH_LAT, truthLon=TRUTH_LON;
+const truthIcon=L.divIcon({
+  html:`<div style="background:#27ae60;width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 8px #2ecc71"></div>`,
+  iconSize:[18,18],iconAnchor:[9,9],className:''
+});
+L.marker([truthLat,truthLon],{icon:truthIcon})
+ .bindTooltip(`GROUND TRUTH — stationary observer | Max displacement: MAX_DISP m`,{sticky:true})
+ .bindPopup(`<div style="font-family:monospace;font-size:12px;min-width:260px;line-height:1.65">
+   <b style="color:#27ae60">&#9678; GROUND TRUTH</b><br>
+   <b>Actual observer location — STATIONARY</b><br>
+   <hr style="margin:4px 0">
+   Lat: TRUTH_LAT_F<br>Lon: TRUTH_LON_F<br>
+   <hr style="margin:4px 0">
+   <b>Session summary</b><br>
+   Points: PT_COUNT<br>
+   Max displacement: <b style="color:#e74c3c">MAX_DISP m</b><br>
+   Mean displacement: <b style="color:#e67e22">MEAN_DISP m</b><br>
+   <hr style="margin:4px 0">
+   All false fix points radiate from this location.<br>
+   Displacement = active GNSS spoofing evidence.
+ </div>`,{maxWidth:300})
+ .addTo(lgTruth);
+L.circle([truthLat,truthLon],{radius:25,color:'#27ae60',
+  fill:true,fillColor:'#27ae60',fillOpacity:0.10,weight:1.5,
+  interactive:false}).addTo(lgTruth);
+document.getElementById('pt-count').textContent=
+  pts.length+' points, '+towers.length+' towers';
+</script>
+</body>
+</html>"""
+
+    return (
+        _map_html
+        .replace("LEGEND_ROWS",  legend_rows)
+        .replace("CENTER_LAT",   f"{clat:.6f}")
+        .replace("CENTER_LON",   f"{clon:.6f}")
+        .replace("ZOOM_LEVEL",   str(zoom))
+        .replace("PTS_JSON",     pts_js)
+        .replace("TOWERS_JSON",  towers_js)
+        .replace("TRACK_JSON",   track_js)
+        .replace("TRACK_SEGS_JSON", segments_js)
+        .replace("GRAD_STOPS_JSON", grad_js)
+        .replace("VECTORS_JSON", vectors_js)
+        .replace("TRUTH_LAT",    f"{truth_lat:.6f}")
+        .replace("TRUTH_LON",    f"{truth_lon:.6f}")
+        .replace("TRUTH_LAT_F",  f"{truth_lat:.8f}")
+        .replace("TRUTH_LON_F",  f"{truth_lon:.8f}")
+        .replace("PT_COUNT",     str(len(rows)))
+        .replace("MAX_DISP",     f"{max_disp:.1f}")
+        .replace("MEAN_DISP",    f"{mean_disp:.1f}")
+    )
+@app.post("/api/gnss/map")
+async def gnss_map(
+    file: UploadFile = File(...),
+    truth_lat: Optional[float] = None,
+    truth_lon: Optional[float] = None,
+):
+    raw = await file.read()
+
+    csv_limit = _OOB_BOUNDS["csv_bytes"]
+    if len(raw) > csv_limit:
+        _audit(
+            "OOB_UPLOAD_REJECTED",
+            f"field=csv_bytes supplied={len(raw)} "
+            f"limit={csv_limit} provenance=REJECTED caller=gnss_map"
+        )
+        raise HTTPException(413, "File too large (max 100 MB)")
+
+    text = raw.decode("utf-8-sig", errors="replace")
+    fname = (file.filename or "").lower()
+
+    # NMEA branch — .nmea or .txt containing NMEA sentences
+    is_nmea = (
+        fname.endswith(".nmea")
+        or (
+            fname.endswith(".txt")
+            and "NMEA,$GP" in text[:2048]
+        )
+    )
+
+    if is_nmea:
+        rows = _gnss_parse_nmea(text)
+
+        if not rows:
+            raise HTTPException(
+                400,
+                "No valid NMEA fix sentences found in file"
+            )
+
+        html_out = _gnss_build_map_html(
+            rows,
+            truth_lat=truth_lat,
+            truth_lon=truth_lon
+        )
+
+        return JSONResponse({
+            "html": html_out,
+            "source": "nmea",
+            "points": len(rows)
+        })
+
+    # CSV branch — points.csv from GNSS_AttackModel.ps1
+    try:
+        reader = csv.DictReader(io.StringIO(text))
+        rows = [r for r in reader]
+    except Exception as e:
+        raise HTTPException(
+            400,
+            f"Could not parse CSV: {e}"
+        )
+
+    if not rows:
+        raise HTTPException(
+            400,
+            "CSV contains no data rows"
+        )
+
+    required = {"Latitude", "Longitude"}
+
+    if not required.issubset(set(rows[0].keys())):
+        raise HTTPException(
+            400,
+            f"CSV missing required columns: "
+            f"{required - set(rows[0].keys())}"
+        )
+
+    html_out = _gnss_build_map_html(
+        rows,
+        truth_lat=truth_lat,
+        truth_lon=truth_lon
+    )
+
+    return JSONResponse({
+        "html": html_out,
+        "source": "csv",
+        "points": len(rows)
+    })
+
+# ══════════════════════════════════════════════════════════════
+# GNSS MULTI-OVERLAY (up to 10 files) — relative time comparison
+# ══════════════════════════════════════════════════════════════
+_GNSS_OVERLAY_COLORS = [
+    "#00e5ff", "#ff1744", "#00e676", "#ffea00", "#e040fb",
+    "#ff9100", "#18ffff", "#f50057", "#76ff03", "#2979ff",
+]
+
+
+def _gnss_rows_from_upload_bytes(raw: bytes, filename: str) -> list:
+    """Parse one uploaded GNSS file into row dicts (CSV or NMEA)."""
+    text = raw.decode("utf-8-sig", errors="replace")
+    fname = (filename or "").lower()
+    is_nmea = (
+        fname.endswith(".nmea")
+        or (fname.endswith(".txt") and "NMEA,$GP" in text[:2048])
+        or text.lstrip().startswith("$GP")
+        or text.lstrip().startswith("$GN")
+        or "NMEA,$GP" in text[:2048]
+    )
+    if is_nmea:
+        rows = _gnss_parse_nmea(text)
+        if not rows:
+            raise ValueError(f"No valid NMEA fixes in {filename}")
+        return rows
+    import csv as _csv
+    import io as _io
+    reader = _csv.DictReader(_io.StringIO(text))
+    rows = [r for r in reader]
+    if not rows:
+        raise ValueError(f"CSV empty: {filename}")
+    if not {"Latitude", "Longitude"}.issubset(set(rows[0].keys())):
+        raise ValueError(f"CSV missing Latitude/Longitude: {filename}")
+    return rows
+
+
+def _gnss_extract_track(rows: list, color: str, label: str, file_index: int) -> dict:
+    """
+    Build one overlay track:
+      - chronological points
+      - relative time seconds from first fix (t0 = 0)
+      - sequence numbers 1..N
+      - lat/lon for pattern comparison
+    """
+    geo = []
+    for r in rows:
+        lat = _gnss_fget(r, "Latitude")
+        lon = _gnss_fget(r, "Longitude")
+        if lat is None or lon is None:
+            continue
+        t = 0.0
+        if "_gnss_row_time" in globals():
+            try:
+                t = float(_gnss_row_time(r))
+            except Exception:
+                t = float(_gnss_iget(r, "LineNumber") or 0)
+        else:
+            t = float(_gnss_iget(r, "LineNumber") or 0)
+        geo.append({"lat": lat, "lon": lon, "t_abs": t, "raw": r})
+    if not geo:
+        raise ValueError(f"No coordinates in {label}")
+    geo.sort(key=lambda p: p["t_abs"])
+    t0 = geo[0]["t_abs"]
+    points = []
+    for i, p in enumerate(geo):
+        rel = max(0.0, p["t_abs"] - t0)
+        points.append({
+            "seq": i + 1,
+            "lat": p["lat"],
+            "lon": p["lon"],
+            "t_rel_s": round(rel, 3),
+            "t_abs": p["t_abs"],
+        })
+    t_end = points[-1]["t_rel_s"] if points else 0.0
+    segments = []
+    n_pts = len(points)
+    # File index 0 = BASE: full spectrum gradient (same as single-file map)
+    if file_index == 0 and n_pts > 1:
+        stops = _gnss_track_stops(n_pts, min_distinct=10)
+        for i in range(n_pts - 1):
+            a, b = points[i], points[i + 1]
+            segments.append({
+                "from": [a["lat"], a["lon"]],
+                "to": [b["lat"], b["lon"]],
+                "color": _gnss_track_color(i, n_pts, stops),
+            })
+        for i, p in enumerate(points):
+            p["trackColor"] = _gnss_track_color(i, n_pts, stops)
+    else:
+        for i in range(n_pts - 1):
+            a, b = points[i], points[i + 1]
+            segments.append({
+                "from": [a["lat"], a["lon"]],
+                "to": [b["lat"], b["lon"]],
+                "color": color,
+            })
+        for p in points:
+            p["trackColor"] = color
+    return {
+        "id": f"ov{file_index}",
+        "index": file_index,
+        "label": label,
+        "color": color,
+        "n": len(points),
+        "t0_rel": 0.0,
+        "t_end_rel_s": t_end,
+        "points": points,
+        "segments": segments,
+    }
+
+
+def _gnss_build_multi_overlay_html(
+    tracks: list,
+    truth_lat: float = None,
+    truth_lon: float = None,
+) -> str:
+    """Leaflet map with up to 10 toggleable overlays + minimizable UI chrome."""
+    import json as _json
+    if not tracks:
+        return "<p>No tracks.</p>"
+    all_lats, all_lons = [], []
+    for tr in tracks:
+        for p in tr["points"]:
+            all_lats.append(p["lat"])
+            all_lons.append(p["lon"])
+    clat = sum(all_lats) / len(all_lats)
+    clon = sum(all_lons) / len(all_lons)
+    span = max(max(all_lats) - min(all_lats), max(all_lons) - min(all_lons), 1e-6)
+    zoom = (18 if span < 0.001 else 16 if span < 0.005 else
+            15 if span < 0.02 else 13 if span < 0.1 else
+            11 if span < 0.5 else 9)
+
+    if truth_lat is None or truth_lon is None:
+        truth_lat, truth_lon = clat, clon
+
+    tracks_js = _json.dumps(tracks)
+
+    html = f"""<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<title>GNSS Multi-Overlay — CTW</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+html,body,#map{{margin:0;padding:0;height:100vh;width:100vw;background:#000}}
+.panel{{position:fixed;z-index:1000;background:rgba(8,10,14,0.94);border:1px solid #2a3340;
+  border-radius:8px;font:11px/1.45 'Courier New',monospace;color:#9ab;box-shadow:0 4px 18px rgba(0,0,0,.55);
+  max-width:340px}}
+.panel .phd{{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;
+  cursor:pointer;user-select:none;border-bottom:1px solid #1a2028;color:#00e5ff;font-weight:700;
+  letter-spacing:.06em;font-size:10px}}
+.panel .phd span.chev{{opacity:.7;font-size:9px}}
+.panel .pbd{{padding:8px 10px;max-height:42vh;overflow:auto}}
+.panel.collapsed .pbd{{display:none}}
+.panel.collapsed{{max-width:220px}}
+#pnl-layers{{top:12px;right:12px}}
+#pnl-compare{{bottom:28px;left:12px;max-width:420px}}
+#pnl-compare .pbd{{max-height:36vh}}
+.ov-row{{display:flex;align-items:center;gap:8px;margin:4px 0}}
+.ov-swatch{{width:12px;height:12px;border-radius:2px;border:1px solid #fff3;flex-shrink:0}}
+.ov-row label{{cursor:pointer;flex:1}}
+.cmp-file{{margin-bottom:10px;border:1px solid #1a2028;border-radius:6px;padding:6px 8px}}
+.cmp-file h4{{margin:0 0 4px;font-size:10px;color:#00e5ff}}
+.cmp-meta{{font-size:9px;color:#567;margin-bottom:4px}}
+.cmp-table{{width:100%;border-collapse:collapse;font-size:9px}}
+.cmp-table th,.cmp-table td{{border-bottom:1px solid #152028;padding:2px 4px;text-align:left}}
+.cmp-table th{{color:#456}}
+.cmp-table td{{color:#b0c4de}}
+#cursor-pos{{position:fixed;bottom:8px;left:50%;transform:translateX(-50%);z-index:1000;
+  background:rgba(0,0,0,.75);color:#888;font:10px monospace;padding:2px 10px;border-radius:8px}}
+</style></head><body>
+<div id="map"></div>
+<div id="cursor-pos">Lat: — Lon: —</div>
+
+<div class="panel" id="pnl-layers">
+  <div class="phd" onclick="togglePanel('pnl-layers')">
+    <span>LAYERS / LEGEND</span><span class="chev" id="pnl-layers-chev">▼</span>
+  </div>
+  <div class="pbd" id="layers-body"></div>
+</div>
+
+<div class="panel" id="pnl-compare">
+  <div class="phd" onclick="togglePanel('pnl-compare')">
+    <span>OVERLAY POINTS (relative time)</span><span class="chev" id="pnl-compare-chev">▼</span>
+  </div>
+  <div class="pbd" id="compare-body"></div>
+</div>
+
+<script>
+const TRACKS = {tracks_js};
+const map = L.map('map',{{zoomControl:true}}).setView([{clat:.6f},{clon:.6f}],{zoom});
+const dark = L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png',
+  {{attribution:'CartoDB',maxZoom:19}}).addTo(map);
+const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{{z}}/{{y}}/{{x}}',
+  {{attribution:'Esri',maxZoom:19}});
+const osm = L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png',
+  {{attribution:'OSM',maxZoom:19}});
+L.control.layers({{'Dark':dark,'Satellite':sat,'Street':osm}},{{}},{{position:'topleft'}}).addTo(map);
+L.control.scale({{position:'bottomleft'}}).addTo(map);
+map.on('mousemove', e => {{
+  document.getElementById('cursor-pos').textContent =
+    'Lat: '+e.latlng.lat.toFixed(6)+'  Lon: '+e.latlng.lng.toFixed(6);
+}});
+
+function togglePanel(id) {{
+  const el = document.getElementById(id);
+  el.classList.toggle('collapsed');
+  const chev = document.getElementById(id+'-chev');
+  if (chev) chev.textContent = el.classList.contains('collapsed') ? '▶' : '▼';
+}}
+
+const layerGroups = {{}};
+const overlaysOn = {{}};
+
+function numberedIcon(seq, color, size) {{
+  size = size || 18;
+  return L.divIcon({{
+    className: '',
+    iconSize: [size, size],
+    iconAnchor: [size/2, size/2],
+    html: '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;'+
+      'background:'+color+';color:#000;border:2px solid #fff;box-shadow:0 0 4px #000;'+
+      'display:flex;align-items:center;justify-content:center;'+
+      'font:'+Math.max(9,size/2-1)+'px/1 system-ui,sans-serif;font-weight:800">'+seq+'</div>'
+  }});
+}}
+
+function buildTrack(tr) {{
+  const g = L.layerGroup();
+  // underlay
+  if (tr.points.length > 1) {{
+    const latlngs = tr.points.map(p => [p.lat, p.lon]);
+    L.polyline(latlngs, {{color:'#000', weight:5, opacity:0.35}}).addTo(g);
+  }}
+  (tr.segments || []).forEach(s => {{
+    L.polyline([s.from, s.to], {{
+      color: s.color || tr.color, weight: 3.5, opacity: 0.95,
+      lineCap: 'round', lineJoin: 'round'
+    }}).addTo(g);
+  }});
+  tr.points.forEach(p => {{
+    const popup =
+      '<div style="font:12px monospace;min-width:220px;line-height:1.55">' +
+      '<b style="color:'+tr.color+'">'+tr.label+'</b><br>' +
+      '<b>Sequence #'+p.seq+' / '+tr.n+'</b><br>' +
+      't_rel = <b>'+p.t_rel_s+' s</b> (from file t0)<br>' +
+      'Lat: '+p.lat.toFixed(7)+'<br>Lon: '+p.lon.toFixed(7) +
+      '</div>';
+    L.marker([p.lat, p.lon], {{icon: numberedIcon(p.seq, (p.trackColor||tr.color))}})
+      .bindPopup(popup, {{maxWidth: 320}})
+      .bindTooltip('#'+p.seq+' · '+tr.label+' · '+p.t_rel_s+'s', {{sticky:true}})
+      .addTo(g);
+  }});
+  return g;
+}}
+
+const layersBody = document.getElementById('layers-body');
+TRACKS.forEach(tr => {{
+  const g = buildTrack(tr);
+  g.addTo(map);
+  layerGroups[tr.id] = g;
+  overlaysOn[tr.id] = true;
+  const row = document.createElement('div');
+  row.className = 'ov-row';
+  row.innerHTML =
+    '<span class="ov-swatch" style="background:'+tr.color+'"></span>' +
+    '<label><input type="checkbox" checked data-id="'+tr.id+'"> '+
+    ((tr.index===0)?'[BASE] ':'[OV] ')+tr.label+' <span style="color:#567">('+tr.n+' pts)</span></label>';
+  layersBody.appendChild(row);
+}});
+layersBody.addEventListener('change', e => {{
+  const cb = e.target;
+  if (cb.tagName !== 'INPUT') return;
+  const id = cb.getAttribute('data-id');
+  overlaysOn[id] = cb.checked;
+  if (cb.checked) map.addLayer(layerGroups[id]);
+  else map.removeLayer(layerGroups[id]);
+  renderCompare();
+}});
+
+function renderCompare() {{
+  const box = document.getElementById('compare-body');
+  let html = '<div style="font-size:9px;color:#567;margin-bottom:6px">' +
+    'Time is zeroed at each file\\'s first fix (t0=0). Compare sequence order and lat/lon ' +
+    'to see if captures share the same transfer path / direction.</div>';
+  TRACKS.forEach(tr => {{
+    if (!overlaysOn[tr.id]) return;
+    html += '<div class="cmp-file">';
+    html += '<h4><span style="color:'+tr.color+'">●</span> '+tr.label+'</h4>';
+    html += '<div class="cmp-meta">n='+tr.n+' · relative window 0 → '+tr.t_end_rel_s+
+      ' s · pattern uses order, not wall-clock</div>';
+    html += '<table class="cmp-table"><thead><tr>' +
+      '<th>#</th><th>t_rel (s)</th><th>Latitude</th><th>Longitude</th></tr></thead><tbody>';
+    tr.points.forEach(p => {{
+      html += '<tr><td>'+p.seq+'</td><td>'+p.t_rel_s+'</td><td>'+
+        p.lat.toFixed(7)+'</td><td>'+p.lon.toFixed(7)+'</td></tr>';
+    }});
+    html += '</tbody></table></div>';
+  }});
+  if (!TRACKS.some(t => overlaysOn[t.id])) {{
+    html += '<div style="color:#456;font-style:italic">Enable at least one layer.</div>';
+  }}
+  box.innerHTML = html;
+}}
+renderCompare();
+
+// fit all
+const bounds = [];
+TRACKS.forEach(tr => tr.points.forEach(p => bounds.push([p.lat, p.lon])));
+if (bounds.length) map.fitBounds(bounds, {{padding: [40, 40]}});
+
+// truth marker (optional centroid)
+L.circleMarker([{truth_lat:.8f}, {truth_lon:.8f}], {{
+  radius: 7, color: '#27ae60', fillColor: '#2ecc71', fillOpacity: 0.85, weight: 2
+}}).bindTooltip('Reference / truth centroid').addTo(map);
+</script></body></html>"""
+    return html
+
+
+from fastapi import File, UploadFile, Form
+from fastapi.responses import JSONResponse
+from typing import List, Optional
+
+@app.post("/api/gnss/map-multi")
+async def gnss_map_multi(
+    files: List[UploadFile] = File(...),
+    truth_lat: Optional[float] = Form(None),
+    truth_lon: Optional[float] = Form(None),
+):
+    """Accept up to 10 GNSS files; return overlay map HTML + track metadata."""
+    if not files:
+        raise HTTPException(400, "No files uploaded")
+    if len(files) > 10:
+        raise HTTPException(400, "Maximum 10 overlay files")
+    tracks = []
+    errors = []
+    for i, f in enumerate(files):
+        try:
+            raw = await f.read()
+            limit = (_OOB_BOUNDS.get("csv_bytes", 50 * 1024 * 1024)
+                     if "_OOB_BOUNDS" in dir() else 50 * 1024 * 1024)
+            if len(raw) > limit:
+                errors.append(f"{f.filename}: too large")
+                continue
+            rows = _gnss_rows_from_upload_bytes(raw, f.filename or f"file{i+1}")
+            color = _GNSS_OVERLAY_COLORS[i % len(_GNSS_OVERLAY_COLORS)]
+            label = (f.filename or f"track_{i+1}")[:48]
+            tracks.append(_gnss_extract_track(rows, color, label, i))
+        except Exception as e:
+            errors.append(f"{getattr(f, 'filename', i)}: {e}")
+    if not tracks:
+        raise HTTPException(400, "No valid tracks: " + "; ".join(errors))
+    html_out = _gnss_build_multi_overlay_html(tracks, truth_lat, truth_lon)
+    return JSONResponse({
+        "html": html_out,
+        "source": "multi",
+        "tracks": len(tracks),
+        "errors": errors,
+        "summary": [
+            {
+                "label": t["label"],
+                "color": t["color"],
+                "n": t["n"],
+                "t_end_rel_s": t["t_end_rel_s"],
+            }
+            for t in tracks
+        ],
+    })
+
+
+@app.get("/chess.min.js")
+async def chess_js():
+    from fastapi.responses import FileResponse
+    return FileResponse("/app/chess.min.js", media_type="application/javascript")
+
+@app.get("/gnss")
+async def gnss_viewer():
+    base = Path(__file__).parent
+    for name in ("gnss_viewer.html", "34.html", "map88.html"):
+        p = base / name
+        if p.exists():
+            return FileResponse(
+                str(p),
+                media_type="text/html; charset=utf-8",
+                headers={"Cache-Control": "no-cache"},
+            )
+    raise HTTPException(404, "GNSS viewer HTML not found")
+
+
+@app.get("/ctw-sir-gif-alot")
+async def stereogram():
+    p = Path(__file__).parent / "ctw-sir-gif-alot.html"
+
+    if p.exists():
+        return FileResponse(str(p))
+
+    raise HTTPException(
+        404,
+        "ctw-sir-gif-alot.html not found"
+    )
+@app.get("/downloads/GNSS_AttackModel.ps1")
+async def dl_gnss_ps1():
+    p = Path(__file__).parent / "GNSS_AttackModel.ps1"
+    if p.exists():
+        return FileResponse(str(p), media_type="application/octet-stream",
+                          headers={"Content-Disposition":"attachment; filename=GNSS_AttackModel.ps1"})
+    raise HTTPException(404, "GNSS_AttackModel.ps1 not found")
+
+@app.get("/downloads/fs5000_serial.py")
+async def dl_scanusb():
+    p = Path(__file__).parent / "fs5000_serial.py"
+    if p.exists():
+        return FileResponse(str(p), media_type="text/plain",
+                          headers={"Content-Disposition":"attachment; filename=fs5000_serial.py"})
+    raise HTTPException(404, "fs5000_serial.py not found")
+# ──────────────────────────────────────────────────────────────
+# GEIGER ALARM WAVS (bundled in /app root on Railway)
+# Frontend plays these via new Audio('/661steamsiren.wav') etc.
+# ──────────────────────────────────────────────────────────────
+@app.get("/chemalm.wav")
+async def serve_chemalm():
+    for p in (Path(__file__).parent / "chemalm.wav", Path("/app/chemalm.wav")):
+        if p.exists():
+            return FileResponse(
+                str(p),
+                media_type="audio/wav",
+                headers={"Cache-Control": "public, max-age=86400"},
+            )
+    raise HTTPException(404, "chemalm.wav not found")
+@app.get("/661steamsiren.wav")
+async def serve_siren_l1():
+    p = Path(__file__).parent / "661steamsiren.wav"
+    if not p.exists():
+        p = Path("/app/661steamsiren.wav")
+    if p.exists():
+        return FileResponse(
+            str(p),
+            media_type="audio/wav",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+    raise HTTPException(404, "661steamsiren.wav not found")
+
+@app.get("/HMSIllustriousActionStations.wav")
+async def serve_siren_l2():
+    p = Path(__file__).parent / "HMSIllustriousActionStations.wav"
+    if not p.exists():
+        p = Path("/app/HMSIllustriousActionStations.wav")
+    if p.exists():
+        return FileResponse(
+            str(p),
+            media_type="audio/wav",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+    raise HTTPException(404, "HMSIllustriousActionStations.wav not found")
+@app.get("/type99_mn.wav")
+async def serve_cps_1():
+    p = Path(__file__).parent / "type99_mn.wav"
+    if not p.exists(): p = Path("/app/type99_mn.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "type99_mn.wav not found")
+
+@app.get("/Ion Cannon 2.wav")
+async def serve_cps_2():
+    p = Path(__file__).parent / "Ion Cannon 2.wav"
+    if not p.exists(): p = Path("/app/Ion Cannon 2.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Ion Cannon .wav not found")
+
+@app.get("/Ion Impact.wav")
+async def serve_cps_3():
+    p = Path(__file__).parent / "Ion Impact.wav"
+    if not p.exists(): p = Path("/app/Ion Impact.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Ion Impact.wav not found")
+
+@app.get("/Imperial Laser Turbo.wav")
+async def serve_cps_4():
+    p = Path(__file__).parent / "Imperial Laser Turbo.wav"
+    if not p.exists(): p = Path("/app/Imperial Laser Turbo.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Imperial Laser Turbo.wav not found")
+
+@app.get("/Ion Cannon 1.wav")
+async def serve_cps_5():
+    p = Path(__file__).parent / "Ion Cannon 1.wav"
+    if not p.exists(): p = Path("/app/Ion Cannon 1.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Ion Cannon 1.wav not found")
+
+@app.get("/Imperial Laser 1.wav")
+async def serve_cps_6():
+    p = Path(__file__).parent / "Imperial Laser 1.wav"
+    if not p.exists(): p = Path("/app/Imperial Laser 1.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Imperial Laser 1.wav not found")
+
+@app.get("/Ion Cannon Turbo.wav")
+async def serve_cps_7():
+    p = Path(__file__).parent / "Ion Cannon Turbo.wav"
+    if not p.exists(): p = Path("/app/Ion Cannon Turbo.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Ion Cannon Turbo.wav not found")
+
+@app.get("/Shield Hit.wav")
+async def serve_cps_8():
+    p = Path(__file__).parent / "Shield Hit.wav"
+    if not p.exists(): p = Path("/app/Shield Hit.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Shield Hit.wav not found")
+
+@app.get("/Stormtrooper Blaster.wav")
+async def serve_cps_9():
+    p = Path(__file__).parent / "Stormtrooper Blaster.wav"
+    if not p.exists(): p = Path("/app/Stormtrooper Blaster.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Stormtrooper Blaster.wav not found")
+
+@app.get("/Torpedo Fire.wav")
+async def serve_cps_10():
+    p = Path(__file__).parent / "Torpedo Fire.wav"
+    if not p.exists(): p = Path("/app/Torpedo Fire.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Torpedo Fire.wav not found")
+
+@app.get("/Turbolaser 1.wav")
+async def serve_cps_11():
+    p = Path(__file__).parent / "Turbolaser 1.wav"
+    if not p.exists(): p = Path("/app/Turbolaser 1.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Turbolaser 1.wav not found")
+
+@app.get("/Turbolaser 2.wav")
+async def serve_cps_12():
+    p = Path(__file__).parent / "Turbolaser 2.wav"
+    if not p.exists(): p = Path("/app/Turbolaser 2.wav")
+    if p.exists(): return FileResponse(str(p), media_type="audio/wav", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "Turbolaser 2.wav not found")
+
+@app.get("/StarWarsLaser.mp3")
+async def serve_cps_13():
+    p = Path(__file__).parent / "StarWarsLaser.mp3"
+    if not p.exists(): p = Path("/app/StarWarsLaser.mp3")
+    if p.exists(): return FileResponse(str(p), media_type="audio/mpeg", headers={"Cache-Control":"public,max-age=86400"})
+    raise HTTPException(404, "StarWarsLaser.mp3 not found")
+def _audio_file_response(filename: str):
+    """Serve wav/mp3/ogg from project root or /app (Railway)."""
+    p = Path(__file__).parent / filename
+    if not p.exists():
+        p = Path("/app") / filename
+    if not p.exists():
+        raise HTTPException(404, f"{filename} not found")
+    ext = p.suffix.lower()
+    media = {
+        ".wav": "audio/wav",
+        ".mp3": "audio/mpeg",
+        ".ogg": "audio/ogg",
+        ".oga": "audio/ogg",
+    }.get(ext, "application/octet-stream")
+    return FileResponse(
+        str(p),
+        media_type=media,
+        headers={"Cache-Control": "public,max-age=86400"},
+    )
+# ── Siren / alarm bank (L1–L3 dropdown) ──────────────────────────
+
+@app.get("/661steamsiren.wav")
+async def serve_siren_661():
+    return _audio_file_response("661steamsiren.wav")
+
+
+@app.get("/HMSIllustriousActionStations.wav")
+async def serve_siren_hms():
+    return _audio_file_response("HMSIllustriousActionStations.wav")
+
+
+@app.get("/chemalm.wav")
+async def serve_siren_chem():
+    return _audio_file_response("chemalm.wav")
+
+
+@app.get("/Alarm 1.wav")
+async def serve_alarm_1():
+    return _audio_file_response("Alarm 1.wav")
+
+
+@app.get("/Alarm 2.wav")
+async def serve_alarm_2():
+    return _audio_file_response("Alarm 2.wav")
+
+
+@app.get("/Alarm 3.wav")
+async def serve_alarm_3():
+    return _audio_file_response("Alarm 3.wav")
+
+
+@app.get("/Alarm 4.wav")
+async def serve_alarm_4():
+    return _audio_file_response("Alarm 4.wav")
+
+
+@app.get("/Beep 1.wav")
+async def serve_beep_1():
+    return _audio_file_response("Beep 1.wav")
+
+
+@app.get("/Beep 2.wav")
+async def serve_beep_2():
+    return _audio_file_response("Beep 2.wav")
+
+
+@app.get("/Beep 3.wav")
+async def serve_beep_3():
+    return _audio_file_response("Beep 3.wav")
+
+
+@app.get("/MissileLock2.wav")
+async def serve_missile_lock_2():
+    return _audio_file_response("MissileLock2.wav")
+  
+@app.get("/mayday.mp3")
+async def serve_mayday():
+    return _audio_file_response("mayday.mp3")
+
+@app.get("/R2 1.wav")
+async def serve_r2_1():
+    return _audio_file_response("R2 1.wav")
+
+
+@app.get("/R2 2.wav")
+async def serve_r2_2():
+    return _audio_file_response("R2 2.wav")
+
+
+@app.get("/R2 3.wav")
+async def serve_r2_3():
+    return _audio_file_response("R2 3.wav")
+
+
+@app.get("/R2 4.wav")
+async def serve_r2_4():
+    return _audio_file_response("R2 4.wav")
+
+
+@app.get("/R2 5.wav")
+async def serve_r2_5():
+    return _audio_file_response("R2 5.wav")
+
+
+@app.get("/R2 6.wav")
+async def serve_r2_6():
+    return _audio_file_response("R2 6.wav")
+
+
+@app.get("/R2 7.wav")
+async def serve_r2_7():
+    return _audio_file_response("R2 7.wav")
+
+@app.get("/Besa_Shot_Body-007.ogg")
+async def serve_gun_besa_body():
+    return _audio_file_response("Besa_Shot_Body-007.ogg")
+
+
+@app.get("/Besa_Shot_HiFi-002.ogg")
+async def serve_gun_besa_hifi():
+    return _audio_file_response("Besa_Shot_HiFi-002.ogg")
+
+
+@app.get("/FG42_Shot_Body-008.ogg")
+async def serve_gun_fg42():
+    return _audio_file_response("FG42_Shot_Body-008.ogg")
+
+
+@app.get("/M2_Browning_Body_Test_02-003.ogg")
+async def serve_gun_m2_body():
+    return _audio_file_response("M2_Browning_Body_Test_02-003.ogg")
+
+
+@app.get("/M2_Browning_HiFi_Test_02-001.ogg")
+async def serve_gun_m2_hifi():
+    return _audio_file_response("M2_Browning_HiFi_Test_02-001.ogg")
+
+
+@app.get("/AK47ST_Fire01.wav")
+async def serve_gun_ak47():
+    return _audio_file_response("AK47ST_Fire01.wav")
+
+
+@app.get("/type99_mn.wav")
+async def serve_gun_type99():
+    return _audio_file_response("type99_mn.wav")
+def _image_file_response(filename: str):
+    p = Path(__file__).parent / filename
+    if not p.exists():
+        p = Path("/app") / filename
+    if not p.exists():
+        raise HTTPException(status_code=404, detail=f"{filename} not found")
+    ext = p.suffix.lower()
+    media = {
+        ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".png": "image/png", ".gif": "image/gif",
+        ".webp": "image/webp",
+    }.get(ext, "application/octet-stream")
+    return FileResponse(
+        str(p),
+        media_type=media,
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+@app.get("/alarm1.webp")
+async def serve_alarm_img_1():
+    return _image_file_response("alarm1.webp")
+
+
+@app.get("/mayday.webp")
+async def serve_alarm_img_2():
+    return _image_file_response("mayday.webp")
+
+
+@app.get("/alarm3.jpeg")
+async def serve_alarm_img_3():
+    return _image_file_response("alarm3.jpeg")
+# ══════════════════════════════════════════════════════════════
+# FRONTEND -- must be last
+# ══════════════════════════════════════════════════════════════
+
+@app.get("/")
+async def serve_frontend():
+    return FileResponse("index.html")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
