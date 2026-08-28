@@ -1517,6 +1517,15 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
 <input type="number" id="gp-usv-win-num" min="1" max="60" value="5"
        onchange="_gp.setUsvWindow(this.value)"
        style="width:3rem;background:#000;color:#88FFCC;border:1px solid #044;font-size:.7rem;">
+<select id="gp-usv-model" onchange="_gp.setUsvModel(this.value)"
+  style="background:#001a12;color:#88FFCC;border:1px solid #0a4;font-size:.65rem;margin-left:4px;max-width:9rem;">
+  <option value="m4011">M4011 (151 CPM/µSv/h)</option>
+  <option value="sbm20">SBM-20 (0.0057 µSv/h/CPM)</option>
+  <option value="lnd712">LND-712 (~100 CPM/µSv/h + 90µs)</option>
+  <option value="fast_slow">FAST/SLOW 60s/5s</option>
+  <option value="firmware">Firmware dr</option>
+</select>
+
 
         <span id="gp-cps-win-val" style="font-family:Consolas,monospace;font-size:.65rem;color:#FF44FF;min-width:28px;">60s</span>
         <input type="number" id="gp-cps-win-num" min="1" max="60" value="60"
@@ -3227,6 +3236,45 @@ if(_geigerSSE){ try{_geigerSSE.close();}catch(e){} _geigerSSE = null; }  } else 
 const _gp = {
   drHistory: [], cpsHistory: [],
   usvWindowMin: 5,
+
+  // ── CPS→µSv/h models (US6) — independent of each other ──────────
+  usvModel: 'm4011',
+  usvWindowMin: 5,
+  _usvViewMax: null,
+  USV_MODELS: {
+    m4011: {
+      label: 'M4011',
+      cpm_per_usvh: 151.0,
+      dead_time_us: null,
+      window: 'instant'
+    },
+    sbm20: {
+      label: 'SBM-20',
+      cpm_per_usvh: 1.0 / 0.0057,
+      dead_time_us: null,
+      window: 'instant'
+    },
+    lnd712: {
+      label: 'LND-712',
+      cpm_per_usvh: 100.0,
+      dead_time_us: 90.0,
+      window: 'instant'
+    },
+    fast_slow: {
+      label: 'FAST/SLOW 60s/5s',
+      cpm_per_usvh: 100.0,
+      dead_time_us: 90.0,
+      window: 'fast_slow',
+      fast_threshold: 1.0
+    },
+    firmware: {
+      label: 'Firmware dr',
+      cpm_per_usvh: null,
+      dead_time_us: null,
+      window: 'firmware'
+    }
+  },
+
   _usvViewMax: null,
  peakLog: [], sessionDose: 0, peakWindow: 0, floorWindow: 99,
   cpmBuf: [], sigPending: [], cpmMinStart: null, canvas: null, ctx: null,
@@ -3698,24 +3746,27 @@ if (waveformValues.length >= 2) {
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    
-    // ── Rolling µSv/h window (1–60 min), CPS-style ─────────────────
+    // ── Rolling TOTAL µSv in window (1–60 min), CPS-graph style ─────
+    // Each sample: rate = model(CPS→µSv/h) or firmware dr
+    // usvRolling[i] = Σ rate(j)*dt(j)/3600  over last W minutes  [µSv]
+    // Short W → local dose spikes (expressive). Long W → hour accrual.
     {
       const usvWinMin = Math.max(1, Math.min(60, this.usvWindowMin || 5));
-      const scale = 60 / usvWinMin;          // W=1 towers, W=60 matches green scale
       const usvWinNs = usvWinMin * 60 * 1e9;
       const drAll = this.drHistory || [];
       const tAll = this._cpsWallNs || [];
       const usvRolling = [];
-      // `data` = on-screen DR series; `startIdx` absolute index into drHistory
       const _startIdx = (typeof startIdx === 'number') ? startIdx
         : Math.max(0, drAll.length - (data ? data.length : 0));
       const nD = data && data.length ? data.length : 0;
+      const model = (this.USV_MODELS && this.USV_MODELS[this.usvModel]) || null;
+      const modelLabel = (model && model.label) ? model.label : (this.usvModel || '?');
+
       for (let i = 0; i < nD; i++) {
         const abs = _startIdx + i;
         const t1 = (tAll[abs] != null) ? Number(tAll[abs]) : 0;
-        let sum = 0, wsum = 0;
-        if (t1 > 0 && tAll.length === drAll.length) {
+        let doseUsv = 0;
+        if (t1 > 0 && tAll.length > 0) {
           const t0cut = t1 - usvWinNs;
           for (let j = abs; j >= 0; j--) {
             const tj = Number(tAll[j]) || 0;
@@ -3725,42 +3776,45 @@ if (waveformValues.length >= 2) {
               dt = (tj - Number(tAll[j - 1])) / 1e9;
               if (dt <= 0 || dt > 10) dt = 1;
             }
-            sum += (Number(drAll[j]) || 0) * dt;
-            wsum += dt;
+            let rate = 0;
+            if (typeof this._usvRateAt === 'function') {
+              rate = this._usvRateAt(j);
+            } else {
+              rate = Number(drAll[j]) || 0;
+            }
+            if (isFinite(rate)) doseUsv += rate * dt / 3600.0;
           }
         } else {
+          // ~1 Hz fallback: sum rate/3600 over last W*60 samples
           const W = Math.max(1, Math.round(usvWinMin * 60));
           const lo = Math.max(0, abs - W + 1);
-          for (let j = lo; j <= abs && j < drAll.length; j++) {
-            sum += Number(drAll[j]) || 0;
-            wsum += 1;
+          for (let j = lo; j <= abs; j++) {
+            let rate = 0;
+            if (typeof this._usvRateAt === 'function') rate = this._usvRateAt(j);
+            else rate = Number(drAll[j]) || 0;
+            if (isFinite(rate)) doseUsv += rate / 3600.0;
           }
         }
-        const meanDr = wsum > 0 ? sum / wsum : (Number(data[i]) || 0);
-        usvRolling.push(meanDr * scale);
+        usvRolling.push(doseUsv);
       }
+
       if (usvRolling.length > 1) {
-        
-        let uMax = 1e-6;
+        let uMax = 1e-9;
         for (let ui = 0; ui < usvRolling.length; ui++) {
           if (usvRolling[ui] > uMax) uMax = usvRolling[ui];
         }
         if (!this._usvViewMax || uMax > this._usvViewMax) this._usvViewMax = uMax;
         uMax = this._usvViewMax;
-ctx.save();
+
+        ctx.save();
         ctx.beginPath();
         ctx.strokeStyle = '#88FFCC';
         ctx.lineWidth = 1.5;
-        const _min = (typeof min === 'number') ? min : 0;
-        const _max = (typeof max === 'number') ? max : 0.3;
         for (let i = 0; i < usvRolling.length; i++) {
           const v = usvRolling[i];
-          let x;
-          if (this._panorama) {
-            x = i * xStep;
-          } else {
-            x = (LIVE_WIN - usvRolling.length + i) * xStep;
-          }
+          const x = this._panorama
+            ? i * xStep
+            : (LIVE_WIN - usvRolling.length + i) * xStep;
           const y = h - (v / uMax) * h * 0.85;
           if (i === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
@@ -3770,10 +3824,15 @@ ctx.save();
         ctx.fillStyle = '#88FFCC';
         ctx.font = '11px Consolas,monospace';
         ctx.textAlign = 'left';
-        ctx.fillText('µSv/' + usvWinMin + 'm ' + tip.toFixed(4), 8, 42);
+        ctx.fillText(
+          'ΣµSv/' + usvWinMin + 'm ' + tip.toFixed(5) + '  [' + modelLabel + ']',
+          8, 42
+        );
         ctx.restore();
       }
     }
+
+    
 
     // ── Purple major-peak labels: Σ raw CPS floor → crest only ────────
     // Rules:
@@ -6036,6 +6095,128 @@ _remoteConnect() {
     if (sl) sl.value = v;
     if (num) num.value = v;
   },
+
+  
+  setUsvModel(key){
+    if (!this.USV_MODELS) return;
+    if (!this.USV_MODELS[key]) return;
+    this.usvModel = key;
+    this._usvViewMax = null;
+    const sel = document.getElementById('gp-usv-model');
+    if (sel) sel.value = key;
+  },
+  _usvCorrectDeadTime(cps, deadUs){
+    if (deadUs == null || !isFinite(deadUs)) return cps;
+    const tau = deadUs * 1e-6;
+    const den = 1.0 - cps * tau;
+    if (den <= 0) return NaN;
+    return cps / den;
+  },
+  _usvCpsToUsvh(cps, cpmPerUsvh, deadUs){
+    const c = this._usvCorrectDeadTime(Number(cps) || 0, deadUs);
+    if (!isFinite(c) || !cpmPerUsvh || cpmPerUsvh <= 0) return 0;
+    return (c * 60.0) / cpmPerUsvh; // CPS -> CPM -> uSv/h
+  },
+  /**
+   * Instantaneous µSv/h for sample abs index under current model.
+   * firmware → drHistory; others → CPS (+ optional dead-time) + coefficient.
+   * fast_slow uses 60s/5s rolling CPS from history then converts.
+   */
+  _usvRateAt(absIdx){
+    const model = (this.USV_MODELS && this.USV_MODELS[this.usvModel]) || null;
+    if (!model) return 0;
+    const drs = this.drHistory || [];
+    const cpsH = this.cpsHistory || [];
+    const tH = this._cpsWallNs || [];
+    if (model.window === 'firmware') {
+      return Number(drs[absIdx]) || 0;
+    }
+    let cps = Number(cpsH[absIdx]) || 0;
+    if (model.window === 'fast_slow' && tH.length === cpsH.length) {
+      const thr = model.fast_threshold != null ? model.fast_threshold : 1.0;
+      const winS = cps >= thr ? 5.0 : 60.0;
+      const t1 = Number(tH[absIdx]) || 0;
+      if (t1 > 0) {
+        const t0 = t1 - winS * 1e9;
+        let sc = 0, st = 0;
+        for (let j = absIdx; j >= 0; j--) {
+          const tj = Number(tH[j]) || 0;
+          if (tj < t0) break;
+          let dt = 1;
+          if (j > 0) {
+            dt = (tj - Number(tH[j - 1])) / 1e9;
+            if (dt <= 0 || dt > 10) dt = 1;
+          }
+          sc += (Number(cpsH[j]) || 0) * dt;
+          st += dt;
+        }
+        if (st > 0) cps = sc / st;
+      }
+    }
+    return this._usvCpsToUsvh(cps, model.cpm_per_usvh, model.dead_time_us);
+  },
+
+
+  
+  setUsvModel(key){
+    if (!this.USV_MODELS) return;
+    if (!this.USV_MODELS[key]) return;
+    this.usvModel = key;
+    this._usvViewMax = null;
+    const sel = document.getElementById('gp-usv-model');
+    if (sel) sel.value = key;
+  },
+  _usvCorrectDeadTime(cps, deadUs){
+    if (deadUs == null || !isFinite(deadUs)) return cps;
+    const tau = deadUs * 1e-6;
+    const den = 1.0 - cps * tau;
+    if (den <= 0) return NaN;
+    return cps / den;
+  },
+  _usvCpsToUsvh(cps, cpmPerUsvh, deadUs){
+    const c = this._usvCorrectDeadTime(Number(cps) || 0, deadUs);
+    if (!isFinite(c) || !cpmPerUsvh || cpmPerUsvh <= 0) return 0;
+    return (c * 60.0) / cpmPerUsvh; // CPS -> CPM -> uSv/h
+  },
+  /**
+   * Instantaneous µSv/h for sample abs index under current model.
+   * firmware → drHistory; others → CPS (+ optional dead-time) + coefficient.
+   * fast_slow uses 60s/5s rolling CPS from history then converts.
+   */
+  _usvRateAt(absIdx){
+    const model = (this.USV_MODELS && this.USV_MODELS[this.usvModel]) || null;
+    if (!model) return 0;
+    const drs = this.drHistory || [];
+    const cpsH = this.cpsHistory || [];
+    const tH = this._cpsWallNs || [];
+    if (model.window === 'firmware') {
+      return Number(drs[absIdx]) || 0;
+    }
+    let cps = Number(cpsH[absIdx]) || 0;
+    if (model.window === 'fast_slow' && tH.length === cpsH.length) {
+      const thr = model.fast_threshold != null ? model.fast_threshold : 1.0;
+      const winS = cps >= thr ? 5.0 : 60.0;
+      const t1 = Number(tH[absIdx]) || 0;
+      if (t1 > 0) {
+        const t0 = t1 - winS * 1e9;
+        let sc = 0, st = 0;
+        for (let j = absIdx; j >= 0; j--) {
+          const tj = Number(tH[j]) || 0;
+          if (tj < t0) break;
+          let dt = 1;
+          if (j > 0) {
+            dt = (tj - Number(tH[j - 1])) / 1e9;
+            if (dt <= 0 || dt > 10) dt = 1;
+          }
+          sc += (Number(cpsH[j]) || 0) * dt;
+          st += dt;
+        }
+        if (st > 0) cps = sc / st;
+      }
+    }
+    return this._usvCpsToUsvh(cps, model.cpm_per_usvh, model.dead_time_us);
+  },
+
 togglePanorama(){
     this._panorama=!this._panorama;
     if(!this._panorama){
