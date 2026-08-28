@@ -1511,6 +1511,13 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
         <input type="range" id="gp-cps-win" min="1" max="60" value="60" step="1"
           style="width:80px;cursor:pointer;"
           oninput="var v=+this.value;_gp._cpsWindow=v;document.getElementById('gp-cps-win-val').textContent=v+'s';document.getElementById('gp-cps-win-num').value=v">
+<label style="color:#88FFCC;font-size:.7rem;margin-left:8px;">µSv win (min)</label>
+<input type="range" id="gp-usv-win" min="1" max="60" value="5"
+       oninput="_gp.setUsvWindow(this.value)" style="vertical-align:middle;width:100px;">
+<input type="number" id="gp-usv-win-num" min="1" max="60" value="5"
+       onchange="_gp.setUsvWindow(this.value)"
+       style="width:3rem;background:#000;color:#88FFCC;border:1px solid #044;font-size:.7rem;">
+
         <span id="gp-cps-win-val" style="font-family:Consolas,monospace;font-size:.65rem;color:#FF44FF;min-width:28px;">60s</span>
         <input type="number" id="gp-cps-win-num" min="1" max="60" value="60"
           style="width:40px;background:#0a0a1a;border:1px solid #FF44FF;color:#FF44FF;font-family:Consolas,monospace;font-size:.65rem;padding:1px 3px;text-align:center;"
@@ -3218,7 +3225,10 @@ if(_geigerSSE){ try{_geigerSSE.close();}catch(e){} _geigerSSE = null; }  } else 
   }
 }
 const _gp = {
-  drHistory: [], cpsHistory: [], peakLog: [], sessionDose: 0, peakWindow: 0, floorWindow: 99,
+  drHistory: [], cpsHistory: [],
+  usvWindowMin: 5,
+  _usvViewMax: null,
+ peakLog: [], sessionDose: 0, peakWindow: 0, floorWindow: 99,
   cpmBuf: [], sigPending: [], cpmMinStart: null, canvas: null, ctx: null,
   _cpsWallNs: [],
   _yMax: 0.30,
@@ -3687,6 +3697,83 @@ if (waveformValues.length >= 2) {
     ctx.strokeStyle = '#FF44FF';
     ctx.lineWidth = 1.5;
     ctx.stroke();
+
+    
+    // ── Rolling µSv/h window (1–60 min), CPS-style ─────────────────
+    {
+      const usvWinMin = Math.max(1, Math.min(60, this.usvWindowMin || 5));
+      const scale = 60 / usvWinMin;          // W=1 towers, W=60 matches green scale
+      const usvWinNs = usvWinMin * 60 * 1e9;
+      const drAll = this.drHistory || [];
+      const tAll = this._cpsWallNs || [];
+      const usvRolling = [];
+      // `data` = on-screen DR series; `startIdx` absolute index into drHistory
+      const _startIdx = (typeof startIdx === 'number') ? startIdx
+        : Math.max(0, drAll.length - (data ? data.length : 0));
+      const nD = data && data.length ? data.length : 0;
+      for (let i = 0; i < nD; i++) {
+        const abs = _startIdx + i;
+        const t1 = (tAll[abs] != null) ? Number(tAll[abs]) : 0;
+        let sum = 0, wsum = 0;
+        if (t1 > 0 && tAll.length === drAll.length) {
+          const t0cut = t1 - usvWinNs;
+          for (let j = abs; j >= 0; j--) {
+            const tj = Number(tAll[j]) || 0;
+            if (tj < t0cut) break;
+            let dt = 1;
+            if (j > 0) {
+              dt = (tj - Number(tAll[j - 1])) / 1e9;
+              if (dt <= 0 || dt > 10) dt = 1;
+            }
+            sum += (Number(drAll[j]) || 0) * dt;
+            wsum += dt;
+          }
+        } else {
+          const W = Math.max(1, Math.round(usvWinMin * 60));
+          const lo = Math.max(0, abs - W + 1);
+          for (let j = lo; j <= abs && j < drAll.length; j++) {
+            sum += Number(drAll[j]) || 0;
+            wsum += 1;
+          }
+        }
+        const meanDr = wsum > 0 ? sum / wsum : (Number(data[i]) || 0);
+        usvRolling.push(meanDr * scale);
+      }
+      if (usvRolling.length > 1) {
+        
+        let uMax = 1e-6;
+        for (let ui = 0; ui < usvRolling.length; ui++) {
+          if (usvRolling[ui] > uMax) uMax = usvRolling[ui];
+        }
+        if (!this._usvViewMax || uMax > this._usvViewMax) this._usvViewMax = uMax;
+        uMax = this._usvViewMax;
+ctx.save();
+        ctx.beginPath();
+        ctx.strokeStyle = '#88FFCC';
+        ctx.lineWidth = 1.5;
+        const _min = (typeof min === 'number') ? min : 0;
+        const _max = (typeof max === 'number') ? max : 0.3;
+        for (let i = 0; i < usvRolling.length; i++) {
+          const v = usvRolling[i];
+          let x;
+          if (this._panorama) {
+            x = i * xStep;
+          } else {
+            x = (LIVE_WIN - usvRolling.length + i) * xStep;
+          }
+          const y = h - (v / uMax) * h * 0.85;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        const tip = usvRolling[usvRolling.length - 1] || 0;
+        ctx.fillStyle = '#88FFCC';
+        ctx.font = '11px Consolas,monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText('µSv/' + usvWinMin + 'm ' + tip.toFixed(4), 8, 42);
+        ctx.restore();
+      }
+    }
 
     // ── Purple major-peak labels: Σ raw CPS floor → crest only ────────
     // Rules:
@@ -5940,7 +6027,16 @@ _remoteConnect() {
   _panDragStartX:0,
   _panDragStartSample:0,
   _panDragOffset:0,
-  togglePanorama(){
+  
+  setUsvWindow(v){
+    v = Math.max(1, Math.min(60, parseInt(v, 10) || 5));
+    this.usvWindowMin = v;
+    const sl = document.getElementById('gp-usv-win');
+    const num = document.getElementById('gp-usv-win-num');
+    if (sl) sl.value = v;
+    if (num) num.value = v;
+  },
+togglePanorama(){
     this._panorama=!this._panorama;
     if(!this._panorama){
       this._panZoomed=false;
@@ -6959,6 +7055,8 @@ _gp._stopLiveForOffline = function(){
 
 
 _gp._clearHistoriesForOffline = function(){
+  _gp._usvViewMax = null;
+
   _gp.drHistory = [];
   _gp.cpsHistory = [];
   _gp._cpsWallNs = [];
