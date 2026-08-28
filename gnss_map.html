@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GNSS Forensic Map — CTW</title>
+<style>
+  :root {
+    --bg:     #060809;
+    --panel:  #0a0d10;
+    --border: #1a2028;
+    --accent: #00e5ff;
+    --warn:   #ffb300;
+    --danger: #ff1744;
+    --text:   #90a4ae;
+    --font:   'Courier New', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    overflow: hidden;
+  }
+
+  #header {
+    height: 52px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+
+  #header .title {
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: bold;
+    letter-spacing: 3px;
+  }
+
+  #header .sub {
+    color: #1e3040;
+    font-size: 9px;
+    letter-spacing: 1px;
+  }
+
+  #body {
+    display: flex;
+    height: calc(100vh - 52px);
+  }
+
+  #left {
+    width: 320px;
+    flex-shrink: 0;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #drop-zone {
+    margin: 16px;
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 24px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    flex-shrink: 0;
+  }
+
+  #drop-zone:hover,
+  #drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(0,229,255,0.04);
+  }
+
+  #drop-zone i {
+    font-size: 28px;
+    color: var(--accent);
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  #drop-zone .dz-title {
+    font-size: 11px;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  #drop-zone .dz-sub {
+    font-size: 9px;
+    color: #1e3040;
+    letter-spacing: 1px;
+  }
+
+  #file-input { display: none; }
+
+  #truth-controls {
+    margin: 0 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  #truth-controls input {
+    width: 100%;
+    background: #060809;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px;
+    font-family: var(--font);
+    font-size: 10px;
+    outline: none;
+  }
+
+  #truth-controls input:focus {
+    border-color: var(--accent);
+  }
+
+  #stats {
+    margin: 0 16px 12px;
+    background: #060809;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 10px;
+    display: none;
+    flex-shrink: 0;
+  }
+
+  #stats .stat-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 0;
+    border-bottom: 1px solid #0d1520;
+  }
+
+  #stats .stat-row:last-child { border-bottom: none; }
+
+  #stats .stat-label {
+    color: #1e3040;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  #stats .stat-val {
+    color: var(--accent);
+    font-weight: bold;
+  }
+
+  #stats .stat-val.warn { color: var(--warn); }
+  #stats .stat-val.danger { color: var(--danger); }
+
+  #anomaly-list {
+    flex: 1;
+    overflow-y: auto;
+    margin: 0 16px 16px;
+    display: none;
+  }
+
+  #anomaly-list h3 {
+    font-size: 9px;
+    color: #1e3040;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+  }
+
+  .anom-item {
+    background: #060809;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    font-size: 10px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+
+  .anom-item:hover { border-color: var(--accent); }
+
+  .anom-item .ai-cat {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 3px;
+    font-weight: bold;
+  }
+
+  .anom-item .ai-detail {
+    color: #37474f;
+    font-size: 9px;
+  }
+
+  .cat-reserved_tac { color: #ccc; }
+  .cat-pci_collision { color: var(--danger); }
+  .cat-flash_cell { color: var(--warn); }
+  .cat-rsrq_invalid { color: #a78bfa; }
+
+  #map-frame {
+    flex: 1;
+    border: none;
+    background: #000;
+    display: none;
+  }
+
+  #placeholder {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: #1e3040;
+  }
+
+  #placeholder i {
+    font-size: 48px;
+    color: #0d1520;
+  }
+
+  #placeholder p {
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  #loading {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    color: var(--accent);
+  }
+
+  #loading i {
+    font-size: 32px;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  #progress {
+    height: 2px;
+    background: var(--border);
+    flex-shrink: 0;
+    display: none;
+  }
+
+  #progress-bar {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.3s;
+    box-shadow: 0 0 6px var(--accent);
+  }
+
+  #toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 20px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: bold;
+    z-index: 1000;
+    display: none;
+    letter-spacing: 1px;
+  }
+
+  #toast.err { background: var(--danger); color: #fff; }
+  #toast.ok { background: #00ba7c; color: #fff; }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: #000; }
+  ::-webkit-scrollbar-thumb { background: #1a2028; border-radius: 4px; }
+
+  #instructions {
+    margin: 0 16px 12px;
+    padding: 10px 12px;
+    background: #060809;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 9px;
+    color: #1e3040;
+    line-height: 1.8;
+    flex-shrink: 0;
+  }
+
+  #instructions b {
+    color: #37474f;
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  #instructions code {
+    background: #0a0d10;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 4px;
+    color: var(--accent);
+    font-size: 9px;
+  }
+
+  /* ── left sidebar collapse (full map when closed) ── */
+  #left {
+    width: 320px;
+    transition: width 0.2s ease, min-width 0.2s ease, padding 0.2s ease;
+    position: relative;
+  }
+  #left.collapsed {
+    width: 40px;
+    min-width: 40px;
+    overflow: hidden;
+  }
+  #left.collapsed > *:not(#sidebar-toggle) {
+    display: none !important;
+  }
+  #sidebar-toggle {
+    position: absolute;
+    top: 8px;
+    right: 6px;
+    z-index: 20;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #060809;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  #sidebar-toggle:hover {
+    border-color: var(--accent);
+    background: rgba(0,229,255,0.08);
+  }
+  #left.collapsed #sidebar-toggle {
+    position: static;
+    width: 100%;
+    height: 100%;
+    border: none;
+    border-radius: 0;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    letter-spacing: 2px;
+    font-size: 10px;
+    font-weight: bold;
+    color: var(--accent);
+    padding: 12px 0;
+  }
+  .sec-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+    padding: 4px 0;
+    color: #37474f;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+  .sec-head .chev { opacity: 0.7; font-size: 9px; color: var(--accent); }
+  .sec-body.collapsed { display: none !important; }
+</style>
+<link rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+</head>
+<body>
+
+<div id="header">
+  <div>
+    <div class="title">GNSS FORENSIC MAP</div>
+    <div class="sub">CTW · SEQUENCE GRADIENT · CELL ANOMALY · LEAFLET</div>
+  </div>
+</div>
+
+<div id="body">
+  <div id="left">
+    <button type="button" id="sidebar-toggle" title="Collapse / expand panel" onclick="toggleSidebar()" aria-label="Toggle sidebar">◀</button>
+    <div id="drop-zone"
+         onclick="document.getElementById('file-input').click()"
+         ondragover="dzOver(event)"
+         ondragleave="dzLeave()"
+         ondrop="dzDrop(event)">
+      <i class="fa-solid fa-satellite-dish"></i>
+      <div class="dz-title">Drop file(s) here</div>
+      <div class="dz-sub">1st = gradient base · more = overlays ≤10</div>
+    </div>
+    <input
+      type="file"
+      id="file-input"
+      multiple
+      accept=".csv,.txt,.nmea,text/csv,text/plain"
+      onchange="onFilesPicked(this.files)"
+    >
+    <div id="file-list" style="margin:0 16px 8px;font-size:9px;color:#567;max-height:100px;overflow-y:auto;display:none;flex-shrink:0;"></div>
+    <div style="margin:0 16px 10px;display:flex;gap:6px;flex-shrink:0;">
+      <button type="button" id="btn-render" disabled
+        onclick="renderStack()"
+        style="flex:1;padding:8px;border-radius:8px;border:1px solid #00e5ff;background:rgba(0,229,255,0.08);color:#00e5ff;font:10px 'Courier New',monospace;cursor:pointer;">
+        RENDER / UPDATE MAP
+      </button>
+      <button type="button" id="btn-clear"
+        onclick="clearStack()"
+        style="padding:8px 10px;border-radius:8px;border:1px solid #333;background:transparent;color:#666;font:10px 'Courier New',monospace;cursor:pointer;">
+        CLEAR
+      </button>
+    </div>
+    <div id="truth-controls">
+      <input type="number" id="truth_lat"
+             placeholder="Ground truth lat (e.g. -5.641700)" step="any">
+      <input type="number" id="truth_lon"
+             placeholder="Ground truth lon (e.g. -155.877800)" step="any">
+    </div>
+    <div id="progress"><div id="progress-bar"></div></div>
+    <div style="margin-bottom:6px;">
+      <a href="/downloads/GNSS_AttackModel.ps1" download
+         style="display:block;background:#001100;border:1px solid #00FF41;color:#00FF41;font-family:monospace;font-size:11px;padding:6px 10px;text-decoration:none;text-align:center;letter-spacing:1px;margin-bottom:4px;">
+        ⬇ GNSS_AttackModel.ps1
+      </a>
+    </div>
+    <div id="instructions">
+      <div class="sec-head" onclick="toggleSec('sec-instructions','chev-instructions')">
+        <span>HOW TO USE / GRADIENT / ANOMALY</span>
+        <span class="chev" id="chev-instructions">▼</span>
+      </div>
+      <div class="sec-body" id="sec-instructions">
+      Drop a <code>.txt</code> or <code>.nmea</code> GNSSLogger file for position track,
+      or a <code>points.csv</code> from <code>GNSS_AttackModel.ps1</code> for full cell anomaly detection.<br><br>
+      <b>TRACK ORDER / GRADIENT</b><br>
+      Numbered dots = chronological sequence (<b style="color:#ff4444">#1 = earliest</b>).<br>
+      Path color = full spectrum (<span style="color:#ff0000">red</span> earliest →
+      <span style="color:#cc00ff">violet</span> latest).<br>
+      Click a point for <b>Sequence #n / N</b> in the info panel.<br><br>
+      <b>ANOMALY DETECTION</b>
+      <span style="color:#444;font-size:.65rem">(CSV only)</span><br>
+      Reserved TAC · PCI collision · Flash cell · RSRQ out-of-spec<br><br><b>MULTI STACK</b><br>
+      Add up to 10 files (they accumulate). File #1 = spectrum gradient base.
+      Files #2–#10 overlay on top. Each layer has a checkbox toggle on the map.
+      Press RENDER / UPDATE MAP after adding files.
+      </div>
+    </div>
+    <div id="stats-wrap" style="display:none;margin:0 16px 12px;flex-shrink:0;">
+      <div class="sec-head" id="sec-stats-head" onclick="toggleSec('stats','chev-stats')">
+        <span>STATS</span>
+        <span class="chev" id="chev-stats">▼</span>
+      </div>
+      <div id="stats" class="sec-body"></div>
+    </div>
+    <div id="anomaly-list">
+      <div class="sec-head" onclick="toggleSec('anom-items','chev-anom')">
+        <span>ANOMALIES DETECTED</span>
+        <span class="chev" id="chev-anom">▼</span>
+      </div>
+      <div id="anom-items" class="sec-body"></div>
+    </div>
+  </div>
+
+  <div id="placeholder">
+    <i class="fa-solid fa-earth-americas"></i>
+    <p>Upload a .txt, .nmea, or .csv file to begin</p>
+  </div>
+  <div id="loading" style="display:none">
+    <i class="fa-solid fa-circle-notch"></i>
+    <span style="font-size:11px;letter-spacing:2px">PROCESSING…</span>
+  </div>
+  <iframe
+    id="map-frame"
+    sandbox="allow-scripts allow-same-origin allow-popups"
+    referrerpolicy="no-referrer-when-downgrade">
+  </iframe>
+</div>
+
+<div id="toast"></div>
+
+<script>
+
+function toggleSidebar() {
+  var left = document.getElementById('left');
+  var btn = document.getElementById('sidebar-toggle');
+  left.classList.toggle('collapsed');
+  var closed = left.classList.contains('collapsed');
+  if (btn) {
+    btn.textContent = closed ? 'GNSS ▶' : '◀';
+    btn.title = closed ? 'Expand panel' : 'Collapse panel (full map)';
+  }
+  try {
+    var frame = document.getElementById('map-frame');
+    if (frame && frame.contentWindow) {
+      setTimeout(function () {
+        try { frame.contentWindow.dispatchEvent(new Event('resize')); } catch (e) {}
+      }, 220);
+    }
+  } catch (e) {}
+}
+
+function toggleSec(bodyId, chevId) {
+  var body = document.getElementById(bodyId);
+  var chev = document.getElementById(chevId);
+  if (!body) return;
+  body.classList.toggle('collapsed');
+  if (chev) chev.textContent = body.classList.contains('collapsed') ? '▶' : '▼';
+}
+function dzOver(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.add('drag-over');
+}
+function dzLeave() {
+  document.getElementById('drop-zone').classList.remove('drag-over');
+}
+function dzDrop(e) {
+  e.preventDefault();
+  dzLeave();
+  if (e.dataTransfer.files && e.dataTransfer.files.length) {
+    onFilesPicked(e.dataTransfer.files);
+  }
+}
+
+
+/* ── multi-file stack: first = gradient base, rest = overlays ── */
+let selectedFiles = [];
+
+function isGnssFile(f) {
+  const n = (f.name || '').toLowerCase();
+  return n.endsWith('.csv') || n.endsWith('.txt') || n.endsWith('.nmea') ||
+         f.type === 'text/csv' || f.type === 'text/plain';
+}
+
+function onFilesPicked(fileList) {
+  const ok = Array.from(fileList || []).filter(isGnssFile);
+  if (!ok.length) { toast('Please upload .csv, .txt, or .nmea', 'err'); return; }
+  for (let i = 0; i < ok.length; i++) {
+    if (selectedFiles.length >= 10) { toast('Max 10 files', 'err'); break; }
+    selectedFiles.push(ok[i]);
+  }
+  refreshFileList();
+}
+
+function refreshFileList() {
+  const box = document.getElementById('file-list');
+  if (!box) return;
+  if (!selectedFiles.length) {
+    box.style.display = 'none';
+    box.innerHTML = '';
+    const br = document.getElementById('btn-render');
+    if (br) br.disabled = true;
+    return;
+  }
+  box.style.display = 'block';
+  box.innerHTML = selectedFiles.map(function (f, i) {
+    const role = i === 0 ? 'BASE (gradient)' : 'overlay ' + i;
+    return '<div style="display:flex;justify-content:space-between;border-bottom:1px solid #121820;padding:3px 0;">' +
+      '<span style="color:#8ab;overflow:hidden;text-overflow:ellipsis;max-width:200px;">' +
+      (i + 1) + '. ' + f.name + ' <span style="color:#456">[' + role + ']</span></span>' +
+      '<span>' + Math.round(f.size / 1024) + ' KB</span></div>';
+  }).join('');
+  const br = document.getElementById('btn-render');
+  if (br) br.disabled = false;
+}
+
+function clearStack() {
+  selectedFiles = [];
+  refreshFileList();
+  toast('Stack cleared', 'ok');
+}
+
+async function renderStack() {
+  if (!selectedFiles.length) return;
+  if (selectedFiles.length === 1) {
+    return handleFile(selectedFiles[0]);
+  }
+  showLoading(true);
+  setProgress(15);
+  const fd = new FormData();
+  selectedFiles.forEach(function (f) { fd.append('files', f); });
+  const truthLat = document.getElementById('truth_lat').value.trim();
+  const truthLon = document.getElementById('truth_lon').value.trim();
+  if (truthLat) fd.append('truth_lat', truthLat);
+  if (truthLon) fd.append('truth_lon', truthLon);
+  try {
+    setProgress(40);
+    const r = await fetch('/api/gnss/map-multi', { method: 'POST', body: fd });
+    setProgress(70);
+    if (!r.ok) {
+      const err = await r.json().catch(function () { return { detail: r.statusText }; });
+      throw new Error(err.detail || r.statusText || 'overlay failed');
+    }
+    const data = await r.json();
+    if (!data.html) throw new Error('Server returned no map HTML');
+    setProgress(90);
+    const frame = document.getElementById('map-frame');
+    frame.src = URL.createObjectURL(new Blob([data.html], { type: 'text/html' }));
+    frame.style.display = 'block';
+    document.getElementById('placeholder').style.display = 'none';
+    document.getElementById('loading').style.display = 'none';
+    const stats = document.getElementById('stats');
+    const statsWrap = document.getElementById('stats-wrap');
+    if (statsWrap) statsWrap.style.display = 'block';
+    if (stats) {
+      stats.style.display = 'block';
+      stats.innerHTML =
+        '<div class="stat-row"><span class="stat-label">Stack</span>' +
+        '<span class="stat-val">' + (data.tracks || 0) + ' files</span></div>' +
+        (data.summary || []).map(function (s, i) {
+          const role = i === 0 ? 'BASE' : 'OV';
+          return '<div class="stat-row"><span class="stat-label" style="color:' + s.color + '">● [' + role + '] ' + s.label +
+            '</span><span class="stat-val">' + s.n + ' pts</span></div>';
+        }).join('');
+    }
+    const al = document.getElementById('anomaly-list');
+    if (al) al.style.display = 'none';
+    setProgress(100);
+    setTimeout(function () { setProgress(0); }, 700);
+    toast('Stack: base + ' + ((data.tracks || 1) - 1) + ' overlay(s)', 'ok');
+  } catch (e) {
+    console.error(e);
+    toast(e.message || 'failed', 'err');
+    showLoading(false);
+    setProgress(0);
+  }
+}
+
+async function handleFile(file) {
+  if (!file) return;
+  const lowerName = (file.name || '').toLowerCase();
+  const ok =
+    lowerName.endsWith('.csv') ||
+    lowerName.endsWith('.txt') ||
+    lowerName.endsWith('.nmea') ||
+    file.type === 'text/csv' ||
+    file.type === 'text/plain';
+  if (!ok) {
+    toast('Please upload a .csv, .txt, or .nmea file', 'err');
+    return;
+  }
+  showLoading(true);
+  setProgress(10);
+  const fd = new FormData();
+  fd.append('file', file);
+  const truthLat = document.getElementById('truth_lat').value.trim();
+  const truthLon = document.getElementById('truth_lon').value.trim();
+  if (truthLat) fd.append('truth_lat', truthLat);
+  if (truthLon) fd.append('truth_lon', truthLon);
+  try {
+    setProgress(30);
+    const r = await fetch('/api/gnss/map', { method: 'POST', body: fd });
+    setProgress(70);
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: r.statusText }));
+      throw new Error(err.detail || r.statusText || 'GNSS map request failed');
+    }
+    const data = await r.json();
+    if (!data.html) throw new Error('Server returned no map HTML');
+    setProgress(90);
+    renderMap(data.html, file.name);
+    setProgress(100);
+    setTimeout(() => setProgress(0), 800);
+    toast('Map rendered — ' + file.name, 'ok');
+  } catch (e) {
+    console.error('GNSS map upload failed:', e);
+    toast(e.message || 'GNSS map processing failed', 'err');
+    showLoading(false);
+    setProgress(0);
+  }
+}
+
+function renderMap(html, filename) {
+  parseAndShowStats(html, filename);
+  const frame = document.getElementById('map-frame');
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  frame.src = url;
+  frame.style.display = 'block';
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('loading').style.display = 'none';
+}
+
+function parseAndShowStats(html, filename) {
+  const cats = {
+    reserved_tac: (html.match(/"reserved_tac"/g) || []).length,
+    pci_collision: (html.match(/"pci_collision"/g) || []).length,
+    flash_cell: (html.match(/"flash_cell"/g) || []).length,
+    rsrq_invalid: (html.match(/"rsrq_invalid"/g) || []).length
+  };
+  const ptMatch = html.match(/"lat":/g);
+  const total = ptMatch ? ptMatch.length : 0;
+  const anomaly =
+    cats.reserved_tac + cats.pci_collision + cats.flash_cell + cats.rsrq_invalid;
+  const stats = document.getElementById('stats');
+  const statsWrap = document.getElementById('stats-wrap');
+  if (statsWrap) statsWrap.style.display = 'block';
+  stats.style.display = 'block';
+  stats.classList.remove('collapsed');
+  stats.innerHTML =
+    '<div class="stat-row"><span class="stat-label">File</span>' +
+    '<span class="stat-val" style="font-size:9px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' +
+    filename + '">' + filename + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Total points</span>' +
+    '<span class="stat-val">' + total + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Anomalies</span>' +
+    '<span class="stat-val' + (anomaly > 0 ? ' danger' : '') + '">' + anomaly + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Reserved TAC</span>' +
+    '<span class="stat-val' + (cats.reserved_tac > 0 ? ' danger' : '') + '">' + cats.reserved_tac + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">PCI collision</span>' +
+    '<span class="stat-val' + (cats.pci_collision > 0 ? ' warn' : '') + '">' + cats.pci_collision + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Flash cell</span>' +
+    '<span class="stat-val' + (cats.flash_cell > 0 ? ' warn' : '') + '">' + cats.flash_cell + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">RSRQ invalid</span>' +
+    '<span class="stat-val' + (cats.rsrq_invalid > 0 ? ' warn' : '') + '">' + cats.rsrq_invalid + '</span></div>';
+
+  const alDiv = document.getElementById('anomaly-list');
+  const aiDiv = document.getElementById('anom-items');
+  aiDiv.innerHTML = '';
+  if (anomaly > 0) {
+    alDiv.style.display = 'block';
+    try {
+      const m = html.match(/const pts = (\[.*?\]);/s);
+      if (m) {
+        const pts = JSON.parse(m[1]);
+        const catLabels = {
+          reserved_tac: 'Reserved TAC',
+          pci_collision: 'PCI Collision',
+          flash_cell: 'Flash Cell',
+          rsrq_invalid: 'RSRQ Invalid'
+        };
+        const colorCat = {
+          '#111111': 'reserved_tac',
+          '#e53935': 'pci_collision',
+          '#e67e22': 'flash_cell',
+          '#8e44ad': 'rsrq_invalid'
+        };
+        pts.forEach(function (p) {
+          const cat = colorCat[p.color];
+          if (!cat) return;
+          const div = document.createElement('div');
+          div.className = 'anom-item';
+          const tip = p.tooltip ? p.tooltip.replace(/\\'/g, "'") : '';
+          const seq = p.seq ? ('#' + p.seq + (p.n ? '/' + p.n + ' · ' : ' · ')) : '';
+          div.innerHTML =
+            '<div class="ai-cat cat-' + cat + '">' + (catLabels[cat] || cat) + '</div>' +
+            '<div class="ai-detail">' + seq + tip + '</div>';
+          aiDiv.appendChild(div);
+        });
+      }
+    } catch (e) {
+      console.warn('Could not parse anomaly data:', e);
+    }
+  } else {
+    alDiv.style.display = 'none';
+  }
+}
+
+function showLoading(on) {
+  document.getElementById('loading').style.display = on ? 'flex' : 'none';
+  document.getElementById('placeholder').style.display = on ? 'none' : 'flex';
+  document.getElementById('map-frame').style.display = 'none';
+}
+
+function setProgress(pct) {
+  const bar = document.getElementById('progress-bar');
+  const wrap = document.getElementById('progress');
+  if (pct <= 0) {
+    wrap.style.display = 'none';
+    bar.style.width = '0%';
+    return;
+  }
+  wrap.style.display = 'block';
+  bar.style.width = pct + '%';
+}
+
+let toastTimer = null;
+function toast(msg, type) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = type;
+  el.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { el.style.display = 'none'; }, 4000);
+}
+</script>
+</body>
+</html>
