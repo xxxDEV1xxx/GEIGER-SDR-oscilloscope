@@ -6528,65 +6528,168 @@ togglePanorama(){
     }
     if(cps>0)this._tlCpsTicks.push(wallNs);
   },
-  _recurPatterns:[
-    '300300','210000','101000','122110','111000',
-    '110000','101010','200100','211000','200000',
-    '1010101','101010','010101',
-    '2020202','202020','212121','2121212',
-    '2112112','211211','112112',
-  ],
-  _recurCurrent:null,
-  _recurCount:0,
-  _recurLastTime:'',
-  _checkRecur(entry){
-    const seq=(entry.seq||[]).join('');
-    const peak=Math.max(...(entry.seq||[0]));
-    const matched=this._recurPatterns.find(p=>seq===p||seq.includes(p));
-    if(!matched)return;
-    let count=0;
-    for(let i=0;i<this.sigLedger.length;i++){
-      if((this.sigLedger[i].seq||[]).join('').includes(matched)) count++;
+
+  
+  // ── CPS 6-gram BLOCK recurrence (boundary-only, phase-locked) ─────
+  // 111100|111100|111100 → emit [1,1,1,1,0,0] ×3 when the NEXT block differs
+  // (or on flush). Does NOT evaluate on every sample (that capped runs at ×2
+  // and spawned 6 phase copies of the same pulse train).
+  _recurN: 6,
+  _recurMinRun: 2,
+  _recurMinNonZero: 1,   // set 2 to hide ultra-sparse single-1 phases
+  _cpsRecurBuf: [],
+  _recurState: null,
+  _recurInit() {
+    this._cpsRecurBuf = [];
+    this._recurState = {
+      key: null,
+      run: 0,
+      startIdx: -1,
+      startNs: 0,
+      lastEnd: -1,      // buffer index where current streak's last block ended
+      lastNs: 0,
+      lastEndNsMap: Object.create(null),
+      ledger: []
+    };
+    const el = document.getElementById('gp-recur-ledger');
+    if (el) el.innerHTML = '';
+    const cnt = document.getElementById('gp-recur-count');
+    if (cnt) cnt.textContent = '0';
+  },
+  _recurGramAt(endIdx) {
+    const N = this._recurN || 6;
+    const buf = this._cpsRecurBuf;
+    if (endIdx < N - 1 || endIdx >= buf.length) return null;
+    const a = [];
+    for (let k = endIdx - N + 1; k <= endIdx; k++) a.push(buf[k].cps);
+    return a.join(',');
+  },
+  _recurNonZero(key) {
+    if (!key) return 0;
+    return key.split(',').filter(x => parseInt(x, 10) > 0).length;
+  },
+  _recurEmitEntry(entry) {
+    if (this._recurNonZero(entry.pattern) < (this._recurMinNonZero || 1)) return;
+    const ledger = document.getElementById('gp-recur-ledger');
+    if (!ledger) return;
+    const st = this._recurState;
+    st.ledger.push(entry);
+    if (st.ledger.length > 300) st.ledger.shift();
+    st.lastEndNsMap[entry.pattern] = entry.t1;
+
+    const col = entry.run >= 6 ? '#FF4444'
+              : entry.run >= 4 ? '#FFAA00'
+              : entry.run >= 3 ? '#88FF00'
+              : '#00FF88';
+    let tStr = '';
+    try {
+      if (typeof nsToUtcStr === 'function' && entry.t1)
+        tStr = nsToUtcStr(entry.t1);
+      else if (entry.t1)
+        tStr = new Date(entry.t1 / 1e6).toISOString().slice(11, 19);
+    } catch (e) {}
+    const gap = (entry.gap_s != null && isFinite(entry.gap_s) && entry.gap_s >= 0)
+      ? (' gap=' + entry.gap_s.toFixed(1) + 's')
+      : '';
+    const row = document.createElement('div');
+    row.style.cssText = 'padding:1px 0;border-bottom:1px solid #041208;white-space:nowrap;';
+    row.title = 'blocks ×' + entry.run + '  idx ' + entry.idx0 + '..' + entry.idx1;
+    row.innerHTML =
+      '<span style="color:#00AA66">[' + entry.pattern + ']</span> ' +
+      '<span style="color:' + col + '">×' + entry.run + '</span> ' +
+      '<span style="color:#445544">' + tStr + gap + '</span>';
+    ledger.insertBefore(row, ledger.firstChild);
+    while (ledger.children.length > 80) ledger.removeChild(ledger.lastChild);
+    const cnt = document.getElementById('gp-recur-count');
+    if (cnt) cnt.textContent = String(st.ledger.length);
+  },
+  _recurClose() {
+    const st = this._recurState;
+    if (!st || !st.key || st.run < (this._recurMinRun || 2)) {
+      if (st) { st.key = null; st.run = 0; st.lastEnd = -1; }
+      return;
     }
-    if(count>=3) this._emitRecur(matched,count,entry.t,peak);
+    const prev = st.lastEndNsMap[st.key];
+    const gap_s = (prev != null && st.startNs) ? (st.startNs - prev) / 1e9 : null;
+    this._recurEmitEntry({
+      pattern: st.key,
+      run: st.run,
+      t0: st.startNs,
+      t1: st.lastNs,
+      gap_s: gap_s,
+      idx0: st.startIdx,
+      idx1: st.lastEnd
+    });
+    st.key = null;
+    st.run = 0;
+    st.lastEnd = -1;
   },
-  _emitRecur(pattern,count,t,peak){
-    const ledger=document.getElementById('gp-recur-ledger');
-    if(!ledger)return;
-    const col=count>=5?'#FF4444':count>=3?'#FFAA00':'#00FF88';
-    const pCol=peak>=7?'#FF00FF':peak>=5?'#FF0000':peak>=3?'#FF4444':peak>=2?'#FF8800':peak>=1?'#FFAA00':'#555';
-    const mode=peak>=7?'EXTREME':peak>=5?'CRITICAL':peak>=3?'HIGH':peak>=2?'MED':'LOW';
-    const row=document.createElement('div');
-    row.style.cssText='padding:2px 0;border-bottom:1px solid #0a1a0a;white-space:nowrap;';
-    row.innerHTML=`<span style="color:#00AA66">${pattern}</span> `+
-      `<span style="color:${col}">x${count}</span> `+
-      `<span style="color:${pCol}">${mode}</span> `+
-      `<span style="color:#333">${t}</span>`;
-    ledger.insertBefore(row,ledger.firstChild);
-    if(ledger.children.length>200)ledger.removeChild(ledger.lastChild);
-    const cnt=document.getElementById('gp-recur-count');
-    if(cnt)cnt.textContent=ledger.children.length+'';
-  },
-  _flushRecur(){
-    if(!this._recurCurrent)return;
-    if(this._recurCount>=3){
-      const ledger=document.getElementById('gp-recur-ledger');
-      if(ledger){
-        const row=document.createElement('div');
-        row.style.cssText='padding:2px 0;border-bottom:1px solid #0a1a0a;white-space:nowrap;';
-        const col=this._recurCount>=5?'#FF4444':this._recurCount>=3?'#FFAA00':'#00FF88';
-        row.innerHTML=`<span style="color:#00AA66">${this._recurCurrent}</span> `+
-          `<span style="color:${col}">x${this._recurCount}</span> `+
-          `<span style="color:#333">${this._recurLastTime}</span>`;
-        ledger.insertBefore(row,ledger.firstChild);
-        if(ledger.children.length>200)ledger.removeChild(ledger.lastChild);
-        const cnt=document.getElementById('gp-recur-count');
-        if(cnt)cnt.textContent=ledger.children.length+'';
+  _recurOnCps(cps, wallNs, idx) {
+    if (!this._recurState) this._recurInit();
+    const N = this._recurN || 6;
+    const v = Math.max(0, Math.round(Number(cps) || 0));
+    const ns = Number(wallNs) || 0;
+    const id = (idx != null) ? idx : (this.cpsHistory ? this.cpsHistory.length - 1 : 0);
+    const buf = this._cpsRecurBuf;
+    buf.push({ cps: v, ns: ns, idx: id });
+    if (buf.length > 8000) buf.splice(0, buf.length - 4000);
+
+    const end = buf.length - 1;
+    if (end < N - 1) return;
+    const st = this._recurState;
+
+    // ── Phase-locked streak: only act on block boundaries ───────────
+    if (st.key != null && st.lastEnd >= 0) {
+      if (end < st.lastEnd + N) {
+        // still filling the next block — wait
+        return;
+      }
+      if (end === st.lastEnd + N) {
+        const keyNow = this._recurGramAt(end);
+        if (keyNow != null && keyNow === st.key) {
+          st.run += 1;
+          st.lastEnd = end;
+          st.lastNs = buf[end].ns;
+          return;
+        }
+        // boundary reached, pattern broke → emit full multiplicity
+        this._recurClose();
+        // fall through to maybe open a new double at this boundary
+      } else {
+        // end > lastEnd+N (gap / missing) → close
+        this._recurClose();
       }
     }
-    this._recurCurrent=null;
-    this._recurCount=0;
-    this._recurLastTime='';
+
+    // ── No active streak: open only when two consecutive blocks match ─
+    // Evaluate only when we have at least 12 samples; compare end vs end-N
+    // once per new sample but START lock only on match — then boundary-only.
+    if (end >= 2 * N - 1) {
+      const keyNow = this._recurGramAt(end);
+      const keyPrev = this._recurGramAt(end - N);
+      if (keyNow != null && keyNow === keyPrev) {
+        // Avoid re-opening every phase: only if no active key
+        if (st.key == null) {
+          st.key = keyNow;
+          st.run = 2;
+          st.startIdx = buf[end - 2 * N + 1].idx;
+          st.startNs = buf[end - 2 * N + 1].ns;
+          st.lastEnd = end;
+          st.lastNs = buf[end].ns;
+        }
+      }
+    }
   },
+  _checkRecur(entry) {},
+  _emitRecur() {},
+  _flushRecur() {
+    if (this._recurState && this._recurState.key &&
+        this._recurState.run >= (this._recurMinRun || 2))
+      this._recurClose();
+  },
+
+
+
   _tlSig(entry){
     this._tlSigCol=`SIG#${entry.n} [${(entry.seq||[]).join(',')}] pk=${entry.peak}`;
   },
@@ -6990,6 +7093,7 @@ togglePanorama(){
     this._lastSampleT = performance.now();
     if (this.drHistory.length > 3600) this.drHistory.shift();
     this.cpsHistory.push(d.cps || 0);
+    if (this._recurOnCps) this._recurOnCps(arguments.length>1?arguments[0]:(d&&d.cps), typeof wallNs!=='undefined'?wallNs:Date.now()*1e6, this.cpsHistory.length-1);
     // Always store a real wall-clock ns (device ns preferred)
     var _wn = (typeof wallNs !== 'undefined' && wallNs) ? wallNs
             : (d.wall_ns || d.wallNs || (Date.now() * 1e6));
