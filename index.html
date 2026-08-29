@@ -91,7 +91,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
   transform-origin: center center;
   will-change: opacity, transform;
 }
-/* ── Source signature meter (compact RPM / thermometer) ── */
+/* â”€â”€ Source signature meter (compact RPM / thermometer) â”€â”€ */
 #gp-md-panel {
   margin: 0;
   padding: 0;
@@ -348,8 +348,8 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
 }
 </style>
 </head>
-<body class="bg-black text-white min-h-screen overflow-x-hidden" style="overflow-y:scroll;">
-<!-- ══ FILIGREE SVG DEFS ══ -->
+<body class="bg-black text-white min-h-screen overflow-x-hidden" style="overflow-y:auto;">
+<!-- â•â• FILIGREE SVG DEFS â•â• -->
 <svg width="0" height="0" style="position:absolute;overflow:hidden">
 <defs>
 <symbol id="fig-tile-h" viewBox="0 0 400 32" preserveAspectRatio="none">
@@ -767,7 +767,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
   </div>
 </main>
 <!-- RIGHT SIDEBAR -->
-<aside class="w-80 hidden lg:block flex-shrink-0 px-4 py-4 sticky top-0 h-screen overflow-y-auto">
+<aside class="w-80 hidden lg:block flex-shrink-0 px-4 py-4 sticky top-0 h-screen overflow-y-hidden">
   <div class="relative mb-6">
     <input id="rs-search" type="text" placeholder="Search" class="w-full bg-gray-900 border border-gray-700 focus:border-blue-500 rounded-2xl py-3 pl-11 pr-4 outline-none">
     <i class="fa-solid fa-magnifying-glass absolute left-4 top-3.5 text-gray-500"></i>
@@ -867,15 +867,15 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
     box-shadow:0 0 60px rgba(139,90,20,0.3), inset 0 0 80px rgba(0,0,0,0.6);
     overflow:hidden;">
     <!-- corner ornaments -->
-    <div style="position:absolute;top:6px;left:8px;color:#6b4f1a;font-size:18px;line-height:1;pointer-events:none">❧</div>
-    <div style="position:absolute;top:6px;right:8px;color:#6b4f1a;font-size:18px;line-height:1;pointer-events:none;transform:scaleX(-1)">❧</div>
-    <div style="position:absolute;bottom:6px;left:8px;color:#6b4f1a;font-size:18px;line-height:1;pointer-events:none;transform:scaleY(-1)">❧</div>
-    <div style="position:absolute;bottom:6px;right:8px;color:#6b4f1a;font-size:18px;line-height:1;pointer-events:none;transform:scale(-1)">❧</div>
+    <div style="position:absolute;top:6px;left:8px;color:#6b4f1a;font-size:18px;line-height:1;pointer-events:none">â§</div>
+    <div style="position:absolute;top:6px;right:8px;color:#6b4f1a;font-size:18px;line-height:1;pointer-events:none;transform:scaleX(-1)">â§</div>
+    <div style="position:absolute;bottom:6px;left:8px;color:#6b4f1a;font-size:18px;line-height:1;pointer-events:none;transform:scaleY(-1)">â§</div>
+    <div style="position:absolute;bottom:6px;right:8px;color:#6b4f1a;font-size:18px;line-height:1;pointer-events:none;transform:scale(-1)">â§</div>
     <!-- header -->
     <div style="padding:14px 28px 8px;text-align:center;border-bottom:1px solid #3a2a08;
       background:linear-gradient(180deg,rgba(80,50,5,0.3) 0%,transparent 100%)">
       <div style="color:#c8a040;font-size:0.6rem;letter-spacing:0.35em;text-transform:uppercase;margin-bottom:4px">
-        ✦ &nbsp; CTW &nbsp; ✦
+        âœ¦ &nbsp; CTW &nbsp; âœ¦
       </div>
       <div style="color:#e8c870;font-size:1.1rem;font-weight:bold;letter-spacing:0.12em">
         Chess Engine
@@ -911,7 +911,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
       <!-- captured / color indicator -->
       <div style="display:flex;align-items:center;justify-content:space-between;width:100%;padding:0 4px">
         <div id="vse-color-label" style="color:#8a6820;font-size:0.68rem;letter-spacing:0.1em">Playing White</div>
-        <div id="vse-check-label" style="color:#c84040;font-size:0.68rem;letter-spacing:0.1em;display:none">⚠ Check</div>
+        <div id="vse-check-label" style="color:#c84040;font-size:0.68rem;letter-spacing:0.1em;display:none">âš  Check</div>
       </div>
     </div>
     <!-- controls -->
@@ -948,15 +948,15 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
       flex-direction:column;gap:16px">
       <div style="color:#c8a040;font-size:0.7rem;letter-spacing:0.2em">Choose Promotion</div>
       <div style="display:flex;gap:12px">
-        <button onclick="vsePromoPick('q')" style="font-size:2.2rem;background:none;border:1px solid #6b4f1a;color:#e8d080;width:52px;height:52px;border-radius:2px;cursor:pointer">♛</button>
-        <button onclick="vsePromoPick('r')" style="font-size:2.2rem;background:none;border:1px solid #6b4f1a;color:#e8d080;width:52px;height:52px;border-radius:2px;cursor:pointer">♜</button>
-        <button onclick="vsePromoPick('b')" style="font-size:2.2rem;background:none;border:1px solid #6b4f1a;color:#e8d080;width:52px;height:52px;border-radius:2px;cursor:pointer">♝</button>
-        <button onclick="vsePromoPick('n')" style="font-size:2.2rem;background:none;border:1px solid #6b4f1a;color:#e8d080;width:52px;height:52px;border-radius:2px;cursor:pointer">♞</button>
+        <button onclick="vsePromoPick('q')" style="font-size:2.2rem;background:none;border:1px solid #6b4f1a;color:#e8d080;width:52px;height:52px;border-radius:2px;cursor:pointer">â™›</button>
+        <button onclick="vsePromoPick('r')" style="font-size:2.2rem;background:none;border:1px solid #6b4f1a;color:#e8d080;width:52px;height:52px;border-radius:2px;cursor:pointer">â™œ</button>
+        <button onclick="vsePromoPick('b')" style="font-size:2.2rem;background:none;border:1px solid #6b4f1a;color:#e8d080;width:52px;height:52px;border-radius:2px;cursor:pointer">â™</button>
+        <button onclick="vsePromoPick('n')" style="font-size:2.2rem;background:none;border:1px solid #6b4f1a;color:#e8d080;width:52px;height:52px;border-radius:2px;cursor:pointer">â™ž</button>
       </div>
     </div>
   </div>
   <div style="color:#3a2a08;font-size:0.6rem;letter-spacing:0.15em;margin-top:10px">
-    Flip board before New Game to change colour · White always moves first
+    Flip board before New Game to change colour Â· White always moves first
   </div>
 </div>
 <!-- LOCK OVERLAY -->
@@ -1054,7 +1054,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
   0%,100% { box-shadow: 0 0 12px rgba(0,200,180,.25); }
   50%      { box-shadow: 0 0 22px rgba(0,255,200,.45); }
 }
-/* ── Metal-detector / thermometer classifier ───────────────── */
+/* â”€â”€ Metal-detector / thermometer classifier â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 #gp-metal-wrap {
   display: flex;
   flex-direction: column;
@@ -1203,7 +1203,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
       <i class="fa-solid fa-fingerprint text-cyan-400 text-xl"></i>
       <div>
         <div class="font-bold text-cyan-200 tracking-wide" style="font-family:Consolas,monospace">Source Signature</div>
-        <div class="text-xs text-cyan-800">Metal-detector style · 3 × 10 min controlled reads</div>
+        <div class="text-xs text-cyan-800">Metal-detector style Â· 3 Ã— 10 min controlled reads</div>
       </div>
     </div>
     <button onclick="toggleSourceSig()" class="text-cyan-700 hover:text-cyan-300 w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/30 transition-colors">
@@ -1215,7 +1215,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
     <div class="text-xs text-cyan-700 uppercase tracking-widest font-bold">
   Independent reference samples (10 min each)
 </div>
-    <input id="ssig-name" type="text" placeholder="e.g. Cs-137 check source, background, X-ray unit…"
+    <input id="ssig-name" type="text" placeholder="e.g. Cs-137 check source, background, X-ray unitâ€¦"
       class="w-full text-sm px-3 py-2 rounded-lg outline-none"
       style="background:#041210;color:#a7f3ec;border:1px solid #0d5c54;font-family:Consolas,monospace"
       oninput="SSIG.onNameInput()">
@@ -1254,7 +1254,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
         <span class="text-xs text-cyan-700 font-bold uppercase tracking-widest">Status</span>
         <span id="ssig-live-dot" class="w-2 h-2 rounded-full bg-gray-700"></span>
       </div>
-      <div id="ssig-status-text" class="text-sm font-mono text-cyan-300">Idle — declare a source and start.</div>
+      <div id="ssig-status-text" class="text-sm font-mono text-cyan-300">Idle â€” declare a source and start.</div>
       <div id="ssig-progress-wrap" class="mt-3 hidden">
         <div class="flex justify-between text-xs text-cyan-800 mb-1">
           <span id="ssig-progress-label">Reading 1 / 3</span>
@@ -1268,12 +1268,12 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
     <!-- Current reading live stats -->
     <div id="ssig-live-stats" class="grid grid-cols-3 gap-2 hidden">
       <div class="rounded-lg p-2 text-center" style="background:#041210;border:1px solid #0d3a34">
-        <div class="text-xs text-cyan-800">µSv/h mean</div>
-        <div id="ssig-live-mu" class="font-mono text-cyan-300 text-sm">—</div>
+        <div class="text-xs text-cyan-800">ÂµSv/h mean</div>
+        <div id="ssig-live-mu" class="font-mono text-cyan-300 text-sm">â€”</div>
       </div>
       <div class="rounded-lg p-2 text-center" style="background:#041210;border:1px solid #0d3a34">
         <div class="text-xs text-cyan-800">CPS mean</div>
-        <div id="ssig-live-cps" class="font-mono text-amber-400 text-sm">—</div>
+        <div id="ssig-live-cps" class="font-mono text-amber-400 text-sm">â€”</div>
       </div>
       <div class="rounded-lg p-2 text-center" style="background:#041210;border:1px solid #0d3a34">
         <div class="text-xs text-cyan-800">Samples</div>
@@ -1284,9 +1284,9 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
     <div>
       <div class="text-xs text-cyan-700 uppercase tracking-widest font-bold mb-2">Time-weighted readings (10 min each)</div>
       <div id="ssig-slots" class="space-y-2">
-        <div class="ssig-slot rounded-lg px-3 py-2 font-mono text-xs" style="background:#041210;border:1px solid #1a2a28;color:#444" data-slot="1">① Waiting…</div>
-        <div class="ssig-slot rounded-lg px-3 py-2 font-mono text-xs" style="background:#041210;border:1px solid #1a2a28;color:#444" data-slot="2">② Waiting…</div>
-        <div class="ssig-slot rounded-lg px-3 py-2 font-mono text-xs" style="background:#041210;border:1px solid #1a2a28;color:#444" data-slot="3">③ Waiting…</div>
+        <div class="ssig-slot rounded-lg px-3 py-2 font-mono text-xs" style="background:#041210;border:1px solid #1a2a28;color:#444" data-slot="1">â‘  Waitingâ€¦</div>
+        <div class="ssig-slot rounded-lg px-3 py-2 font-mono text-xs" style="background:#041210;border:1px solid #1a2a28;color:#444" data-slot="2">â‘¡ Waitingâ€¦</div>
+        <div class="ssig-slot rounded-lg px-3 py-2 font-mono text-xs" style="background:#041210;border:1px solid #1a2a28;color:#444" data-slot="3">â‘¢ Waitingâ€¦</div>
       </div>
     </div>
 <!-- Rolling Block Pattern Log -->
@@ -1296,12 +1296,12 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
         <span id="ssig-rolling-count" class="font-mono text-cyan-900" style="font-size:.5rem">0 events</span>
       </div>
       <div class="text-cyan-900 mb-2" style="font-size:.5rem;line-height:1.4">
-        Non-overlapping blocks W=2–20. Counts consecutive identical CPS blocks.<br>
-        Natural Poisson = no chains. Structured source = chains ≥2.
+        Non-overlapping blocks W=2â€“20. Counts consecutive identical CPS blocks.<br>
+        Natural Poisson = no chains. Structured source = chains â‰¥2.
       </div>
       <div id="ssig-rolling-slots" class="mb-2 overflow-y-auto" style="max-height:72px;font-size:.52rem;font-family:Consolas,monospace"></div>
       <div id="ssig-rolling-log" class="overflow-y-auto" style="max-height:90px;font-size:.48rem;font-family:Consolas,monospace">
-        <div style="color:#0a3028;font-style:italic">Waiting for sample data…</div>
+        <div style="color:#0a3028;font-style:italic">Waiting for sample dataâ€¦</div>
       </div>
     </div>
     
@@ -1329,7 +1329,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
     </div>
   </div>
   <div class="flex-shrink-0 px-4 py-3 border-t text-xs text-cyan-900 text-center" style="border-color:#0a2a28;background:rgba(0,0,0,.4)">
-    Statistical envelope only · not energy spectroscopy · GM event stream fingerprint
+    Statistical envelope only Â· not energy spectroscopy Â· GM event stream fingerprint
   </div>
   <!-- CTW SOURCE SIGNATURE MATCH DISPLAY -->
 <div id="gp-source-signature-display"
@@ -1386,7 +1386,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
          ">
     </div>
   </div>
-  <!-- µSv/h BAR -->
+  <!-- ÂµSv/h BAR -->
   <div id="gp-source-dr-bar"
        style="
          position:absolute;
@@ -1447,7 +1447,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
          text-align:center;
          font:700 .46rem Consolas,monospace;
          color:#00cccc;
-       ">µSv/h</div>
+       ">ÂµSv/h</div>
   <div id="gp-source-label-left"
        style="
          position:absolute;
@@ -1463,7 +1463,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
   <div id="gp-source-label-right"
        style="
          position:absolute;
-         right:48px;
+         right:96px;
          top:50%;
          transform:translateY(-50%);
          font:700 .55rem Consolas,monospace;
@@ -1484,80 +1484,104 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
        ">NO SOURCE MATCH</div>
 </div>
 </div>
-<div id="geiger-feed-panel" style="display:none;position:fixed;top:0;left:0;height:100vh;width:100vw;z-index:99999;flex-direction:column;background:#0a0a0a;font-family:Consolas,monospace;">  <!-- Header -->
+<div id="geiger-feed-panel" style="display:none;position:fixed;top:0;left:0;height:100vh;width:100vw;z-index:99999;flex-direction:column;background:#0a0a0a;font-family:Consolas,monospace;overflow:hidden;">  <!-- Header -->
   <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:#111;border-bottom:1px solid #00FF88;flex-shrink:0;">
     <div style="display:flex;align-items:center;gap:16px;">
       <span style="font-size:1rem;font-weight:700;color:#00FF88;letter-spacing:.1em;">CTW GEIGER SCOPE</span>
       <span id="gp-conn-status" style="font-size:.7rem;color:#FF4444;">DISCONNECTED</span>
-      <span style="font-size:.7rem;color:#555;">● G</span>
-      <span style="font-size:.7rem;color:#555;">● SDR</span>
+      <span style="font-size:.7rem;color:#555;">â— G</span>
+      <span style="font-size:.7rem;color:#555;">â— SDR</span>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;">
-      <button id="gp-siren-btn" onclick="_gp.openSirenConfig()" style="background:#0a0a1a;border:1px solid #8844FF;color:#8844FF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">🔊 SIREN</button>
-      <button id="gp-remote-btn" onclick="_gp.openRemoteConfig()" style="background:#0a1a1a;border:1px solid #00CCFF;color:#00CCFF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">🌐 CONNECT</button>
-<button id="gp-replay-btn" onclick="_gp.openReplay()" style="background:#0a1a0a;border:1px solid #00AA44;color:#00AA44;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⏵ REPLAY</button>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <button id="gp-siren-btn" onclick="_gp.openSirenConfig()" style="background:#0a0a1a;border:1px solid #8844FF;color:#8844FF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">ðŸ”Š SIREN</button>
+      <button id="gp-remote-btn" onclick="_gp.openRemoteConfig()" style="background:#0a1a1a;border:1px solid #00CCFF;color:#00CCFF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">ðŸŒ CONNECT</button>
+<button id="gp-replay-btn" onclick="_gp.openReplay()" style="background:#0a1a0a;border:1px solid #00AA44;color:#00AA44;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">âµ REPLAY</button>
 <select id="gp-replay-speed" title="Replay speed" style="background:#0a1a0a;border:1px solid #00AA44;color:#00AA44;font-size:.7rem;padding:2px 4px;">
-  <option value="0.5">0.5×</option>
-  <option value="1" selected>1×</option>
-  <option value="2">2×</option>
-  <option value="5">5×</option>
-  <option value="10">10×</option>
+  <option value="0.5">0.5Ã—</option>
+  <option value="1" selected>1Ã—</option>
+  <option value="2">2Ã—</option>
+  <option value="5">5Ã—</option>
+  <option value="10">10Ã—</option>
 </select>
-<button id="gp-pan-btn" onclick="_gp.togglePanorama()" style="background:#0a0a1a;border:1px solid #4444FF;color:#4444FF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⊞ PANORAMA</button>
-<button id="gp-fastproc-btn" onclick="_gp.openFastProcess()" style="background:#0a0a1a;border:1px solid #FFAA00;color:#FFAA00;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⏩ PROCESS ALL</button>
-<button onclick="_gp.openFastProcessExport()" style="background:#0a0a1a;border:1px solid #FF8800;color:#FF8800;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⏩ PROCESS + EXPORT</button>
-           <div style="display:flex;align-items:center;gap:6px;background:#0a0a1a;border:1px solid #FF44FF;padding:2px 8px;border-radius:4px;">
+<button id="gp-pan-btn" onclick="_gp.togglePanorama()" style="background:#0a0a1a;border:1px solid #4444FF;color:#4444FF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">âŠž PANORAMA</button>
+<button id="gp-fastproc-btn" onclick="_gp.openFastProcess()" style="background:#0a0a1a;border:1px solid #FFAA00;color:#FFAA00;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">â© PROCESS ALL</button>
+<button onclick="_gp.openFastProcessExport()" style="background:#0a0a1a;border:1px solid #FF8800;color:#FF8800;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">â© PROCESS + EXPORT</button>
+           
+      <button type="button" onclick="_gp.resumeLive()"
+  style="background:#0a0a1a;border:1px solid #4488FF;color:#4488FF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">
+  â RESUME LIVE
+</button>
+      <button onclick="_gp.exportLog()" style="background:#001a00;border:1px solid #00FF88;color:#00FF88;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">â¬‡ EXPORT LOG</button>
+      <button onclick="_gp.exportSigs()" style="background:#001a00;border:1px solid #00FFFF;color:#00FFFF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">â¬‡ EXPORT SIGS</button>
+      <button onclick="_gp.clearLog()" style="background:#1a0000;border:1px solid #FF4444;color:#FF4444;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">âœ• CLEAR LOG</button>
+      <a href="/downloads/fs5000_serial.py" download style="background:#001100;border:1px solid #00FF41;color:#00FF41;cursor:pointer;padding:2px 6px;font-family:Consolas,monospace;font-size:.55rem;text-decoration:none;">â¬‡ fs5000</a>
+      <button id="gp-rec-btn" onclick="_gp.toggleRecord()" style="background:#1a0000;border:1px solid #FF4444;color:#FF4444;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">âº RECORD</button>
+      <button id="gp-alarm-btn" onclick="_gp.toggleAlarm()" style="background:#0a0a0a;border:1px solid #333;color:#555;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">ðŸ”‡ ALARM</button>
+      <button type="button" onclick="toggleGeigerPanel()" title="Close Geiger Scope"
+        style="background:#1a0000;border:1px solid #FF4444;color:#FF4444;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;margin-left:auto;flex-shrink:0;">âœ• CLOSE</button>
+    
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;box-sizing:border-box;">
+      <div style="display:flex;align-items:center;gap:6px;background:#0a0a1a;border:1px solid #FF44FF;padding:2px 8px;border-radius:4px;">
         <span style="font-family:Consolas,monospace;font-size:.65rem;color:#FF44FF;">CPS WIN</span>
         <input type="range" id="gp-cps-win" min="1" max="60" value="60" step="1"
           style="width:80px;cursor:pointer;"
           oninput="var v=+this.value;_gp._cpsWindow=v;document.getElementById('gp-cps-win-val').textContent=v+'s';document.getElementById('gp-cps-win-num').value=v">
-<label style="color:#88FFCC;font-size:.7rem;margin-left:8px;">µSv win (min)</label>
+<label style="color:#88FFCC;font-size:.7rem;margin-left:8px;">ÂµSv win (sec)</label>
 <input type="range" id="gp-usv-win" min="1" max="60" value="5"
        oninput="_gp.setUsvWindow(this.value)" style="vertical-align:middle;width:100px;">
 <input type="number" id="gp-usv-win-num" min="1" max="60" value="5"
        onchange="_gp.setUsvWindow(this.value)"
-       style="width:3rem;background:#000;color:#88FFCC;border:1px solid #044;font-size:.7rem;">
+       style="width:3rem;background:#000;color:#88FFCC;border:1px solid #044;font-size:.7rem;"><span id="gp-usv-win-unit" style="color:#88FFCC;font-size:.65rem;margin-left:2px;">sec</span>
 <select id="gp-usv-model" onchange="_gp.setUsvModel(this.value)"
   style="background:#001a12;color:#88FFCC;border:1px solid #0a4;font-size:.65rem;margin-left:4px;max-width:9rem;">
-  <option value="m4011">M4011 (151 CPM/µSv/h)</option>
-  <option value="sbm20">SBM-20 (0.0057 µSv/h/CPM)</option>
-  <option value="lnd712">LND-712 (~100 CPM/µSv/h + 90µs)</option>
+  <option value="m4011">M4011 (151 CPM/ÂµSv/h)</option>
+  <option value="sbm20">SBM-20 (0.0057 ÂµSv/h/CPM)</option>
+  <option value="lnd712">LND-712 (~100 CPM/ÂµSv/h + 90Âµs)</option>
   <option value="fast_slow">FAST/SLOW 60s/5s</option>
   <option value="firmware">Firmware dr</option>
-</select>
+</select><span id="gp-usv-model-totals" style="color:#668866;font-size:.55rem;margin-left:6px;max-width:28rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle;"></span>
+<label style="color:#88FFCC;font-size:.65rem;margin-left:6px;cursor:pointer;white-space:nowrap;">
+  <input type="checkbox" id="gp-usv-session-cum" onchange="_gp.setUsvSessionCum(this.checked)"
+    style="vertical-align:middle;"> full timeline Î£
+</label>
+
 
 
         <span id="gp-cps-win-val" style="font-family:Consolas,monospace;font-size:.65rem;color:#FF44FF;min-width:28px;">60s</span>
         <input type="number" id="gp-cps-win-num" min="1" max="60" value="60"
           style="width:40px;background:#0a0a1a;border:1px solid #FF44FF;color:#FF44FF;font-family:Consolas,monospace;font-size:.65rem;padding:1px 3px;text-align:center;"
           oninput="var v=Math.min(60,Math.max(1,+this.value||60));_gp._cpsWindow=v;document.getElementById('gp-cps-win').value=v;document.getElementById('gp-cps-win-val').textContent=v+'s'">
+<span id="gp-graph-toggles" style="margin-left:10px;display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:.65rem;font-family:Consolas,monospace;">
+  <label style="color:#4ade80;cursor:pointer;white-space:nowrap;" title="ÂµSv/h waveform">
+    <input type="checkbox" id="gp-tog-dr" checked onchange="_gp.setGraphLayer('dr',this.checked)"> ÂµSv/h
+  </label>
+  <label style="color:#e879f9;cursor:pointer;white-space:nowrap;" title="CPS line">
+    <input type="checkbox" id="gp-tog-cps" checked onchange="_gp.setGraphLayer('cps',this.checked)"> CPS
+  </label>
+  <label style="color:#ffaa00;cursor:pointer;white-space:nowrap;" title="CPS bars">
+    <input type="checkbox" id="gp-tog-bars" checked onchange="_gp.setGraphLayer('bars',this.checked)"> bars
+  </label>
+  <label style="color:#88FFCC;cursor:pointer;white-space:nowrap;" title="Î£ÂµSv rolling / timeline">
+    <input type="checkbox" id="gp-tog-usv" checked onchange="_gp.setGraphLayer('usv',this.checked)"> Î£ÂµSv
+  </label>
+</span>
+
       </div>
-      <button type="button" onclick="_gp.resumeLive()"
-  style="background:#0a0a1a;border:1px solid #4488FF;color:#4488FF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">
-  ⏏ RESUME LIVE
-</button>
-      <button onclick="_gp.exportLog()" style="background:#001a00;border:1px solid #00FF88;color:#00FF88;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⬇ EXPORT LOG</button>
-      <button onclick="_gp.exportSigs()" style="background:#001a00;border:1px solid #00FFFF;color:#00FFFF;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⬇ EXPORT SIGS</button>
-      <button onclick="_gp.clearLog()" style="background:#1a0000;border:1px solid #FF4444;color:#FF4444;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">✕ CLEAR LOG</button>
-      <a href="/downloads/fs5000_serial.py" download style="background:#001100;border:1px solid #00FF41;color:#00FF41;cursor:pointer;padding:2px 6px;font-family:Consolas,monospace;font-size:.55rem;text-decoration:none;">⬇ fs5000</a>
-      <button id="gp-rec-btn" onclick="_gp.toggleRecord()" style="background:#1a0000;border:1px solid #FF4444;color:#FF4444;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">⏺ RECORD</button>
-      <button id="gp-alarm-btn" onclick="_gp.toggleAlarm()" style="background:#0a0a0a;border:1px solid #333;color:#555;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;">🔇 ALARM</button>
-      <button type="button" onclick="toggleGeigerPanel()" title="Close Geiger Scope"
-        style="background:#1a0000;border:1px solid #FF4444;color:#FF4444;cursor:pointer;padding:4px 12px;font-family:Consolas,monospace;font-size:.75rem;margin-left:auto;flex-shrink:0;">✕ CLOSE</button>
+    </div>
     </div>
   </div>
   <!-- Metal-detector meter: compact under header -->
   <div id="gp-md-panel" style="flex-shrink:0;">
     <div id="gp-md-title" onclick="_gp._mdToggleCollapse()" title="Collapse / expand">
-      <span>◎</span> SOURCE SIGNATURE METER
+      <span>â—Ž</span> SOURCE SIGNATURE METER
       <span style="margin-left:8px;font-size:.48rem;color:#2a5a2a;font-weight:400;">
-        LIVE · 60s CPS vs SSIG floor / μ / peak
+        LIVE Â· 60s CPS vs SSIG floor / Î¼ / peak
       </span>
-      <span class="gp-md-chev" id="gp-md-chev">▾</span>
+      <span class="gp-md-chev" id="gp-md-chev">â–¾</span>
     </div>
     <div id="gp-md-body">
       <div id="gp-md-meter"><canvas id="gp-md-canvas"></canvas></div>
-      <div id="gp-md-status">Live — waiting for graph + SSIG library.</div>
+      <div id="gp-md-status">Live â€” waiting for graph + SSIG library.</div>
     </div>
     <div id="gp-md-lock-banner" style="display:none;"></div>
     <div id="gp-md-btns" style="display:none;"></div>
@@ -1580,16 +1604,16 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
          aria-label="energy sources"></div>
   </div>
   <div id="gp-metal-scale-lbl">
-    <span id="gp-metal-lo">—</span>
-    <span id="gp-metal-mid">—</span>
-    <span id="gp-metal-hi">—</span>
+    <span id="gp-metal-lo">â€”</span>
+    <span id="gp-metal-mid">â€”</span>
+    <span id="gp-metal-hi">â€”</span>
   </div>
   <div id="gp-metal-readout">no sources</div>
 </div>
   <!-- CTW SOURCE SIGNATURE MATCH DISPLAY -->
         <div id="gp-left-panel" style="width:200px;flex-shrink:0;background:#0d0d0d;border-right:1px solid #222;overflow-y:auto;padding:12px;">
       <div style="color:#444;font-size:.6rem;margin-bottom:6px;">LIVE READINGS</div>
-      <div style="color:#555;font-size:.6rem;">µSv/h</div>
+      <div style="color:#555;font-size:.6rem;">ÂµSv/h</div>
       <div id="gp-dr" style="font-size:2.2rem;font-weight:700;color:#00FF88;">-.----</div>
       <div style="color:#555;font-size:.6rem;margin-top:6px;">CPS</div>
       <div id="gp-cps" style="font-size:1.4rem;color:#FFAA00;">---</div>
@@ -1603,14 +1627,14 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
             <div style="border-top:1px solid #222;margin:8px 0;"></div>
       <div style="color:#444;font-size:.6rem;margin-bottom:2px;">INCLINE CPS TOTAL</div>
       <div style="color:#555;font-size:.55rem;margin-bottom:4px;">
-        0 → peak → −10% · window = <span id="gp-incl-win-lbl">60</span>s
+        0 â†’ peak â†’ âˆ’10% Â· window = <span id="gp-incl-win-lbl">60</span>s
       </div>
-      <div id="gp-incl-current" style="font-size:.85rem;font-weight:700;color:#FF44FF;">—</div>
+      <div id="gp-incl-current" style="font-size:.85rem;font-weight:700;color:#FF44FF;">â€”</div>
       <div style="color:#555;font-size:.55rem;margin-top:4px;">LAST EVENTS</div>
       <div id="gp-incl-log" style="font-family:Consolas,monospace;font-size:.55rem;max-height:90px;overflow-y:auto;color:#aa66aa;"></div>
-      <div style="color:#555;font-size:.6rem;margin-top:4px;">DEVICE DOSE (µSv total)</div>
+      <div style="color:#555;font-size:.6rem;margin-top:4px;">DEVICE DOSE (ÂµSv total)</div>
       <div id="gp-dose" style="font-size:.9rem;color:#8888FF;">-.----</div>
-      <div style="color:#555;font-size:.6rem;margin-top:4px;">SESSION DOSE (µSv)</div>
+      <div style="color:#555;font-size:.6rem;margin-top:4px;">SESSION DOSE (ÂµSv)</div>
       <div id="gp-session-dose" style="font-size:.9rem;color:#AAAAFF;">-.----</div>
       <div style="color:#555;font-size:.6rem;margin-top:4px;">STATE</div>
       <div id="gp-state" style="font-size:.8rem;font-weight:700;color:#fff;">---</div>
@@ -1620,10 +1644,10 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
       <div id="gp-cps-dist" style="font-family:Consolas,monospace;font-size:.6rem;"></div>
       <div style="border-top:1px solid #222;margin:8px 0;"></div>
       <div style="color:#444;font-size:.6rem;margin-bottom:4px;">THRESHOLDS</div>
-      <div style="font-size:.6rem;color:#556;">■ &lt;0.10 FLAT</div>
-      <div style="font-size:.6rem;color:#AA9;">■ 0.10–0.15 LOW</div>
-      <div style="font-size:.6rem;color:#FA8;">■ 0.15–.20 ELEVATED</div>
-      <div style="font-size:.6rem;color:#F44;">■ ≥0.20 SPIKE</div>
+      <div style="font-size:.6rem;color:#556;">â–  &lt;0.10 FLAT</div>
+      <div style="font-size:.6rem;color:#AA9;">â–  0.10â€“0.15 LOW</div>
+      <div style="font-size:.6rem;color:#FA8;">â–  0.15â€“.20 ELEVATED</div>
+      <div style="font-size:.6rem;color:#F44;">â–  â‰¥0.20 SPIKE</div>
     </div>
     <!-- Peak log panel -->
 <div id="gp-sig-panel" style="width:180px;flex-shrink:0;background:#0a0a0a;border-right:1px solid #222;display:flex;flex-direction:column;overflow:hidden;">      <!-- Signature ledger (top) -->
@@ -1648,7 +1672,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
       <div style="background:#110000;border-bottom:1px solid #FF2222;padding:6px;flex-shrink:0;">
         <div style="color:#663333;font-size:.6rem;font-weight:700;">REALTIME</div>
         <div id="gp-realtime" style="font-size:1.6rem;font-weight:700;color:#FF2222;">-.----</div>
-        <div style="color:#882222;font-size:.6rem;">µSv/h</div>
+        <div style="color:#882222;font-size:.6rem;">ÂµSv/h</div>
       </div>
       <!-- Peak log -->
       <div style="color:#444;font-size:.6rem;padding:6px 8px 2px;flex-shrink:0;">PEAK LOG</div>
@@ -1696,7 +1720,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
        font-size:.52rem;
        margin-bottom:4px;
   ">
-    0.300 µSv/h
+    0.300 ÂµSv/h
   </div>
   <div style="display:flex;justify-content:space-between;gap:8px;">
     <span style="color:#555;font-size:.52rem;">SECOND</span>
@@ -1730,7 +1754,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
        font-size:.45rem;
        line-height:1.2;
   ">
-    J321 · 153.8 CPM/µSv/h
+    J321 Â· 153.8 CPM/ÂµSv/h
   </div>
   <!-- ROLLING MONITOR -->
   <div style="
@@ -1751,7 +1775,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
        margin-top:3px;
        line-height:1.25;
   ">
-    CONTINUOUS WINDOWS · &gt; MAX BACKGROUND
+    CONTINUOUS WINDOWS Â· &gt; MAX BACKGROUND
   </div>
   <!-- CURRENT ROLLING VALUES -->
   <div style="
@@ -1858,7 +1882,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
        style="
          position:absolute;
          top:8px;
-         right:8px;
+         right:104px;
          z-index:5;
          min-width:108px;
          padding:4px 7px;
@@ -1877,7 +1901,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
       -.----
     </div>
     <div style="font-size:.5rem;color:#336b4f;">
-      µSv/h
+      ÂµSv/h
     </div>
   </div>
 </div>
@@ -1906,12 +1930,12 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
   <!-- SIREN CONFIG MODAL -->
   <div id="gp-siren-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:999999;align-items:center;justify-content:center;">
     <div style="background:#0a0a0a;border:1px solid #8844FF;border-radius:8px;padding:20px;width:420px;max-height:90vh;overflow-y:auto;font-family:Consolas,monospace;color:#aaa;">
-      <div style="color:#8844FF;font-weight:700;margin-bottom:12px;font-size:.85rem;">🔊 SIREN CONFIGURATION</div>
-      <!-- ═══ LEVEL 1 ═══ -->
+      <div style="color:#8844FF;font-weight:700;margin-bottom:12px;font-size:.85rem;">ðŸ”Š SIREN CONFIGURATION</div>
+      <!-- â•â•â• LEVEL 1 â•â•â• -->
       <div style="border:1px solid #331111;border-radius:6px;padding:10px;margin-bottom:10px;">
-        <div style="color:#FF4444;font-weight:700;font-size:.7rem;margin-bottom:8px;">LEVEL 1 — STEAM SIREN</div>
+        <div style="color:#FF4444;font-weight:700;font-size:.7rem;margin-bottom:8px;">LEVEL 1 â€” STEAM SIREN</div>
         <div style="margin-bottom:8px;">
-          <div style="color:#555;font-size:.65rem;margin-bottom:4px;">THRESHOLD (µSv/h)</div>
+          <div style="color:#555;font-size:.65rem;margin-bottom:4px;">THRESHOLD (ÂµSv/h)</div>
           <input id="gp-siren-thresh1" type="number" step="0.01" value="0.18" style="background:#111;border:1px solid #444;color:#fff;padding:4px 8px;font-family:Consolas,monospace;width:100px;">
           <span style="color:#555;font-size:.65rem;margin-left:8px;">Current: <span id="gp-siren-t1-display">0.20</span></span>
         </div>
@@ -1943,13 +1967,13 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
           <option value="/audio/R2 5.wav">R2 5</option>
           <option value="/audio/R2 6.wav">R2 6</option>
           <option value="/audio/R2 7.wav">R2 7</option>
-          <option value="__custom__">📂 Custom file…</option>
+          <option value="__custom__">ðŸ“‚ Custom fileâ€¦</option>
         </select>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <button type="button" onclick="_gp._sirenTestL1()" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">▶ TEST</button>
-          <button type="button" onclick="_gp._sirenLoadFile(1)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">📂 LOAD</button>
+          <button type="button" onclick="_gp._sirenTestL1()" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">â–¶ TEST</button>
+          <button type="button" onclick="_gp._sirenLoadFile(1)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">ðŸ“‚ LOAD</button>
           <span id="gp-siren-file1" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">661steamsiren.wav</span>
-          <button type="button" id="gp-siren-clear1" onclick="_gp._sirenClear(1)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">✕</button>
+          <button type="button" id="gp-siren-clear1" onclick="_gp._sirenClear(1)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">âœ•</button>
         </div>
                 <div style="margin-top:10px;margin-bottom:4px;color:#555;font-size:.65rem;">OVERLAY IMAGE</div>
         <select id="gp-siren-img1"
@@ -1958,13 +1982,13 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
           <option value="alarm1.webp" selected>alarm1.webp (default)</option>
           <option value="mayday.webp">mayday.webp</option>
           <option value="alarm3.jpeg">alarm3.jpeg</option>
-          <option value="__custom__">📂 Custom PNG/JPEG/GIF/WebP…</option>
-          <option value="__none__">— None —</option>
+          <option value="__custom__">ðŸ“‚ Custom PNG/JPEG/GIF/WebPâ€¦</option>
+          <option value="__none__">â€” None â€”</option>
         </select>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
-          <button type="button" onclick="_gp._sirenLoadImage(1)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">📂 LOAD IMAGE</button>
+          <button type="button" onclick="_gp._sirenLoadImage(1)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">ðŸ“‚ LOAD IMAGE</button>
           <span id="gp-siren-imgname1" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">alarm1.webp</span>
-          <button type="button" id="gp-siren-imgclear1" onclick="_gp._sirenClearImage(1)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">✕</button>
+          <button type="button" id="gp-siren-imgclear1" onclick="_gp._sirenClearImage(1)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">âœ•</button>
         </div>
         <div style="margin-bottom:6px;">
           <div style="color:#555;font-size:.6rem;margin-bottom:2px;">OPACITY <span id="gp-siren-imgop1-val">55%</span></div>
@@ -1985,11 +2009,11 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
             oninput="_gp._sirenImgSlider(1,'pulse',this.value)">
         </div>
       </div>
-      <!-- ═══ LEVEL 2 ═══ -->
+      <!-- â•â•â• LEVEL 2 â•â•â• -->
       <div style="border:1px solid #332200;border-radius:6px;padding:10px;margin-bottom:10px;">
-        <div style="color:#FFAA00;font-weight:700;font-size:.7rem;margin-bottom:8px;">LEVEL 2 — ACTION STATIONS</div>
+        <div style="color:#FFAA00;font-weight:700;font-size:.7rem;margin-bottom:8px;">LEVEL 2 â€” ACTION STATIONS</div>
         <div style="margin-bottom:8px;">
-          <div style="color:#555;font-size:.65rem;margin-bottom:4px;">THRESHOLD (µSv/h)</div>
+          <div style="color:#555;font-size:.65rem;margin-bottom:4px;">THRESHOLD (ÂµSv/h)</div>
           <input id="gp-siren-thresh2" type="number" step="0.01" value="0.23" style="background:#111;border:1px solid #444;color:#fff;padding:4px 8px;font-family:Consolas,monospace;width:100px;">
           <span style="color:#555;font-size:.65rem;margin-left:8px;">Current: <span id="gp-siren-t2-display">0.27</span></span>
         </div>
@@ -2022,13 +2046,13 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
           <option value="/audio/R2 5.wav">R2 5</option>
           <option value="/audio/R2 6.wav">R2 6</option>
           <option value="/audio/R2 7.wav">R2 7</option>
-          <option value="__custom__">📂 Custom file…</option>
+          <option value="__custom__">ðŸ“‚ Custom fileâ€¦</option>
         </select>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <button type="button" onclick="_gp._sirenTestL2()" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">▶ TEST</button>
-          <button type="button" onclick="_gp._sirenLoadFile(2)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">📂 LOAD</button>
+          <button type="button" onclick="_gp._sirenTestL2()" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">â–¶ TEST</button>
+          <button type="button" onclick="_gp._sirenLoadFile(2)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">ðŸ“‚ LOAD</button>
           <span id="gp-siren-file2" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">mayday.mp3</span>
-          <button type="button" id="gp-siren-clear2" onclick="_gp._sirenClear(2)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">✕</button>
+          <button type="button" id="gp-siren-clear2" onclick="_gp._sirenClear(2)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">âœ•</button>
         </div>
                 <div style="margin-top:10px;margin-bottom:4px;color:#555;font-size:.65rem;">OVERLAY IMAGE</div>
         <select id="gp-siren-img2"
@@ -2037,13 +2061,13 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
           <option value="alarm1.webp">alarm1.webp</option>
           <option value="mayday.webp" selected>mayday.webp (default)</option>
           <option value="alarm3.jpeg">alarm3.jpeg</option>
-          <option value="__custom__">📂 Custom PNG/JPEG/GIF…</option>
-          <option value="__none__">— None —</option>
+          <option value="__custom__">ðŸ“‚ Custom PNG/JPEG/GIFâ€¦</option>
+          <option value="__none__">â€” None â€”</option>
         </select>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
-          <button type="button" onclick="_gp._sirenLoadImage(2)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">📂 LOAD IMAGE</button>
+          <button type="button" onclick="_gp._sirenLoadImage(2)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">ðŸ“‚ LOAD IMAGE</button>
           <span id="gp-siren-imgname2" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">mayday.webp</span>
-          <button type="button" id="gp-siren-imgclear2" onclick="_gp._sirenClearImage(2)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">✕</button>
+          <button type="button" id="gp-siren-imgclear2" onclick="_gp._sirenClearImage(2)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">âœ•</button>
         </div>
         <div style="margin-bottom:6px;">
           <div style="color:#555;font-size:.6rem;margin-bottom:2px;">OPACITY <span id="gp-siren-imgop2-val">55%</span></div>
@@ -2064,11 +2088,11 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
             oninput="_gp._sirenImgSlider(2,'pulse',this.value)">
         </div>
       </div>
-      <!-- ═══ LEVEL 3 ═══ -->
+      <!-- â•â•â• LEVEL 3 â•â•â• -->
       <div style="border:1px solid #330033;border-radius:6px;padding:10px;margin-bottom:14px;">
-        <div style="color:#FF00FF;font-weight:700;font-size:.7rem;margin-bottom:8px;">LEVEL 3 — CHEMICAL ALARM</div>
+        <div style="color:#FF00FF;font-weight:700;font-size:.7rem;margin-bottom:8px;">LEVEL 3 â€” CHEMICAL ALARM</div>
         <div style="margin-bottom:8px;">
-          <div style="color:#555;font-size:.65rem;margin-bottom:4px;">THRESHOLD (µSv/h)</div>
+          <div style="color:#555;font-size:.65rem;margin-bottom:4px;">THRESHOLD (ÂµSv/h)</div>
           <input id="gp-siren-thresh3" type="number" step="0.01" value="0.27" style="background:#111;border:1px solid #444;color:#fff;padding:4px 8px;font-family:Consolas,monospace;width:100px;">
           <span style="color:#555;font-size:.65rem;margin-left:8px;">Current: <span id="gp-siren-t3-display">0.33</span></span>
         </div>
@@ -2101,13 +2125,13 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
           <option value="/audio/R2 5.wav">R2 5</option>
           <option value="/audio/R2 6.wav">R2 6</option>
           <option value="/audio/R2 7.wav">R2 7</option>
-          <option value="__custom__">📂 Custom file…</option>
+          <option value="__custom__">ðŸ“‚ Custom fileâ€¦</option>
         </select>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <button type="button" onclick="_gp._sirenTestL3()" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">▶ TEST</button>
-          <button type="button" onclick="_gp._sirenLoadFile(3)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">📂 LOAD</button>
+          <button type="button" onclick="_gp._sirenTestL3()" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">â–¶ TEST</button>
+          <button type="button" onclick="_gp._sirenLoadFile(3)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">ðŸ“‚ LOAD</button>
           <span id="gp-siren-file3" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">chemalm.wav</span>
-          <button type="button" id="gp-siren-clear3" onclick="_gp._sirenClear(3)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">✕</button>
+          <button type="button" id="gp-siren-clear3" onclick="_gp._sirenClear(3)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">âœ•</button>
         </div>
                 <div style="margin-top:10px;margin-bottom:4px;color:#555;font-size:.65rem;">OVERLAY IMAGE</div>
         <select id="gp-siren-img3"
@@ -2116,13 +2140,13 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
           <option value="alarm1.webp">alarm1.webp</option>
           <option value="mayday.webp">mayday.webp</option>
           <option value="alarm3.jpeg" selected>alarm3.jpeg (default)</option>
-          <option value="__custom__">📂 Custom PNG/JPEG/GIF…</option>
-          <option value="__none__">— None —</option>
+          <option value="__custom__">ðŸ“‚ Custom PNG/JPEG/GIFâ€¦</option>
+          <option value="__none__">â€” None â€”</option>
         </select>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
-          <button type="button" onclick="_gp._sirenLoadImage(3)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">📂 LOAD IMAGE</button>
+          <button type="button" onclick="_gp._sirenLoadImage(3)" style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">ðŸ“‚ LOAD IMAGE</button>
           <span id="gp-siren-imgname3" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">alarm3.jpeg</span>
-          <button type="button" id="gp-siren-imgclear3" onclick="_gp._sirenClearImage(3)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">✕</button>
+          <button type="button" id="gp-siren-imgclear3" onclick="_gp._sirenClearImage(3)" style="display:none;background:#1a0000;border:1px solid #FF4444;color:#FF4444;padding:3px 6px;cursor:pointer;font-family:Consolas,monospace;font-size:.6rem;">âœ•</button>
         </div>
         <div style="margin-bottom:6px;">
           <div style="color:#555;font-size:.6rem;margin-bottom:2px;">OPACITY <span id="gp-siren-imgop3-val">55%</span></div>
@@ -2143,9 +2167,9 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
             oninput="_gp._sirenImgSlider(3,'pulse',this.value)">
         </div>
       </div>
-      <!-- ═══ CPS SOUNDS ═══ -->
+      <!-- â•â•â• CPS SOUNDS â•â•â• -->
       <div style="border:1px solid #003333;border-radius:6px;padding:10px;margin-bottom:14px;">
-        <div style="color:#00FFFF;font-weight:700;font-size:.7rem;margin-bottom:8px;">⚡ CPS EVENT SOUNDS</div>
+        <div style="color:#00FFFF;font-weight:700;font-size:.7rem;margin-bottom:8px;">âš¡ CPS EVENT SOUNDS</div>
         <div style="color:#555;font-size:.6rem;margin-bottom:8px;">Assign a sound to each CPS count level. 11+ share one sound.</div>
         <!-- CPS selector dropdown -->
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
@@ -2172,7 +2196,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
           <select id="gp-cps-sound-select"
             style="background:#111;border:1px solid #444;color:#ccc;padding:3px 6px;font-family:Consolas,monospace;font-size:.65rem;cursor:pointer;width:100%;"
             onchange="_gp._cpsSoundFileChanged()">
-            <optgroup label="── Sci-Fi / Lasers ──">
+            <optgroup label="â”€â”€ Sci-Fi / Lasers â”€â”€">
               <option value="/audio/Explosion Large 2.wav">Explosion Large 2</option>
               <option value="/audio/Imperial Laser 1.wav">Imperial Laser 1</option>
               <option value="/audio/Imperial Laser 2.wav">Imperial Laser 2</option>
@@ -2190,7 +2214,7 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
               <option value="/audio/starwarslaser.mp3">Star Wars Laser</option>
               <option value="/audio/StarWarsLaser.mp3">StarWarsLaser (mp3)</option>
             </optgroup>
-            <optgroup label="── Guns ──">
+            <optgroup label="â”€â”€ Guns â”€â”€">
               <option value="/audio/Besa_Shot_Body-007.ogg">Besa Shot Body</option>
               <option value="/audio/Besa_Shot_HiFi-002.ogg">Besa Shot HiFi</option>
               <option value="/audio/FG42_Shot_Body-008.ogg">FG42 Shot Body</option>
@@ -2199,13 +2223,13 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
               <option value="/audio/AK47ST_Fire01.wav">AK47 Fire</option>
               <option value="/audio/type99_mn.wav">Type 99</option>
             </optgroup>
-            <option value="__custom__">📂 Use custom file…</option>
+            <option value="__custom__">ðŸ“‚ Use custom fileâ€¦</option>
           </select>
-          <!-- custom file row — shown only when __custom__ selected -->
+          <!-- custom file row â€” shown only when __custom__ selected -->
           <div id="gp-cps-custom-row" style="display:none;flex-direction:column;gap:4px;">
             <div style="display:flex;gap:8px;align-items:center;">
               <button type="button" onclick="_gp._cpsLoadCustomFile()"
-                style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">📂 LOAD FILE</button>
+                style="background:#1a001a;border:1px solid #8844FF;color:#8844FF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">ðŸ“‚ LOAD FILE</button>
               <span id="gp-cps-custom-filename" style="color:#444;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;">no file loaded</span>
             </div>
           </div>
@@ -2217,8 +2241,8 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
           </div>
           <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
             <button type="button" onclick="_gp._cpsTestSound()"
-              style="background:#1a001a;border:1px solid #00FFFF;color:#00FFFF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">▶ TEST</button>
-            <span id="gp-cps-current-label" style="color:#555;font-size:.6rem;">CPS 1 → Explosion Large 2</span>
+              style="background:#1a001a;border:1px solid #00FFFF;color:#00FFFF;padding:3px 8px;cursor:pointer;font-family:Consolas,monospace;font-size:.65rem;">â–¶ TEST</button>
+            <span id="gp-cps-current-label" style="color:#555;font-size:.6rem;">CPS 1 â†’ Explosion Large 2</span>
           </div>
         </div>
       </div>
@@ -2232,14 +2256,14 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
   <!-- REMOTE CONNECT MODAL -->
   <div id="gp-remote-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:999999;align-items:center;justify-content:center;">
     <div style="background:#0a0a0a;border:1px solid #00CCFF;border-radius:8px;padding:20px;width:460px;font-family:Consolas,monospace;color:#aaa;">
-      <div style="color:#00CCFF;font-weight:700;margin-bottom:6px;font-size:.85rem;">🌐 CONNECT YOUR GEIGER SERVER</div>
-      <div style="color:#444;font-size:.6rem;margin-bottom:12px;line-height:1.5;">Run geiger_live_server.py locally, expose via ngrok, paste the WebSocket URL below. Your session is independent — does not affect other users.</div>
+      <div style="color:#00CCFF;font-weight:700;margin-bottom:6px;font-size:.85rem;">ðŸŒ CONNECT YOUR GEIGER SERVER</div>
+      <div style="color:#444;font-size:.6rem;margin-bottom:12px;line-height:1.5;">Run geiger_live_server.py locally, expose via ngrok, paste the WebSocket URL below. Your session is independent â€” does not affect other users.</div>
       <div style="margin-bottom:8px;">
         <div style="color:#555;font-size:.65rem;margin-bottom:4px;">WebSocket URL</div>
         <input id="gp-remote-url" type="text" placeholder="wss://your-id.ngrok-free.app" style="background:#111;border:1px solid #00CCFF;color:#fff;padding:6px 10px;font-family:Consolas,monospace;font-size:.7rem;width:100%;box-sizing:border-box;">
       </div>
       <div style="color:#333;font-size:.6rem;margin-bottom:12px;">
-        Setup: <span style="color:#555;">python geiger_live_server.py</span> → <span style="color:#555;">ngrok http 8765 --scheme ws</span>
+        Setup: <span style="color:#555;">python geiger_live_server.py</span> â†’ <span style="color:#555;">ngrok http 8765 --scheme ws</span>
       </div>
       <div id="gp-remote-status" style="font-size:.65rem;color:#444;margin-bottom:12px;min-height:16px;"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;">
@@ -2251,8 +2275,8 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
   </div>
   <input type="file" id="gp-replay-input" accept=".jsonl,.jsonl.gz,.gz" style="display:none;" onchange="_gp._replayFileSelected(this)">
   <div id="gp-replay-bar" style="display:none;position:absolute;bottom:0;left:0;right:0;height:32px;background:#050f05;border-top:1px solid #00AA44;align-items:center;gap:8px;padding:0 12px;font-family:Consolas,monospace;font-size:.65rem;color:#00AA44;z-index:10;">
-    <button id="gp-replay-playpause" onclick="_gp.replayToggle()" style="background:#0a1a0a;border:1px solid #00AA44;color:#00AA44;cursor:pointer;padding:2px 8px;font-family:Consolas,monospace;font-size:.65rem;">⏸ PAUSE</button>
-    <button onclick="_gp.replayStop()" style="background:#1a0000;border:1px solid #FF4444;color:#FF4444;cursor:pointer;padding:2px 8px;font-family:Consolas,monospace;font-size:.65rem;">⏹ STOP</button>
+    <button id="gp-replay-playpause" onclick="_gp.replayToggle()" style="background:#0a1a0a;border:1px solid #00AA44;color:#00AA44;cursor:pointer;padding:2px 8px;font-family:Consolas,monospace;font-size:.65rem;">â¸ PAUSE</button>
+    <button onclick="_gp.replayStop()" style="background:#1a0000;border:1px solid #FF4444;color:#FF4444;cursor:pointer;padding:2px 8px;font-family:Consolas,monospace;font-size:.65rem;">â¹ STOP</button>
     <select id="gp-replay-speed" onchange="_gp.replaySetSpeed(this.value)" style="background:#050f05;border:1px solid #00AA44;color:#00AA44;font-family:Consolas,monospace;font-size:.65rem;padding:2px 4px;">
       <option value="1">1x</option>
       <option value="2">2x</option>
@@ -2404,9 +2428,9 @@ aside::-webkit-scrollbar-thumb:hover { background:#333; }
   </div>
 </div>
 <script src="/chess.min.js"></script>
-<!-- ═══════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      BLOCK 1: CTW-BSC CIPHER ENGINE
-     ═══════════════════════════════════════════════ -->
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <script>
 const CTW_BSC = (() => {
   'use strict';
@@ -2478,11 +2502,11 @@ const CTW_BSC = (() => {
   return{encode,decode,validatePassphrase,VERSION_TAG};
 })();
 </script>
-<!-- ═══════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      BLOCK 2: OOB GUARD + SANITIZE + MAIN APP JS
-     ═══════════════════════════════════════════════ -->
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <script>
-// ── OOB GUARD ──────────────────────────────────────────────────────────────
+// â”€â”€ OOB GUARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const OOB = (() => {
   const B = Object.freeze({
     WS_MESSAGE:          65_536,
@@ -2581,7 +2605,7 @@ const OOB = (() => {
   selfCheck();
   return{B,guard,guardStr,guardMin,clamp,OOBViolation,...guards};
 })();
-// ── UNICODE SANITIZER + PSN REPORTER ──────────────────────────────────────
+// â”€â”€ UNICODE SANITIZER + PSN REPORTER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const SANITIZE = (() => {
   const BIDI_RE   = /[\u202a-\u202e\u2066-\u2069]/g;
   const ZW_RE     = /[\u200b-\u200d\ufeff]/g;
@@ -2614,7 +2638,7 @@ const SANITIZE = (() => {
     span.textContent=clean;
     return span;
   }
-  // ── Filename provenance check (client-side mirror of filename_provenance.py) ──
+  // â”€â”€ Filename provenance check (client-side mirror of filename_provenance.py) â”€â”€
   const DANGEROUS_FILENAME_CHARS = /[\u202a-\u202e\u2066-\u2069\u200b-\u200d\ufeff]/;
   const EXECUTABLE_EXTENSIONS   = new Set(['.exe','.com','.scr','.bat','.cmd','.vbs','.js','.ps1','.py','.sh','.elf','.dll','.so','.hta']);
   const RTLO_CHAR = '\u202e';
@@ -2655,7 +2679,7 @@ const SANITIZE = (() => {
     let safe=filename.replace(BIDI_RE,'').replace(ZW_RE,'');
     return{allowed:!blocked,safe,violations};
   }
-  // ── PSN self-check ──────────────────────────────────────────────────────
+  // â”€â”€ PSN self-check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function _psnSelfCheck(){
     try{
       // Test 1: RTLO stripped
@@ -2849,7 +2873,7 @@ function openCompose(){if(!requireAuth())return;const initials=document.getEleme
 function closeCompose(){document.getElementById('compose-modal').classList.add('hidden');composeParentId=null;document.getElementById('modal-text').placeholder="What's happening?!";}
 function updateCharCount(){const text=document.getElementById('modal-text').value;const rem=500-text.length;document.getElementById('char-count').textContent=rem;const pct=Math.max(0,text.length/500);const color=rem<0?'#ef4444':rem<50?'#f59e0b':'var(--blue)';document.getElementById('char-ring').style.strokeDashoffset=75.4-pct*75.4;document.getElementById('char-ring').style.stroke=color;document.getElementById('char-count').style.color=rem<50?color:'';}
 async function submitPost(){if(!me)return;const content=document.getElementById('modal-text').value.trim();if(!content&&mediaFiles.length===0)return;try{OOB.postContent(content);}catch(e){toast('Post too long.',true);return;}document.getElementById('modal-post-btn').disabled=true;try{const post=await api('POST','/api/posts',{content,parent_id:composeParentId||null});let failedUploads=0;for(const file of mediaFiles){try{await uploadMedia(post.id,file);}catch(e){failedUploads++;}}if(failedUploads)toast(`Post created, but ${failedUploads} file(s) failed to upload.`,true);if(!composeParentId){try{OOB.feedItems(feedData.length+1);}catch(e){feedData.shift();}feedData.unshift(post);document.getElementById('feed-list').prepend(buildPostCard(post));}closeCompose();if(!failedUploads)toast('Posted!');if(composeParentId&&currentPage==='thread')loadThread(composeParentId);}catch(e){toast(e.message,true);}document.getElementById('modal-post-btn').disabled=false;}
-// ── UPLOAD with filename provenance check ──────────────────────────────────
+// â”€â”€ UPLOAD with filename provenance check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function previewMedia(){
   const input=document.getElementById('media-input');
   const allFiles=Array.from(input.files);
@@ -2904,7 +2928,7 @@ async function sendDM() {
   btn.disabled = true;
   btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
   try {
-    // Encrypt in the browser only — never send plaintext or passphrase
+    // Encrypt in the browser only â€” never send plaintext or passphrase
     const plaintextBytes = new TextEncoder().encode(content);
     const ciphertext = await CTW_BSC.encode(plaintextBytes, pp);
     OOB.dmCiphertextSend(ciphertext);
@@ -2951,7 +2975,7 @@ async function startNewDM() {
   }
   const passErr = CTW_BSC.validatePassphrase(passphrase);
   if (passErr) { showNewDMError(passErr); return; }
-  // Cache passphrase locally only — never POST it
+  // Cache passphrase locally only â€” never POST it
   dmPassphraseCache[recipient] = passphrase;
   if (hint) {
     try { OOB.guardStr(hint, OOB.B.HINT, 'dm_hint'); } catch (e) {
@@ -3032,9 +3056,9 @@ if(me){const chessToggle=document.getElementById('ctwchess-toggle');if(chessTogg
   if(savedFont){document.getElementById('feed-list').style.fontFamily=savedFont;document.getElementById('font-picker').value=savedFont;}
   setTimeout(()=>GEIGER.probe(),2000);
 
-  // ── SSIG library sync: push any locally stored signatures to server ──
+  // â”€â”€ SSIG library sync: push any locally stored signatures to server â”€â”€
   // Runs once at startup if the user is logged in.
-  // Silent on all errors — never blocks the UI.
+  // Silent on all errors â€” never blocks the UI.
   setTimeout(async () => {
     try {
       if (!token && !localStorage.getItem('token')) return;
@@ -3078,9 +3102,9 @@ if(me){const chessToggle=document.getElementById('ctwchess-toggle');if(chessTogg
   }, 3500); // slight delay so session/token is fully restored first
 });
 </script>
-<!-- ═══════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      BLOCK 3: FIRESIDE READER JS
-     ═══════════════════════════════════════════════ -->
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <script>
 const FS = {
   open:false,fontSize:14,speaking:false,utterance:null,currentText:'',fireTimer:null,DOCS:{},
@@ -3121,7 +3145,7 @@ function runDetectors(wallNs,dr,cps,dose){
   if(dr>=C.FLAT_LINE){const key=Math.round(dr/C.PWR_LOCK_TOLERANCE)*C.PWR_LOCK_TOLERANCE;const keyStr=key.toFixed(4);if(!DS.pwrBuckets[keyStr])DS.pwrBuckets[keyStr]=[];DS.pwrBuckets[keyStr].push(wallNs);const hits=DS.pwrBuckets[keyStr];if(hits.length>=C.PWR_LOCK_MIN_HITS&&wallNs-DS.pwrLastFireNs>C.PWR_LOCK_COOLDOWN){const ivs=hits.slice(1).map((t,i)=>(t-hits[i])/1e9);const avgIv=mean(ivs);const cvIv=cv(ivs);DS.pwrLastFireNs=wallNs;fireEvent(`[${nsToUtcStr(wallNs)}] \u26a0\u26a0\u26a0 POWER LEVEL LOCK  dr=${keyStr} \u00b5Sv/h  hits=${hits.length}  avg_interval=${avgIv.toFixed(1)}s (${(avgIv/60).toFixed(2)}min)  CV=${cvIv.toFixed(3)}${cvIv<0.20?'  FIXED OUTPUT CONFIRMED':''}`,'#FF0000');fireEvent(`  Source returns to identical power level ${hits.length}x  Natural decay cannot reproduce fixed amplitude  Controlled RF source confirmed`,'#CC0000');}}
   if(dr>DS.peakDr&&dr>=C.LOW_LINE){if(DS.lastPeakEvent>0&&Math.abs(dr-DS.lastPeakEvent)>=0.02){fireEvent(`[${nsToUtcStr(wallNs)}] \uD83D\uDD14 PEAK SHIFT \u2191  ${DS.lastPeakEvent.toFixed(4)} \u2192 ${dr.toFixed(4)} \u00b5Sv/h  \u0394=${dr-DS.lastPeakEvent>=0?'+':''}${(dr-DS.lastPeakEvent).toFixed(4)}`,'#FFFF00');}DS.peakDr=dr;DS.lastPeakEvent=dr;}
   DS.drWindow.push(dr);if(DS.drWindow.length>60)DS.drWindow.shift();if(DS.drWindow.length>=30&&wallNs-DS.fpLastFireNs>C.FP_COOLDOWN_NS){const w=DS.drWindow;const mn=mean(w);const variance=w.reduce((s,v)=>s+(v-mn)**2,0)/w.length;const pvr=mn>0?variance/mn:0;const swr=mn>0?(Math.max(...w)-Math.min(...w))/(2*mn):0;const cvR=cv(w);const peaks=[],floors=[];for(let i=1;i<w.length-1;i++){if(w[i]>w[i-1]&&w[i]>w[i+1])peaks.push(w[i]);if(w[i]<w[i-1]&&w[i]<w[i+1])floors.push(w[i]);}if(peaks.length>=2&&floors.length>=2){const muR=mean(peaks)/mean(floors);const score=[pvr>0.5&&pvr<3.0,swr>0.1,cvR>0.1&&cvR<0.8,peaks.length>=3,floors.length>=3,muR>1.2,pvr<2.0].filter(Boolean).length;if(score>=4){DS.fpLastFireNs=wallNs;const color=score>=6?'#FF0000':score>=5?'#FF4400':'#FF8800';const sev=score>=6?'\u26a0\u26a0\u26a0':score>=5?'\u26a0\u26a0':'\u26a0';const psci=peaks.length>0?cv(peaks):0;const cvRe=floors.length>0?cv(floors):0;fireEvent(`[${nsToUtcStr(wallNs)}] ${sev} EMF FINGERPRINT  score=${score}/7  n=${peaks.length}pk/${floors.length}fl`,color);fireEvent(`  \u03c7\u00b2/\u03bc=${pvr.toFixed(3)}  m=${muR.toFixed(3)}  SWR=${swr.toFixed(2)}  CV_R=${cvR.toFixed(3)}  PSCI=${psci.toFixed(3)}  CV_Re=${cvRe.toFixed(3)}`,'#CC8800');}}}
-  // ── CPS Ramp Correlator ───────────────────────────────────────
+  // â”€â”€ CPS Ramp Correlator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   {
     const windowFloor = DS.floorDr < 99 ? DS.floorDr : 0;
     if(DS.cpsRampArmed && DS.cpsRampActive)
@@ -3150,7 +3174,7 @@ function runDetectors(wallNs,dr,cps,dose){
         if(hits.length>=C.CPS_RAMP_MIN_MATCHES){
           const hitStr = hits.slice(0,6).map(h=>`[t=${Math.round((h.ns-cur.floorNs)/1e6)}ms CPS=${h.cps}]`).join('  ');
           fireEvent(
-            `[${nsToUtcStr(wallNs)}] ⚠ CPS RAMP MATCH  vs ramp#${ri+1}  hits=${hits.length}  span=${((wallNs-cur.floorNs)/1e9).toFixed(1)}s  floor=${cur.floorDr.toFixed(4)}  peak=${cur.peakDr.toFixed(4)}  ${hitStr}`,
+            `[${nsToUtcStr(wallNs)}] âš  CPS RAMP MATCH  vs ramp#${ri+1}  hits=${hits.length}  span=${((wallNs-cur.floorNs)/1e9).toFixed(1)}s  floor=${cur.floorDr.toFixed(4)}  peak=${cur.peakDr.toFixed(4)}  ${hitStr}`,
             '#FF44FF');
         }
       });
@@ -3162,7 +3186,7 @@ function runDetectors(wallNs,dr,cps,dose){
       DS.cpsRampActive=null; DS.cpsRampArmed=false;
     }
   }
-  // ── CPS Binary Pattern Correlator ────────────────────────────
+  // â”€â”€ CPS Binary Pattern Correlator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   {
     const windowFloor = DS.floorDr < 99 ? DS.floorDr : 0;
     if(DS.cpsPatternArmed) DS.cpsPatternBuf.push(cps);
@@ -3198,7 +3222,7 @@ function runDetectors(wallNs,dr,cps,dose){
           const bestGrade=Math.max(...graded.map(g=>g.grade));
           const gradeLabel=bestGrade===5?'EXACT':bestGrade===4?'STRONG':bestGrade===3?'MODERATE':bestGrade===2?'WEAK':'PARTIAL';
           const gradeColor=bestGrade===5?'#FF0088':bestGrade===4?'#FF4499':bestGrade===3?'#FF88AA':bestGrade===2?'#FFAACC':'#FFCCDD';
-          fireEvent(`[${nsToUtcStr(wallNs)}] ⚠⚠ CPS PATTERN ${gradeLabel}  grade=${bestGrade}/5  matches=${graded.length}  pattern=[${pattern}]  floor=${DS.cpsPatternFloorDr.toFixed(4)}  peak=${peakDr2.toFixed(4)}  span=${((wallNs-DS.cpsPatternFloorNs)/1e9).toFixed(1)}s`,gradeColor);
+          fireEvent(`[${nsToUtcStr(wallNs)}] âš âš  CPS PATTERN ${gradeLabel}  grade=${bestGrade}/5  matches=${graded.length}  pattern=[${pattern}]  floor=${DS.cpsPatternFloorDr.toFixed(4)}  peak=${peakDr2.toFixed(4)}  span=${((wallNs-DS.cpsPatternFloorNs)/1e9).toFixed(1)}s`,gradeColor);
           graded.sort((a,b)=>b.grade-a.grade).slice(0,3).forEach(({pi,grade,sub})=>{
             const prior=DS.cpsPatterns[pi];
             const intervalS=(wallNs-prior.peakNs)/1e9;
@@ -3209,7 +3233,7 @@ function runDetectors(wallNs,dr,cps,dose){
             const allNs=[...strong.map(g=>DS.cpsPatterns[g.pi].peakNs),wallNs].sort((a,b)=>a-b);
             const ivs=allNs.slice(1).map((t,i)=>(t-allNs[i])/1e9);
             const avgIv=mean(ivs); const cvIv=cv(ivs);
-            fireEvent(`  PATTERN PERIOD  n=${strong.length+1}  avg=${avgIv.toFixed(1)}s (${(avgIv/60).toFixed(2)}min)  CV=${cvIv.toFixed(3)}${cvIv<0.15?'  ⚠ PERIODIC STRUCTURED SOURCE':''}`, '#FF0088');
+            fireEvent(`  PATTERN PERIOD  n=${strong.length+1}  avg=${avgIv.toFixed(1)}s (${(avgIv/60).toFixed(2)}min)  CV=${cvIv.toFixed(3)}${cvIv<0.15?'  âš  PERIODIC STRUCTURED SOURCE':''}`, '#FF0088');
           }
         }
         DS.cpsPatterns.push({pattern,floorNs:DS.cpsPatternFloorNs,peakNs:wallNs,floorDr:DS.cpsPatternFloorDr,peakDr:peakDr2});
@@ -3228,16 +3252,29 @@ function toggleGeigerPanel(){
   const open = p.style.display === 'flex';
   if(open){
     p.style.display = 'none';
+    document.body.style.overflow = '';
 if(_geigerSSE){ try{_geigerSSE.close();}catch(e){} _geigerSSE = null; }  } else {
     p.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
     _startGeigerSSE();
   }
 }
 const _gp = {
   drHistory: [], cpsHistory: [],
-  usvWindowMin: 5,
+  usvWindowSec: 5,
 
-  // ── CPS→µSv/h models (US6) — independent of each other ──────────
+  showDrWave: true,      // ÂµSv/h green
+  showCpsWave: true,     // CPS purple line
+  showCpsBars: true,     // CPS orange bars
+  showUsvWave: true,     // Î£ÂµSv cyan
+
+  _usvModelTotals: {},
+  /* 1â€“60 seconds, CPS-style */
+  usvWindowMin: 5, /* legacy alias */
+  usvSessionCum: false,
+
+
+  // â”€â”€ CPSâ†’ÂµSv/h models (US6) â€” independent of each other â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   usvModel: 'm4011',
   usvWindowMin: 5,
   _usvViewMax: null,
@@ -3289,9 +3326,9 @@ const _gp = {
   _gainL1: null,
   _gainL2: null,
 _lastDisplayedDrStr: null,
-  _lastDisplayedDrMs: 0,  // ── Floor→Peak three-column metrics (ported from MainWindow.xaml.cs) ──
+  _lastDisplayedDrMs: 0,  // â”€â”€ Floorâ†’Peak three-column metrics (ported from MainWindow.xaml.cs) â”€â”€
   _fpPairs: [],          // {fVal, pVal, dtSec, peakHrEq, floorIdx, peakIdx, t}
-  // ── Alarm exposure / threshold-duration metrics ──
+  // â”€â”€ Alarm exposure / threshold-duration metrics â”€â”€
   _alarmTime: {
     lastTs: 0,
     total: [0, 0, 0],
@@ -3305,7 +3342,7 @@ _lastDisplayedDrStr: null,
     const ch = document.getElementById('gp-md-chev');
     if (!p) return;
     p.classList.toggle('gp-md-collapsed');
-    if (ch) ch.textContent = p.classList.contains('gp-md-collapsed') ? '▸' : '▾';
+    if (ch) ch.textContent = p.classList.contains('gp-md-collapsed') ? 'â–¸' : 'â–¾';
     // force canvas resize after expand
     if (!p.classList.contains('gp-md-collapsed')) {
       const canvas = document.getElementById('gp-md-canvas');
@@ -3316,7 +3353,7 @@ _lastDisplayedDrStr: null,
       }
     }
   },
-  // CPS captured during the currently armed floor → peak interval
+  // CPS captured during the currently armed floor â†’ peak interval
   _fpCpsBuf: [],
   _fpFloorDr: null,      // current arm floor
   _fpFloorIdx: -1,
@@ -3377,7 +3414,7 @@ _lastDisplayedDrStr: null,
         return;
       }
       const fmt = (ns) => {
-        if (!ns || ns <= 0) return '—';
+        if (!ns || ns <= 0) return 'â€”';
         try {
           if (typeof nsToUtcStr === 'function') {
             // HH:MM:SS + fractional from ns
@@ -3394,8 +3431,8 @@ _lastDisplayedDrStr: null,
         'First count:  ' + fmt(hit.t0) + '\n' +
         'Last count:   ' + fmt(hit.t1) + '\n' +
         'Window:       ' + (hit.secs < 10 ? hit.secs.toFixed(2) : hit.secs.toFixed(1)) + 's\n' +
-        'Σ counts:     ' + hit.total + '\n' +
-        'Rate:         ' + (hit.secs > 0 ? (hit.total / hit.secs).toFixed(2) : '—') + ' /s';
+        'Î£ counts:     ' + hit.total + '\n' +
+        'Rate:         ' + (hit.secs > 0 ? (hit.total / hit.secs).toFixed(2) : 'â€”') + ' /s';
       // Position near cursor, in the canvas parent (position:relative)
       const parent = this.canvas.parentElement;
       const prect = parent.getBoundingClientRect();
@@ -3412,7 +3449,7 @@ _lastDisplayedDrStr: null,
       this.canvas.style.cursor = '';
     });
         this.canvas.addEventListener('click',e=>{
-      // ── CPS peak box click: export event + overlapping signatures ──
+      // â”€â”€ CPS peak box click: export event + overlapping signatures â”€â”€
       if (this._cpsPeakHits && this._cpsPeakHits.length) {
         const rect = this.canvas.getBoundingClientRect();
         const scaleX = this.canvas.width / Math.max(rect.width, 1);
@@ -3451,13 +3488,13 @@ _lastDisplayedDrStr: null,
         this._panDragOffset = 0;
         this._panZoomed = true;
         const btn = document.getElementById('gp-pan-btn');
-        if(btn){ btn.textContent='⊟ ZOOMED'; btn.style.borderColor='#ff0'; btn.style.color='#ff0'; }
+        if(btn){ btn.textContent='âŠŸ ZOOMED'; btn.style.borderColor='#ff0'; btn.style.color='#ff0'; }
       } else {
         this._panZoomed = false;
         this._panDragOffset = 0;
         this._zoomFreezeN = 0;
         const btn = document.getElementById('gp-pan-btn');
-        if(btn){ btn.textContent='⊟ LIVE'; btn.style.borderColor='#00FFFF'; btn.style.color='#00FFFF'; }
+        if(btn){ btn.textContent='âŠŸ LIVE'; btn.style.borderColor='#00FFFF'; btn.style.color='#00FFFF'; }
       }
     });
     this.canvas.addEventListener('mousedown',e=>{
@@ -3548,7 +3585,7 @@ _lastDisplayedDrStr: null,
       requestAnimationFrame(() => this._draw());
       return;
     }
-    // Fixed slot count → constant xStep (no horizontal hop)
+    // Fixed slot count â†’ constant xStep (no horizontal hop)
     let slots;
     if (this._panorama && this._panZoomed) {
       slots = 2 * ZOOM_HALF;
@@ -3569,14 +3606,14 @@ _lastDisplayedDrStr: null,
       });
     };
     const smoothed = smooth(data, 7);
-// ── Y SCALE — direct conversion of MainWindow.xaml.cs ─────────────
+// â”€â”€ Y SCALE â€” direct conversion of MainWindow.xaml.cs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const Y_MAX_DEF = 0.30;
 if (this._viewMax == null || !Number.isFinite(this._viewMax)) {
   this._viewMax = Y_MAX_DEF;
 }
 const drMaxRaw =
   data.length ? Math.max(...data) : 0;
-// LIVE + ZOOM: sticky Y — only expand, never shrink (points keep Y while scrolling off)
+// LIVE + ZOOM: sticky Y â€” only expand, never shrink (points keep Y while scrolling off)
 // PANORAMA (unzoomed): allow gentle shrink so long sessions stay readable
 if (drMaxRaw > this._viewMax * 0.90) {
   this._viewMax = Math.max(drMaxRaw * 1.25, Y_MAX_DEF);
@@ -3590,7 +3627,7 @@ if (drMaxRaw > this._viewMax * 0.90) {
 }
 const max = this._viewMax;
 const min = 0.0;
-// ── CTW GEIGER DR WAVEFORM ────────────────────────────────────────
+// â”€â”€ CTW GEIGER DR WAVEFORM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Direct conversion of the original MainWindow.xaml.cs waveform.
 //
 // Original:
@@ -3608,7 +3645,7 @@ const min = 0.0;
 //
 // This is the behavior of the original oscilloscope.
 const waveformValues = smoothed;
-if (waveformValues.length >= 2) {
+if (this.showDrWave !== false && waveformValues.length >= 2) {
   const waveformSlots =
     this._panorama && this._panZoomed
       ? Math.max(waveformValues.length - 1, 1)
@@ -3689,7 +3726,7 @@ if (waveformValues.length >= 2) {
   ctx.restore();
 }
 
-// ── CPS rolling window waveform ───────────────────────────────────
+// â”€â”€ CPS rolling window waveform â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 {
   let cpsData;
   if (this._panorama && this._panZoomed) {
@@ -3749,59 +3786,111 @@ if (waveformValues.length >= 2) {
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // ── Rolling TOTAL µSv in window (1–60 min), CPS-graph style ─────
-    // Each sample: rate = model(CPS→µSv/h) or firmware dr
-    // usvRolling[i] = Σ rate(j)*dt(j)/3600  over last W minutes  [µSv]
-    // Short W → local dose spikes (expressive). Long W → hour accrual.
+    
+    if (this.showUsvWave !== false) {
+    // â”€â”€ Î£ÂµSv 1â€“60 sec rolling (CPS-style) or full-timeline â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // stepDose[i] = model_uSvh * dt / 3600
+    // checkbox OFF: sum of stepDose over last usvWindowSec seconds
+    // checkbox ON:  cumulative sum from start of on-screen series
     {
-      const usvWinMin = Math.max(1, Math.min(60, this.usvWindowMin || 5));
-      const usvWinNs = usvWinMin * 60 * 1e9;
+      const usvWinSec = Math.max(1, Math.min(60, this.usvWindowSec || this.usvWindowMin || 5));
+      const usvWinNs = usvWinSec * 1e9;
+      const sessionCum = !!this.usvSessionCum;
       const drAll = this.drHistory || [];
       const tAll = this._cpsWallNs || [];
       const usvRolling = [];
-      const _startIdx = (typeof startIdx === 'number') ? startIdx : Math.max(0, (this.drHistory || []).length - (data ? data.length : 0));
+      const stepDose = [];
+      const _startIdx = (typeof startIdx === 'number') ? startIdx
+        : Math.max(0, drAll.length - (data ? data.length : 0));
       const nD = data && data.length ? data.length : 0;
       const model = (this.USV_MODELS && this.USV_MODELS[this.usvModel]) || null;
       const modelLabel = (model && model.label) ? model.label : (this.usvModel || '?');
 
+      // Per-model session totals (all 5) for log / readout
+      if (!this._usvModelTotals) this._usvModelTotals = {};
+      const modelKeys = this.USV_MODELS ? Object.keys(this.USV_MODELS) : [];
+      const totals = {};
+      modelKeys.forEach(k => { totals[k] = 0; });
+
+      let run = 0;
       for (let i = 0; i < nD; i++) {
         const abs = _startIdx + i;
         const t1 = (tAll[abs] != null) ? Number(tAll[abs]) : 0;
-        let doseUsv = 0;
-        if (t1 > 0 && tAll.length > 0) {
-          const t0cut = t1 - usvWinNs;
-          for (let j = abs; j >= 0; j--) {
-            const tj = Number(tAll[j]) || 0;
-            if (tj < t0cut) break;
-            let dt = 1;
-            if (j > 0) {
-              dt = (tj - Number(tAll[j - 1])) / 1e9;
-              if (dt <= 0 || dt > 10) dt = 1;
-            }
-            let rate = 0;
-            if (typeof this._usvRateAt === 'function') {
-              rate = this._usvRateAt(j);
-            } else {
-              rate = Number(drAll[j]) || 0;
-            }
-            if (isFinite(rate)) doseUsv += rate * dt / 3600.0;
-          }
-        } else {
-          // ~1 Hz fallback: sum rate/3600 over last W*60 samples
-          const W = Math.max(1, Math.round(usvWinMin * 60));
-          const lo = Math.max(0, abs - W + 1);
-          for (let j = lo; j <= abs; j++) {
-            let rate = 0;
-            if (typeof this._usvRateAt === 'function') rate = this._usvRateAt(j);
-            else rate = Number(drAll[j]) || 0;
-            if (isFinite(rate)) doseUsv += rate / 3600.0;
-          }
+        let dt = 1;
+        if (abs > 0 && tAll.length > abs) {
+          dt = (t1 - (Number(tAll[abs - 1]) || 0)) / 1e9;
+          if (dt <= 0 || dt > 10) dt = 1;
         }
-        usvRolling.push(doseUsv);
+
+        // Selected model rate at this sample
+        let rate = 0;
+        if (typeof this._usvRateAt === 'function') rate = this._usvRateAt(abs);
+        else rate = Number(drAll[abs]) || 0;
+        if (!isFinite(rate)) rate = 0;
+
+        const dUsv = rate * dt / 3600.0;
+        stepDose.push(dUsv);
+        run += dUsv;
+
+        // Update all model session totals (for separate log)
+        if (typeof this._usvRateAt === 'function' && modelKeys.length) {
+          const saved = this.usvModel;
+          for (let mk = 0; mk < modelKeys.length; mk++) {
+            this.usvModel = modelKeys[mk];
+            let rk = this._usvRateAt(abs);
+            if (!isFinite(rk)) rk = 0;
+            totals[modelKeys[mk]] += rk * dt / 3600.0;
+          }
+          this.usvModel = saved;
+        } else {
+          totals[this.usvModel || 'firmware'] =
+            (totals[this.usvModel || 'firmware'] || 0) + dUsv;
+        }
+
+        if (sessionCum) {
+          usvRolling.push(run);
+        } else {
+          // CPS-style: sum dose over last W seconds only
+          let doseUsv = 0;
+          if (t1 > 0 && tAll.length > abs) {
+            const t0cut = t1 - usvWinNs;
+            for (let j = abs; j >= 0; j--) {
+              const tj = Number(tAll[j]) || 0;
+              if (tj < t0cut) break;
+              let dtj = 1;
+              if (j > 0) {
+                dtj = (tj - (Number(tAll[j - 1]) || 0)) / 1e9;
+                if (dtj <= 0 || dtj > 10) dtj = 1;
+              }
+              let rj = 0;
+              if (typeof this._usvRateAt === 'function') rj = this._usvRateAt(j);
+              else rj = Number(drAll[j]) || 0;
+              if (isFinite(rj)) doseUsv += rj * dtj / 3600.0;
+            }
+          } else {
+            // ~1 sample/sec fallback
+            const W = Math.max(1, usvWinSec);
+            const lo = Math.max(0, i - W + 1);
+            for (let k = lo; k <= i; k++) doseUsv += stepDose[k] || 0;
+          }
+          usvRolling.push(doseUsv);
+        }
       }
+      this._usvModelTotals = totals;
+
+      // Optional live readout of 5 totals
+      try {
+        const el = document.getElementById('gp-usv-model-totals');
+        if (el && this.USV_MODELS) {
+          el.textContent = modelKeys.map(k => {
+            const lab = (this.USV_MODELS[k] && this.USV_MODELS[k].label) || k;
+            return lab + '=' + (totals[k] || 0).toFixed(5);
+          }).join(' | ');
+        }
+      } catch (_) {}
 
       if (usvRolling.length > 1) {
-        let uMax = 1e-9;
+        let uMax = 1e-12;
         for (let ui = 0; ui < usvRolling.length; ui++) {
           if (usvRolling[ui] > uMax) uMax = usvRolling[ui];
         }
@@ -3814,9 +3903,10 @@ if (waveformValues.length >= 2) {
         ctx.lineWidth = 1.5;
         for (let i = 0; i < usvRolling.length; i++) {
           const v = usvRolling[i];
+          const _lx = (typeof waveformXStep === 'number' && waveformXStep > 0) ? waveformXStep : xStep;
           const x = this._panorama
-            ? i * xStep
-            : (LIVE_WIN - (data && data.length ? data.length : usvRolling.length) + i) * xStep;
+            ? i * _lx
+            : (LIVE_WIN - (data && data.length ? data.length : usvRolling.length) + i) * _lx;
           const y = h - (v / uMax) * h * 0.85;
           if (i === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
@@ -3827,146 +3917,123 @@ if (waveformValues.length >= 2) {
         ctx.font = '11px Consolas,monospace';
         ctx.textAlign = 'left';
         ctx.fillText(
-          'ΣµSv/' + usvWinMin + 'm ' + tip.toFixed(5) + '  [' + modelLabel + ']',
+          (sessionCum ? 'Î£ÂµSv/timeline ' : ('Î£ÂµSv/' + usvWinSec + 's ')) +
+          tip.toFixed(6) + '  [' + modelLabel + ']',
           8, 42
         );
+        ctx.restore();
 
-      // ── µSv peak boxes (travel with crest, freeze on drop-off) ────
-      // Series is ΣµSv in rolling window. Climb while non-decreasing
-      // (with small noise slack); on clear drop, freeze box and re-arm.
-      {
-        if (!Array.isArray(this._usvPeakHits)) this._usvPeakHits = [];
-        const DROP = 0.08;          // 8% off crest → commit peak
-        const MIN_USV = 1e-6;       // ignore pure noise floor
-        const nU = usvRolling.length;
-        const absOf = (rollI) => {
-          const a = _startIdx + rollI;
-          return (a >= 0 && a < (tAll.length || 1e15)) ? a : -1;
-        };
-        const tAt = (rollI) => {
-          const a = absOf(rollI);
-          if (a < 0) return 0;
-          return Number(tAll[a]) || 0;
-        };
-
-        // Build committed peaks from series + one live (in-progress) crest
-        const committed = [];
-        let live = null;
-        let i = 1;
-        while (i < nU - 1) {
-          // find start of a rise from a local trough
-          while (i < nU - 1 && usvRolling[i] <= usvRolling[i - 1] + 1e-12) i++;
-          if (i >= nU - 1) break;
-          let floorI = i - 1;
-          while (floorI > 0 && usvRolling[floorI - 1] <= usvRolling[floorI] + 1e-12) floorI--;
-          let peakI = i;
-          let peakV = usvRolling[i];
-          let j = i + 1;
-          let growing = true;
-          while (j < nU) {
-            if (usvRolling[j] >= peakV - 1e-12) {
-              if (usvRolling[j] > peakV) {
-                peakV = usvRolling[j];
-                peakI = j;
+        // Peak boxes: floorâ†’crest stepDose sum only
+        {
+          if (!Array.isArray(this._usvPeakHits)) this._usvPeakHits = [];
+          const DROP = 0.08;
+          const MIN_USV = 1e-9;
+          const nU = usvRolling.length;
+          const tAt = (rollI) => {
+            const a = _startIdx + rollI;
+            if (a < 0 || a >= tAll.length) return 0;
+            return Number(tAll[a]) || 0;
+          };
+          const climbDose = (floorI, peakI) => {
+            let s = 0;
+            for (let k = Math.max(0, floorI); k <= Math.min(nU - 1, peakI); k++)
+              s += stepDose[k] || 0;
+            return s;
+          };
+          const committed = [];
+          let live = null;
+          let i = 1;
+          while (i < nU - 1) {
+            while (i < nU - 1 && usvRolling[i] <= usvRolling[i - 1] + 1e-18) i++;
+            if (i >= nU - 1) break;
+            let floorI = i - 1;
+            while (floorI > 0 && usvRolling[floorI - 1] <= usvRolling[floorI] + 1e-18) floorI--;
+            let peakI = i, peakV = usvRolling[i], j = i + 1, growing = true;
+            while (j < nU) {
+              if (usvRolling[j] >= peakV - 1e-18) {
+                if (usvRolling[j] > peakV) { peakV = usvRolling[j]; peakI = j; }
+                j++; continue;
+              }
+              if (peakV > MIN_USV && usvRolling[j] <= peakV * (1 - DROP)) {
+                growing = false; break;
               }
               j++;
-              continue;
             }
-            // drop from crest?
-            if (peakV > MIN_USV && usvRolling[j] <= peakV * (1 - DROP)) {
-              growing = false;
-              break;
+            const total = climbDose(floorI, peakI);
+            const t0 = tAt(floorI), t1 = tAt(peakI);
+            let secs = (t0 > 0 && t1 > t0) ? (t1 - t0) / 1e9 : 0;
+            const box = { floorI, peakI, peakV, total, secs, t0, t1,
+                          live: growing && j >= nU - 1 };
+            if (box.live) live = box;
+            else if (total > MIN_USV && peakI > floorI) committed.push(box);
+            i = Math.max(j, peakI + 1);
+          }
+          this._usvLivePeak = live;
+          // Panorama: keep peaks across full span (slice(-12) piles them on the right)
+          let kept = committed;
+          if (this._panorama && !this._panZoomed && committed.length > 24) {
+            const maxKeep = 24;
+            const step = committed.length / maxKeep;
+            kept = [];
+            for (let ki = 0; ki < maxKeep; ki++) {
+              kept.push(committed[Math.min(committed.length - 1, Math.floor(ki * step))]);
             }
-            j++;
+            // always include true last committed
+            if (kept[kept.length - 1] !== committed[committed.length - 1]) {
+              kept.push(committed[committed.length - 1]);
+            }
+          } else if (!this._panorama) {
+            kept = committed.slice(-12);
           }
+          this._usvPeakHits = kept.concat(live ? [live] : []);
 
-          const t0 = tAt(floorI);
-          const t1 = tAt(peakI);
-          let secs = 0;
-          if (t0 > 0 && t1 > t0) secs = (t1 - t0) / 1e9;
-
-          const box = {
-            floorI, peakI, peakV,
-            total: peakV,           // ΣµSv at crest
-            secs,
-            t0, t1,
-            live: growing && j >= nU - 1
-          };
-
-          if (box.live) {
-            live = box;
-          } else if (peakV > MIN_USV && peakI > floorI) {
-            committed.push(box);
+          ctx.save();
+          ctx.font = 'bold 13px Consolas,monospace';
+          for (const ev of this._usvPeakHits) {
+            if (!ev || !(ev.total > MIN_USV)) continue;
+            const _xStep = (typeof waveformXStep === 'number' && waveformXStep > 0)
+              ? waveformXStep
+              : xStep;
+            const x = this._panorama
+              ? ev.peakI * _xStep
+              : (LIVE_WIN - (data && data.length ? data.length : nU) + ev.peakI) * _xStep;
+            const y = h - (ev.peakV / uMax) * h * 0.85;
+            if (x < -40 || x > w + 40) continue;
+            const secsStr = ev.secs < 10 ? (ev.secs || 0).toFixed(2) : (ev.secs || 0).toFixed(1);
+            const usvStr = ev.total >= 0.001 ? ev.total.toFixed(5) : ev.total.toFixed(7);
+            const line1 = usvStr + ' ÂµSv';
+            const line2 = secsStr + 's';
+            const tw = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width);
+            const lineH = 12, padX = 4, padY = 3, boxH = lineH * 2 + padY * 2;
+            const boxW = tw + padX * 2;
+            const bx = Math.max(2, Math.min(x - boxW / 2, w - boxW - 2));
+            const by = Math.max(2, y - boxH - 4);  // above crest, not piled on right
+            const textX = bx + boxW / 2;
+            ctx.fillStyle = ev.live ? 'rgba(0,40,30,0.90)' : 'rgba(0,20,18,0.88)';
+            ctx.strokeStyle = ev.live ? '#AAFFDD' : '#44AA88';
+            ctx.lineWidth = ev.live ? 1.5 : 1;
+            ctx.fillRect(bx, by, tw + padX * 2, boxH);
+            ctx.strokeRect(bx, by, tw + padX * 2, boxH);
+            ctx.fillStyle = ev.live ? '#CCFFE8' : '#88FFCC';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText(line1, textX, by + padY);
+            ctx.fillText(line2, textX, by + padY + lineH);
           }
-          i = Math.max(j, peakI + 1);
+          ctx.restore();
         }
-
-        // Keep recent frozen boxes + current live (cap clutter)
-        const frozen = committed.slice(-12);
-        this._usvLivePeak = live;
-        this._usvPeakHits = frozen.concat(live ? [live] : []);
-
-        ctx.save();
-        ctx.font = 'bold 13px Consolas,monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-
-        for (const ev of this._usvPeakHits) {
-          if (!ev || !(ev.peakV > MIN_USV)) continue;
-          const x = this._panorama
-            ? ev.peakI * xStep
-            : (LIVE_WIN - (data && data.length ? data.length : nU) + ev.peakI) * xStep;
-          const y = h - (ev.peakV / uMax) * h * 0.85;
-          if (x < -40 || x > w + 40) continue;
-
-          const secsStr = ev.secs < 10
-            ? (ev.secs || 0).toFixed(2)
-            : (ev.secs || 0).toFixed(1);
-          const usvStr = ev.total >= 0.01
-            ? ev.total.toFixed(4)
-            : ev.total.toFixed(6);
-          const line1 = usvStr + ' µSv';
-          const line2 = secsStr + 's';
-          const w1 = ctx.measureText(line1).width;
-          const w2 = ctx.measureText(line2).width;
-          const tw = Math.max(w1, w2);
-          const lineH = 12;
-          const padX = 4, padY = 3;
-          const boxH = lineH * 2 + padY * 2;
-          const bx = x - tw / 2 - padX;
-          const by = y - boxH - 4;
-
-          // live = brighter fill; frozen = after drop-off
-          ctx.fillStyle = ev.live
-            ? 'rgba(0,40,30,0.90)'
-            : 'rgba(0,20,18,0.88)';
-          ctx.strokeStyle = ev.live ? '#AAFFDD' : '#44AA88';
-          ctx.lineWidth = ev.live ? 1.5 : 1;
-          ctx.fillRect(bx, by, tw + padX * 2, boxH);
-          ctx.strokeRect(bx, by, tw + padX * 2, boxH);
-
-          ctx.fillStyle = ev.live ? '#CCFFE8' : '#88FFCC';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'top';
-          ctx.fillText(line1, x, by + padY);
-          ctx.fillText(line2, x, by + padY + lineH);
-        }
-        ctx.restore();
-      }
-
-        ctx.restore();
       }
     }
 
-    
-
-    // ── Purple major-peak labels: Σ raw CPS floor → crest only ────────
+    } /*gp-usv-gate-end*/
+    if (this.showCpsWave !== false) {
+    // â”€â”€ Purple major-peak labels: Î£ raw CPS floor â†’ crest only â”€â”€â”€â”€â”€â”€â”€â”€
     // Rules:
-    //   • One label per *significant* crest (prominence filter)
-    //   • Small shelves / intermediate bumps are absorbed into that crest
-    //   • Sum uses samples from left trough through the crest only
+    //   â€¢ One label per *significant* crest (prominence filter)
+    //   â€¢ Small shelves / intermediate bumps are absorbed into that crest
+    //   â€¢ Sum uses samples from left trough through the crest only
     //     (never any downhill samples after the peak)
-    //   • No labels on pure descending flanks
+    //   â€¢ No labels on pure descending flanks
     {
       const nRoll = cpsRolling.length;
       if (nRoll >= 5) {
@@ -4004,7 +4071,7 @@ if (waveformValues.length >= 2) {
             : w - (nRoll - 1 - i) * cpsXStep - subPx;
         };
 
-        // 1) All local maxima (plateau → rightmost sample of the flat top)
+        // 1) All local maxima (plateau â†’ rightmost sample of the flat top)
         this._cpsPeakHits = []; // reset each frame
         const rawPeaks = [];
         for (let i = 1; i < nRoll - 1; i++) {
@@ -4012,7 +4079,7 @@ if (waveformValues.length >= 2) {
           if (v >= cpsRolling[i - 1] && v > cpsRolling[i + 1]) rawPeaks.push(i);
         }
 
-        // 2) Prominence: peak − higher of the deepest points to left/right
+        // 2) Prominence: peak âˆ’ higher of the deepest points to left/right
         //    until a taller peak (or edge). Keeps only real crests.
         const sorted = cpsRolling.slice().sort((a, b) => a - b);
         const baseline = sorted[Math.floor(sorted.length * 0.12)] || 0;
@@ -4039,7 +4106,7 @@ if (waveformValues.length >= 2) {
           const prom = pv - Math.max(leftMin, rightMin);
           if (prom < minProm) continue;
 
-          // Reject pure downhill “peaks”: must have risen from the left trough
+          // Reject pure downhill â€œpeaksâ€: must have risen from the left trough
           if (pv - leftMin < minProm * 0.85) continue;
 
           major.push({ peakI: pi, floorI: leftI, peakV: pv });
@@ -4057,7 +4124,7 @@ if (waveformValues.length >= 2) {
             // same overall mountain if no deep reset between them
             const gapMin = Math.min(...cpsRolling.slice(cur.peakI, nxt.peakI + 1));
             if (nxt.peakV >= cur.peakV && gapMin > baseline + minProm * 0.35) {
-              absorbed = true; // cur is an intermediate shelf → drop it
+              absorbed = true; // cur is an intermediate shelf â†’ drop it
               break;
             }
           }
@@ -4070,7 +4137,7 @@ if (waveformValues.length >= 2) {
         ctx.textBaseline = 'bottom';
 
         for (const ev of kept) {
-          // Map rolling index → absolute history index (skip LIVE pad slots)
+          // Map rolling index â†’ absolute history index (skip LIVE pad slots)
           const toAbs = (rollI) => {
             if (!this._panorama && livePad > 0) {
               if (rollI < livePad) return -1; // padded empty slot
@@ -4135,7 +4202,7 @@ if (waveformValues.length >= 2) {
           ctx.fillText(line2, x, by + padY + lineH);
 
           // Hit-box for hover tooltip (canvas coords)
-          // tHist already declared above in this block — do not redeclare
+          // tHist already declared above in this block â€” do not redeclare
           const t0 = (tHist && tHist[lo] != null) ? Number(tHist[lo]) : 0;
           const t1 = (tHist && tHist[hi] != null) ? Number(tHist[hi]) : 0;
           if (!this._cpsPeakHits) this._cpsPeakHits = [];
@@ -4180,7 +4247,7 @@ if (waveformValues.length >= 2) {
       ctx.fillStyle = 'rgba(0,0,0,0.7)';
       ctx.fillRect(2, peakY - 14, 90, 14);
       ctx.fillStyle = '#FFFF00';
-      ctx.fillText('▲ PEAK ' + peak.toFixed(4) + ' µSv/h', 4, peakY - 3);
+      ctx.fillText('â–² PEAK ' + peak.toFixed(4) + ' ÂµSv/h', 4, peakY - 3);
       ctx.strokeStyle = 'rgba(0,255,255,0.9)';
       ctx.lineWidth = 1.5;
       ctx.setLineDash([8,4]);
@@ -4189,8 +4256,10 @@ if (waveformValues.length >= 2) {
       ctx.fillStyle = 'rgba(0,0,0,0.7)';
       ctx.fillRect(2, floorY + 2, 90, 14);
       ctx.fillStyle = '#00FFFF';
-      ctx.fillText('▼ FLOOR ' + floor.toFixed(4) + ' µSv/h', 4, floorY + 13);
+      ctx.fillText('â–¼ FLOOR ' + floor.toFixed(4) + ' ÂµSv/h', 4, floorY + 13);
     }
+    } /*gp-purple-gate-end*/
+
     if (this.cpsHistory && this.cpsHistory.length > 1) {
       let cpsData;
       // IMPORTANT: same temporal window as green `data` / startIdx so xStep lines up
@@ -4220,7 +4289,7 @@ if (waveformValues.length >= 2) {
       }
       const cpsMax = Math.max(...cpsData, 1);
       const barW = Math.max(0.8, xStep * 0.6);
-      cpsData.forEach((v, i) => {
+      if (this.showCpsBars !== false) cpsData.forEach((v, i) => {
         const x = Math.round(
           this._panorama
             ? i * xStep
@@ -4250,7 +4319,7 @@ if (waveformValues.length >= 2) {
         }
       });
     }
-    // ── FLOOR → PEAK green boxes + connector + 3-column table ──
+    // â”€â”€ FLOOR â†’ PEAK green boxes + connector + 3-column table â”€â”€
     {
       const pairs = Array.isArray(this._fpPairs)
         ? this._fpPairs.slice(-3)
@@ -4317,7 +4386,7 @@ if (waveformValues.length >= 2) {
           }
         }
         ctx.restore();
-        // ── Three-column table ───────────────────────────────
+        // â”€â”€ Three-column table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         const rowH = 14;
         const headerH = 16;
         const boxW = 285;
@@ -4352,7 +4421,7 @@ if (waveformValues.length >= 2) {
           });
         }
         ctx.restore();
-        // ── Alarm exposure + floor→peak CPS metrics ─────────────
+        // â”€â”€ Alarm exposure + floorâ†’peak CPS metrics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         const alarmW = 285;
         const alarmH = this._alarmBoxCollapsed ? 16 : 92;
         const alarmX = w - alarmW - 6;
@@ -4415,7 +4484,7 @@ if (waveformValues.length >= 2) {
           );
         } else {
           ctx.fillText(
-            'FP CPS: waiting for valid floor → peak',
+            'FP CPS: waiting for valid floor â†’ peak',
             alarmX + 6,
             alarmY + 71
           );
@@ -4442,7 +4511,7 @@ if (waveformValues.length >= 2) {
       ctx.fillRect(0, 0, 180, 18);
       ctx.fillStyle = '#ffff00';
       ctx.font = '11px Consolas,monospace';
-      ctx.fillText('⊕ ' + t.toLocaleTimeString() + ' [DRAG TO TRAVERSE]', 4, 13);
+      ctx.fillText('âŠ• ' + t.toLocaleTimeString() + ' [DRAG TO TRAVERSE]', 4, 13);
       ctx.restore();
     }
     requestAnimationFrame(() => this._draw());
@@ -4471,22 +4540,22 @@ if (waveformValues.length >= 2) {
         a.download='geigerscope_'+new Date().toISOString().replace(/[:.]/g,'_').slice(0,19)+'.webm';
         a.click();
         const btn=document.getElementById('gp-rec-btn');
-        if(btn){btn.textContent='⏺ RECORD';btn.style.borderColor='#FF4444';btn.style.color='#FF4444';btn.style.background='#1a0000';}
+        if(btn){btn.textContent='âº RECORD';btn.style.borderColor='#FF4444';btn.style.color='#FF4444';btn.style.background='#1a0000';}
       };
       this._mediaRecorder.start();
       const btn=document.getElementById('gp-rec-btn');
-      if(btn){btn.textContent='⏹ STOP REC';btn.style.borderColor='#FF0000';btn.style.color='#FF0000';btn.style.background='#330000';}
+      if(btn){btn.textContent='â¹ STOP REC';btn.style.borderColor='#FF0000';btn.style.color='#FF0000';btn.style.background='#330000';}
     }).catch(e=>{alert('Screen capture failed: '+e.message);});
   },
   _alarmEnabled: false,
   _alarmThreshold: 0.18,   // L1
   _alarmThreshold2: 0.23,  // L2
-  _alarmThreshold3: 0.27,  // L3  (chemalm) — set to 33 if you meant absolute 33
+  _alarmThreshold3: 0.27,  // L3  (chemalm) â€” set to 33 if you meant absolute 33
   _alarmL1Wanted: false,
   _alarmL2Wanted: false,
   _alarmL3Wanted: false,
-// ── CPS EVENT SOUNDS ──────────────────────────────────────────────────────
-  // Index 0 = CPS 1, index 1 = CPS 2 … index 9 = CPS 10, index 10 = CPS 11+
+// â”€â”€ CPS EVENT SOUNDS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Index 0 = CPS 1, index 1 = CPS 2 â€¦ index 9 = CPS 10, index 10 = CPS 11+
   _cpsSounds: [
     'type99_mn.wav',
     'Imperial Laser 1.wav',
@@ -4527,7 +4596,7 @@ _cpsVolumes: [
   async _cpsPreloadAll(){
     const ctx = this._getCpsCtx();
     for (let i = 0; i < 11; i++) {
-      if (this._cpsSoundBuffers[i]) continue;  // custom loaded — skip
+      if (this._cpsSoundBuffers[i]) continue;  // custom loaded â€” skip
       const filename = this._cpsSounds[i];
       if (!filename) continue;
       try {
@@ -4537,7 +4606,7 @@ _cpsVolumes: [
       } catch(e) {}
     }
   },
-  // Fire a CPS sound — called from wherever CPS is dispatched
+  // Fire a CPS sound â€” called from wherever CPS is dispatched
 _playCpsSound(cps){
     const idx = Math.min(Math.max(cps, 1), 11) - 1;
     if (idx < 0) return;
@@ -4559,14 +4628,14 @@ _playCpsSound(cps){
       }
       return;
     }
-    // Not decoded yet — play path from current selection immediately
+    // Not decoded yet â€” play path from current selection immediately
     const filename = this._cpsSounds[idx];
     if (!filename) return;
     const a = new Audio('/audio/' + encodeURIComponent(String(filename).replace(/^\/?audio\//, '')));
     a.volume = vol;
     a.play().catch(() => {});
   },
-  // Dropdown: CPS level changed — update sound picker to reflect stored choice
+  // Dropdown: CPS level changed â€” update sound picker to reflect stored choice
   _cpsSoundSelectChanged(){
     if (this._src && this._src.locked) return;
     const lvl  = parseInt(document.getElementById('gp-cps-level-select').value, 10);
@@ -4583,7 +4652,7 @@ _playCpsSound(cps){
     } else {
       const crow = document.getElementById('gp-cps-custom-row');
       if (crow) crow.style.display = 'none';
-      // Normalize stored name → option value used in the <select>
+      // Normalize stored name â†’ option value used in the <select>
       let stored = this._cpsSounds[idx] || 'type99_mn.wav';
       stored = String(stored).replace(/^\/?audio\//, '');
       const optVal = '/audio/' + stored;
@@ -4598,16 +4667,16 @@ _playCpsSound(cps){
         if (first) sel.value = first;
       }
     }
-    // restore this slot's saved volume — does not touch other slots
+    // restore this slot's saved volume â€” does not touch other slots
     const vol = this._cpsVolumes[idx] ?? 1;
     const slider = document.getElementById('gp-cps-vol-slider');
     const display = document.getElementById('gp-cps-vol-display');
     if (slider)  slider.value = Math.round(vol * 100);
     if (display) display.textContent = Math.round(vol * 100) + '%';
     this._cpsUpdateLabel(lvl, idx);
-    // DO NOT call this._cpsSoundSelectChanged() — that was an infinite recursion
+    // DO NOT call this._cpsSoundSelectChanged() â€” that was an infinite recursion
   },
-  // Dropdown: sound file selection changed — apply immediately + play so you hear it now
+  // Dropdown: sound file selection changed â€” apply immediately + play so you hear it now
   _cpsSoundFileChanged(){
     if (this._src && this._src.locked) return;
     const lvl  = parseInt(document.getElementById('gp-cps-level-select').value, 10);
@@ -4622,7 +4691,7 @@ _playCpsSound(cps){
       return;
     }
     if (customRow) customRow.style.display = 'none';
-    // New choice for this CPS level only — store basename only
+    // New choice for this CPS level only â€” store basename only
     const bare = String(val).replace(/^\/?audio\//, '').replace(/^\//, '');
     this._cpsSounds[idx] = bare;
     this._cpsSoundBuffers[idx] = null;
@@ -4690,7 +4759,7 @@ _playCpsSound(cps){
     const lvl = parseInt(document.getElementById('gp-cps-level-select').value, 10);
     this._playCpsSound(lvl);
   },
-// Volume slider moved — save to this slot only, display updates live
+// Volume slider moved â€” save to this slot only, display updates live
   _cpsVolumeChanged(raw){
     const lvl  = parseInt(document.getElementById('gp-cps-level-select').value, 10);
     const idx  = Math.min(lvl, 11) - 1;
@@ -4706,7 +4775,7 @@ _playCpsSound(cps){
       || this._cpsSounds[idx]
       || '(none)';
     const lvlStr = lvl >= 11 ? '11+' : String(lvl);
-    lbl.textContent = `CPS ${lvlStr} → ${name.replace('.wav','').replace('.mp3','')}`;
+    lbl.textContent = `CPS ${lvlStr} â†’ ${name.replace('.wav','').replace('.mp3','')}`;
   },
   _alarmVol1: 0.10,
   _alarmVol2: 1.00,
@@ -4784,7 +4853,7 @@ _playCpsSound(cps){
     this._alarmEnabled = !this._alarmEnabled;
     const btn = document.getElementById('gp-alarm-btn');
     if (btn) {
-      btn.textContent = this._alarmEnabled ? '🔔 ALARM' : '🔇 ALARM';
+      btn.textContent = this._alarmEnabled ? 'ðŸ”” ALARM' : 'ðŸ”‡ ALARM';
       btn.style.borderColor = this._alarmEnabled ? '#FF4444' : '#333';
       btn.style.color = this._alarmEnabled ? '#FF4444' : '#555';
       btn.style.background = this._alarmEnabled ? '#1a0000' : '#0a0a0a';
@@ -4821,11 +4890,11 @@ _playCpsSound(cps){
     const bar = document.getElementById('gp-alarm-vol' + level);
     if (bar) bar.value = Math.round(vol * 100);
   },
-  // ═══════════════════════════════════════════════
-  // SOURCE SIGNATURE METER — display only
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // SOURCE SIGNATURE METER â€” display only
   // Reads SSIG / gp_md_library. Does NOT record.
-  // Live: rolling 60s CPS vs sample floor / μ / peak.
-  // ═══════════════════════════════════════════════
+  // Live: rolling 60s CPS vs sample floor / Î¼ / peak.
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   _mdLoadLibrary() {
     const out = [];
     try {
@@ -4846,7 +4915,7 @@ _playCpsSound(cps){
         const name = (SSIG.sourceName || 'CURRENT').trim() || 'CURRENT';
         SSIG.readings.forEach((r, i) => {
           this._mdPushSig(out, {
-            source: name + ' · sample ' + (r.sample_number || i + 1),
+            source: name + ' Â· sample ' + (r.sample_number || i + 1),
             mu_cps: r.mu_cps,
             cps_floor: r.cps_floor,
             cps_peak: r.cps_peak,
@@ -4927,7 +4996,7 @@ _playCpsSound(cps){
         if (!Number.isFinite(mid)   && _penv.mid   != null) mid   = Number(_penv.mid);
         if (!Number.isFinite(mid)   && _penv.mode  != null) mid   = Number(_penv.mode);
       }
-      // FIX 4b: tighten synthesised fallback from ±50% to ±20%
+      // FIX 4b: tighten synthesised fallback from Â±50% to Â±20%
       if (!Number.isFinite(floor) && Number.isFinite(mid)) {
         floor = mid * 0.80;
       }
@@ -4987,7 +5056,7 @@ _playCpsSound(cps){
               ((drFloor + drPeak) / 2)
             )
       );
-      // FIX E: extract dr_mode — most-frequent µSv/h across 30-min capture
+      // FIX E: extract dr_mode â€” most-frequent ÂµSv/h across 30-min capture
       const drMode = Number(
         drEnv && drEnv.mode != null
           ? drEnv.mode
@@ -5049,11 +5118,11 @@ _playCpsSound(cps){
       this._mdClearFlash();
     };
     if (!lib.length) {
-      clearNeedles('Live — no SSIG samples yet. Record 3×10 min in Source Signature panel.');
+      clearNeedles('Live â€” no SSIG samples yet. Record 3Ã—10 min in Source Signature panel.');
       return;
     }
     if (!have60 || !Number.isFinite(cps) || cps < 0) {
-      clearNeedles('Live — warming 60s CPS window… library has ' + lib.length + ' sample(s).');
+      clearNeedles('Live â€” warming 60s CPS windowâ€¦ library has ' + lib.length + ' sample(s).');
       return;
     }
     // Best match: lowest combined normalised distance across CPS60 + DR envelopes
@@ -5070,10 +5139,10 @@ _playCpsSound(cps){
       if (score < bestScore) { bestScore = score; best = s; }
     }
     if (!best) {
-      clearNeedles('Live CPS60=' + cps.toFixed(1) + ' µSv/h=' + dr.toFixed(4) + ' — no match · ' + lib.length + ' sample(s)');
+      clearNeedles('Live CPS60=' + cps.toFixed(1) + ' ÂµSv/h=' + dr.toFixed(4) + ' â€” no match Â· ' + lib.length + ' sample(s)');
       return;
     }
-    // Linear needle positions — 0 = floor, 1 = peak
+    // Linear needle positions â€” 0 = floor, 1 = peak
     const cpsRange  = Math.max(best.peak - best.floor, 0.001);
     const needleCps = Math.max(0, Math.min(1, (cps - best.floor) / cpsRange));
     let needleDr = 0.5;
@@ -5084,12 +5153,12 @@ _playCpsSound(cps){
     this._src.needleDr  = needleDr;
     this._src.needle    = needleCps;
     this._src.matchedSource = best;
-    const cpsSide = cps <= (best.mode || best.mid) ? 'F→M' : 'M→P';
-    const drSide  = dr  <= (best.drMean || 0)      ? 'F→M' : 'M→P';
+    const cpsSide = cps <= (best.mode || best.mid) ? 'Fâ†’M' : 'Mâ†’P';
+    const drSide  = dr  <= (best.drMean || 0)      ? 'Fâ†’M' : 'Mâ†’P';
     this._srcSetStatus('rec',
-      'MATCH · ' + best.name +
-      ' · CPS60=' + cps.toFixed(1) + ' [' + cpsSide + ']' +
-      ' · µSv/h=' + dr.toFixed(4)  + ' [' + drSide  + ']');
+      'MATCH Â· ' + best.name +
+      ' Â· CPS60=' + cps.toFixed(1) + ' [' + cpsSide + ']' +
+      ' Â· ÂµSv/h=' + dr.toFixed(4)  + ' [' + drSide  + ']');
     /* LIVE match must NEVER flash the source name on the main screen.
        Big overlay is SSIG-recording only (gp-source-record-overlay).
        Alarm photos (gp-alarm-overlay) always take precedence. */
@@ -5118,7 +5187,7 @@ _playCpsSound(cps){
       this._srcNameRaf = 0;
     }
   },
-  // Stubs — recording is SSIG-only; keep names so old onclick / locks don't throw
+  // Stubs â€” recording is SSIG-only; keep names so old onclick / locks don't throw
   sourceDeclare() {},
   sourceAbort() {},
   sourceExport() {},
@@ -5154,7 +5223,7 @@ _playCpsSound(cps){
     if (!canvas) return;
     this._src = this._src || { needle: 0.15, library: [], active: true, windows: [] };
     this._src.active = true;
-    // Throttle caches — DR needle updates max once per 3s, CPS once per 1s
+    // Throttle caches â€” DR needle updates max once per 3s, CPS once per 1s
     this._src._drNeedlePos  = null;  // cached 0-1 position
     this._src._drNeedleTs   = 0;     // last update timestamp
     this._src._cpsNeedlePos = null;
@@ -5213,7 +5282,7 @@ _playCpsSound(cps){
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cssW, cssH);
-    // ── Independent per-bar source matching ─────────────────────────
+    // â”€â”€ Independent per-bar source matching â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Each bar finds its own closest source independently.
     // A source only matches if the live value falls within its envelope
     // OR is the closest envelope by boundary distance.
@@ -5247,7 +5316,7 @@ _playCpsSound(cps){
         : null;
     };
 
-    // ── Throttled source matching ────────────────────────────────────
+    // â”€â”€ Throttled source matching â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // DR: recompute match + needle max once every 3000ms
     // CPS: recompute match + needle max once every 1000ms
     const _now = Date.now();
@@ -5283,7 +5352,7 @@ _playCpsSound(cps){
 
     // CPS: recompute every 1000ms
     // Scale fix: cps60arg is a 60s TOTAL (e.g. 46 counts)
-    // s.floor/s.peak from _mdPushSig are also 60s totals — correct scale
+    // s.floor/s.peak from _mdPushSig are also 60s totals â€” correct scale
     // s.cps60Floor/cps60Peak are per-reading floor/peak of the 60s total
     let _cpsSource, _cpsInside;
     if (!_src._cpsNeedleTs || (_now - _src._cpsNeedleTs) >= 1000 || !lib.length) {
@@ -5310,7 +5379,7 @@ _playCpsSound(cps){
     if (!lib.length) {
       ctx.textAlign = 'center';
       ctx.fillStyle = '#2a5a2a';
-      ctx.fillText('No signatures — record sources in Source Signature panel', cssW / 2, 10);
+      ctx.fillText('No signatures â€” record sources in Source Signature panel', cssW / 2, 10);
     } else {
       ctx.textAlign = 'left';
       ctx.fillStyle = _drInside ? '#3ddc84' : '#556655';
@@ -5323,7 +5392,7 @@ _playCpsSound(cps){
             ? _drSource.drPeak : (_drSource.drMean * 1.25 || 0))
         : 0;
       ctx.fillText(
-        '\u00b5Sv: ' + (_drSource ? _drSource.name : 'warming…') +
+        '\u00b5Sv: ' + (_drSource ? _drSource.name : 'warmingâ€¦') +
         (_drSource ? ' [' + (_drF0||0).toFixed(4) + '\u2013' + (_drP0||0).toFixed(4) + ']' : ''),
         4, 10
       );
@@ -5336,14 +5405,14 @@ _playCpsSound(cps){
         ? (_cpsSource.cps60Peak  != null ? _cpsSource.cps60Peak  : (_cpsSource.peak  || 0))
         : 0;
       ctx.fillText(
-        'CPS: ' + (_cpsSource ? _cpsSource.name : 'warming…') +
+        'CPS: ' + (_cpsSource ? _cpsSource.name : 'warmingâ€¦') +
         (_cpsSource ? ' [' + Math.round(_cF0||0) + '\u2013' + Math.round(_cP0||0) + ']' : ''),
         cssW - 4, 10
       );
     }
-    // ── Shared bar helper ────────────────────────────────────────────
+    // â”€â”€ Shared bar helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // trackY  = top of the filled bar rectangle
-    // needle  = 0–1 linear (0=floor, 1=peak)
+    // needle  = 0â€“1 linear (0=floor, 1=peak)
     // mode    = reference marker position (mode for CPS, mean for DR)
     const drawBar = (trackY, label, needle, floor, mode, peak, curVal, fmtFn, active) => {
       const barX = 4;
@@ -5366,7 +5435,7 @@ _playCpsSound(cps){
       ctx.fillRect  (barX, trackY, barW, barH);
       ctx.strokeRect(barX, trackY, barW, barH);
       if (!lib.length) return;
-      // Gradient fill: red ← amber ← green → amber → red
+      // Gradient fill: red â† amber â† green â†’ amber â†’ red
       const g = ctx.createLinearGradient(barX, 0, barX + barW, 0);
       g.addColorStop(0,    'rgba(200,40,0,0.55)');
       g.addColorStop(0.15, 'rgba(230,140,0,0.40)');
@@ -5405,13 +5474,13 @@ _playCpsSound(cps){
           ctx.textAlign = 'right';
           ctx.fillText('P:' + peak.toFixed(dec), barX + barW, subY);
         }
-        // ── Live source dots ────────────────────────────────────────
+        // â”€â”€ Live source dots â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // One dot per library source, positioned by that source's mode
         // on this bar's own floor-peak scale.
         // Green = natural, Red = structured.
         // Bright/large = live value inside that source's envelope.
         // The floor/peak used for positioning come from the bar's own
-        // extractor — passed in via the closure vars floor/peak.
+        // extractor â€” passed in via the closure vars floor/peak.
         if (lib.length && Number.isFinite(floor) && Number.isFinite(peak) && peak > floor) {
           lib.forEach(s => {
             // Get this source's mode value for this bar's metric
@@ -5438,7 +5507,7 @@ _playCpsSound(cps){
             const t = Math.max(0, Math.min(1, (dotVal - floor) / (peak - floor)));
             const x = barX + t * barW;
             // Is the live value inside this source's envelope?
-            // Fail silently if no envelope data — skip dot, keep blue needle
+            // Fail silently if no envelope data â€” skip dot, keep blue needle
             if (!Number.isFinite(dotVal)) return;
             const liveInside = dotFloor != null && dotPeak != null
               && Number.isFinite(dotFloor) && Number.isFinite(dotPeak)
@@ -5464,9 +5533,9 @@ _playCpsSound(cps){
           });
         }
       };
-    // ── µSv/h bar (top) ──────────────────────────────────────────────
+    // â”€â”€ ÂµSv/h bar (top) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Driven independently by _drSource (closest DR envelope match).
-    // ── µSv/h bar — uses cached needle position (updated max 1/3s) ──
+    // â”€â”€ ÂµSv/h bar â€” uses cached needle position (updated max 1/3s) â”€â”€
     if (_drSource) {
       const _ef = Number.isFinite(_drSource.drFloor) && _drSource.drFloor > 0
         ? _drSource.drFloor : (_drSource.drMean * 0.75 || 0);
@@ -5475,7 +5544,7 @@ _playCpsSound(cps){
       const _em = Number.isFinite(_drSource.drMode) ? _drSource.drMode
                 : Number.isFinite(_drSource.drMean)  ? _drSource.drMean
                 : (_ef + _ep) / 2;
-      // Use cached needle pos — only recomputed every 3s
+      // Use cached needle pos â€” only recomputed every 3s
       const _drNeedle = _src._drNeedlePos;
       if (_ep > _ef) {
         drawBar(32, '\u00b5Sv/h', _drNeedle, _ef, _em, _ep,
@@ -5486,7 +5555,7 @@ _playCpsSound(cps){
     } else {
       drawBar(32, '\u00b5Sv/h', null, 0, 0.5, 1, dr, v => v.toFixed(4), false);
     }
-    // ── CPS-60 bar (second) ────────────────────────────────────────
+    // â”€â”€ CPS-60 bar (second) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Driven independently by _cpsSource (closest CPS-60 envelope match).
     // left  = lowest 60s CPS total in that source's 30-min session
     // right = highest 60s CPS total in that source's 30-min session
@@ -5523,7 +5592,7 @@ _playCpsSound(cps){
       ctx.font      = '600 8px Consolas,monospace';
       ctx.fillStyle = '#3a5a3a';
       ctx.textAlign = 'center';
-      ctx.fillText('record 3×10 min in Source Signature to enable', cssW / 2, 60);
+      ctx.fillText('record 3Ã—10 min in Source Signature to enable', cssW / 2, 60);
     }
   },
   _checkAlarm(dr){
@@ -5533,7 +5602,7 @@ _playCpsSound(cps){
       this._alarmL3Wanted = false;
       return;
     }
-    // L3 — independent, can overlap L1/L2
+    // L3 â€” independent, can overlap L1/L2
     const want3 = dr >= this._alarmThreshold3;
     if (want3 && !this._alarmL3Wanted) {
       this._alarmL3Wanted = true;
@@ -5541,7 +5610,7 @@ _playCpsSound(cps){
     } else if (!want3) {
       this._alarmL3Wanted = false;
     }
-    // L2 — independent
+    // L2 â€” independent
     const want2 = dr >= this._alarmThreshold2;
     if (want2 && !this._alarmL2Wanted) {
       this._alarmL2Wanted = true;
@@ -5549,7 +5618,7 @@ _playCpsSound(cps){
     } else if (!want2) {
       this._alarmL2Wanted = false;
     }
-    // L1 — independent
+    // L1 â€” independent
     const want1 = dr >= this._alarmThreshold;
     if (want1 && !this._alarmL1Wanted) {
       this._alarmL1Wanted = true;
@@ -5642,7 +5711,7 @@ _playCpsSound(cps){
         this._sirenImgL3 = null;
         if (this._sirenImgCustomL3) { URL.revokeObjectURL(this._sirenImgCustomL3); this._sirenImgCustomL3 = null; }
       }
-      if (nameEl) nameEl.textContent = '— none —';
+      if (nameEl) nameEl.textContent = 'â€” none â€”';
       if (clearBtn) clearBtn.style.display = 'none';
       this._syncAlarmOverlay();
       return;
@@ -5845,7 +5914,7 @@ _playCpsSound(cps){
     const isL1 = level === 1;
     const isL2 = level === 2;
     const customBuf = isL1 ? this._sirenAudioL1 : isL2 ? this._sirenAudioL2 : this._sirenAudioL3;
-    const wavUrl = '/' + encodeURIComponent(this._sirenGetFile(level));
+    const wavUrl = '/audio/' + encodeURIComponent(this._sirenGetFile(level));
     const vol = isL1 ? this._alarmVol1 : isL2 ? this._alarmVol2 : this._alarmVol3;
     if (customBuf) {
       this._playCustomBufferOnce(level, customBuf);
@@ -6012,7 +6081,7 @@ _playCpsSound(cps){
           if (![...sel.options].some(o => o.value === '__custom__')) {
             const opt = document.createElement('option');
             opt.value = '__custom__';
-            opt.textContent = '📂 Custom file…';
+            opt.textContent = 'ðŸ“‚ Custom fileâ€¦';
             sel.appendChild(opt);
           }
           sel.value = '__custom__';
@@ -6059,7 +6128,7 @@ _playCpsSound(cps){
     if (this._sirenAudioL1) {
       this._sirenPlayBuffer(this._sirenAudioL1, 1);
     } else {
-      const a = new Audio('/' + encodeURIComponent(this._sirenGetFile(1)));
+      const a = new Audio('/audio/' + encodeURIComponent(this._sirenGetFile(1)));
       a.volume = this._alarmVol1;
       a.play().catch(() => {});
     }
@@ -6068,7 +6137,7 @@ _playCpsSound(cps){
     if (this._sirenAudioL2) {
       this._sirenPlayBuffer(this._sirenAudioL2, 2);
     } else {
-      const a = new Audio('/' + encodeURIComponent(this._sirenGetFile(2)));
+      const a = new Audio('/audio/' + encodeURIComponent(this._sirenGetFile(2)));
       a.volume = this._alarmVol2;
       a.play().catch(() => {});
     }
@@ -6077,7 +6146,7 @@ _playCpsSound(cps){
     if (this._sirenAudioL3) {
       this._sirenPlayBuffer(this._sirenAudioL3, 3);
     } else {
-      const a = new Audio('/' + encodeURIComponent(this._sirenGetFile(3)));
+      const a = new Audio('/audio/' + encodeURIComponent(this._sirenGetFile(3)));
       a.volume = this._alarmVol3;
       a.play().catch(() => {});
     }
@@ -6088,7 +6157,7 @@ _playCpsSound(cps){
     const t2 = parseFloat(document.getElementById('gp-siren-thresh2')?.value);
     const t3 = parseFloat(document.getElementById('gp-siren-thresh3')?.value);
     if (isNaN(t1) || isNaN(t2) || isNaN(t3) || t1 <= 0 || t2 <= t1 || t3 <= t2) {
-      alert('Invalid thresholds — must be L1 < L2 < L3, all positive.');
+      alert('Invalid thresholds â€” must be L1 < L2 < L3, all positive.');
       return;
     }
     this._alarmThreshold = t1;
@@ -6115,10 +6184,10 @@ _playCpsSound(cps){
     if(this._remoteActive && this._remoteWS){
       const state = ['CONNECTING','CONNECTED','CLOSING','CLOSED'][this._remoteWS.readyState]||'UNKNOWN';
       el.style.color = this._remoteWS.readyState===1 ? '#00FF88' : '#FF4444';
-      el.textContent = '● ' + state + (this._remoteWS.readyState===1 ? ' — receiving data' : '');
+      el.textContent = 'â— ' + state + (this._remoteWS.readyState===1 ? ' â€” receiving data' : '');
     } else {
       el.style.color = '#444';
-      el.textContent = '○ Not connected';
+      el.textContent = 'â—‹ Not connected';
     }
   },
 _remoteConnect() {
@@ -6154,7 +6223,7 @@ _remoteConnect() {
   const statusEl = document.getElementById('gp-remote-status');
   if (statusEl) {
     statusEl.style.color = '#FFAA00';
-    statusEl.textContent = '● CONNECTING...';
+    statusEl.textContent = 'â— CONNECTING...';
   }
   const ws = new WebSocket(url);
   this._remoteWS = ws;
@@ -6162,7 +6231,7 @@ _remoteConnect() {
   ws.onopen = () => {
     if (statusEl) {
       statusEl.style.color = '#00FF88';
-      statusEl.textContent = '● CONNECTED — receiving data';
+      statusEl.textContent = 'â— CONNECTED â€” receiving data';
     }
     const btn = document.getElementById('gp-remote-connect-btn');
     if (btn) {
@@ -6193,7 +6262,7 @@ _remoteConnect() {
     this._remoteActive = false;
     if (statusEl) {
       statusEl.style.color = '#FF4444';
-      statusEl.textContent = '● DISCONNECTED';
+      statusEl.textContent = 'â— DISCONNECTED';
     }
     const btn = document.getElementById('gp-remote-connect-btn');
     if (btn) {
@@ -6204,7 +6273,7 @@ _remoteConnect() {
   ws.onerror = () => {
     if (statusEl) {
       statusEl.style.color = '#FF4444';
-      statusEl.textContent = '● CONNECTION ERROR';
+      statusEl.textContent = 'â— CONNECTION ERROR';
     }
   };
 },
@@ -6226,16 +6295,53 @@ _remoteConnect() {
   _panDragOffset:0,
   
   setUsvWindow(v){
+    v = Math.max(1, Math.min(60, parseInt(v, 10) || 5));
+    this.usvWindowSec = v;
+    this.usvWindowMin = v; // keep alias if old code paths remain
+    this._usvViewMax = null;
     this._usvLivePeak = null;
     this._usvPeakHits = [];
-
-    v = Math.max(1, Math.min(60, parseInt(v, 10) || 5));
-    this.usvWindowMin = v;
     const sl = document.getElementById('gp-usv-win');
     const num = document.getElementById('gp-usv-win-num');
-    if (sl) sl.value = v;
-    if (num) num.value = v;
+    if (sl) { sl.min = 1; sl.max = 60; sl.value = v; }
+    if (num) { num.min = 1; num.max = 60; num.value = v; }
+    const unit = document.getElementById('gp-usv-win-unit');
+    if (unit) unit.textContent = 'sec';
   },
+
+  setGraphLayer(name, on) {
+    var map = {
+      dr: "showDrWave",
+      cps: "showCpsWave",
+      bars: "showCpsBars",
+      usv: "showUsvWave"
+    };
+    var key = map[name] || name;
+    if (key !== "showDrWave" && key !== "showCpsWave" &&
+        key !== "showCpsBars" && key !== "showUsvWave") {
+      return;
+    }
+    this[key] = !!on;
+    var ids = {
+      showDrWave: "gp-tog-dr",
+      showCpsWave: "gp-tog-cps",
+      showCpsBars: "gp-tog-bars",
+      showUsvWave: "gp-tog-usv"
+    };
+    var el = document.getElementById(ids[key]);
+    if (el) el.checked = !!on;
+  },
+
+
+  setUsvSessionCum(on){
+    this.usvSessionCum = !!on;
+    this._usvViewMax = null;
+    this._usvLivePeak = null;
+    this._usvPeakHits = [];
+    const cb = document.getElementById('gp-usv-session-cum');
+    if (cb) cb.checked = this.usvSessionCum;
+  },
+
 
   
   setUsvModel(key){
@@ -6262,8 +6368,8 @@ _remoteConnect() {
     return (c * 60.0) / cpmPerUsvh; // CPS -> CPM -> uSv/h
   },
   /**
-   * Instantaneous µSv/h for sample abs index under current model.
-   * firmware → drHistory; others → CPS (+ optional dead-time) + coefficient.
+   * Instantaneous ÂµSv/h for sample abs index under current model.
+   * firmware â†’ drHistory; others â†’ CPS (+ optional dead-time) + coefficient.
    * fast_slow uses 60s/5s rolling CPS from history then converts.
    */
   _usvRateAt(absIdx){
@@ -6323,8 +6429,8 @@ _remoteConnect() {
     return (c * 60.0) / cpmPerUsvh; // CPS -> CPM -> uSv/h
   },
   /**
-   * Instantaneous µSv/h for sample abs index under current model.
-   * firmware → drHistory; others → CPS (+ optional dead-time) + coefficient.
+   * Instantaneous ÂµSv/h for sample abs index under current model.
+   * firmware â†’ drHistory; others â†’ CPS (+ optional dead-time) + coefficient.
    * fast_slow uses 60s/5s rolling CPS from history then converts.
    */
   _usvRateAt(absIdx){
@@ -6370,7 +6476,7 @@ togglePanorama(){
     }
     const btn=document.getElementById('gp-pan-btn');
     if(btn){
-      btn.textContent=this._panorama?'⊟ LIVE':'⊞ PANORAMA';
+      btn.textContent=this._panorama?'âŠŸ LIVE':'âŠž PANORAMA';
       btn.style.borderColor=this._panorama?'#00FFFF':'#4444FF';
       btn.style.color=this._panorama?'#00FFFF':'#4444FF';
     }
@@ -6487,7 +6593,7 @@ togglePanorama(){
   _tlEvt(msg){
     this._tlEvtCol.push(msg);
   },
-  // ═══════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // ALARM THRESHOLD TIME METRICS
   //
   // Measures actual elapsed wall-clock time above each configured
@@ -6495,7 +6601,7 @@ togglePanorama(){
   //
   // total  = complete session exposure
   // hourly = equivalent exposure rate normalized to one hour
-  // ═══════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   _updateAlarmTime(dr, wallMs) {
     const ts = Number.isFinite(wallMs) ? wallMs : Date.now();
     if (!this._alarmTime) {
@@ -6538,9 +6644,9 @@ togglePanorama(){
         this._alarmTime.total[i] * 3600.0 / elapsedSession;
     }
   },
-  // ═══════════════════════════════════════════════════════════════
-  // CPS STORAGE FOR FLOOR → PEAK EVENTS
-  // ═══════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // CPS STORAGE FOR FLOOR â†’ PEAK EVENTS
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   _captureFpCps(cps) {
     if (!this._fpArmed) return;
     if (!Array.isArray(this._fpCpsBuf)) {
@@ -6788,15 +6894,15 @@ togglePanorama(){
       );
     if (status) {
       status.textContent =
-        `MATCH · ${best.sig.source || 'SOURCE'} · ` +
-        `CPS60=${cps60.toFixed(0)} · ` +
-        `µSv/h=${currentDr.toFixed(4)}`;
+        `MATCH Â· ${best.sig.source || 'SOURCE'} Â· ` +
+        `CPS60=${cps60.toFixed(0)} Â· ` +
+        `ÂµSv/h=${currentDr.toFixed(4)}`;
       status.style.color = '#00ff88';
     }
   },
   _cpsReady: false,
     /*
-   * LIVE SOURCE MATCHING — SLIDING 60-SECOND CPS
+   * LIVE SOURCE MATCHING â€” SLIDING 60-SECOND CPS
    *
    * This is independent of SSIG acquisition.
    *
@@ -6905,7 +7011,7 @@ togglePanorama(){
      */
     const _sourceCps60 =
       this._sourceCps60Ingest(d.cps || 0, now);
-    // Live metal-detector meter (SSIG library only — does not record)
+    // Live metal-detector meter (SSIG library only â€” does not record)
     // FIX 5: throttled library refresh so new SSIG completions are picked up live
     try {
       const _now5 = Date.now();
@@ -6998,13 +7104,13 @@ el('gp-conn-status', 'CONNECTED');
       if(pl){
         const row = document.createElement('div');
         row.style.cssText = 'font-size:.6rem;color:#FF4444;padding:2px 0;border-bottom:1px solid #1a0000;';
-        row.textContent = `${new Date().toLocaleTimeString()} ${dr.toFixed(4)} µSv/h`;
+        row.textContent = `${new Date().toLocaleTimeString()} ${dr.toFixed(4)} ÂµSv/h`;
         pl.appendChild(row);
         pl.scrollTop = pl.scrollHeight;
       }
     }
-    // ── FLOOR → PEAK processing ───────────────────────────────
-    // Record ONLY when peak - floor >= 0.10 µSv/h.
+    // â”€â”€ FLOOR â†’ PEAK processing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Record ONLY when peak - floor >= 0.10 ÂµSv/h.
     this._fpProcessReading(
       dr,
       d.wall_ns ? d.wall_ns / 1e6 : Date.now()
@@ -7062,11 +7168,11 @@ el('gp-conn-status', 'CONNECTED');
       }
     }
   },
-  // ═══════════════════════════════════════════════════════════════
-  // FLOOR → PEAK STATE MACHINE
-  // Valid measurement ONLY when peak - floor >= 0.10 µSv/h.
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // FLOOR â†’ PEAK STATE MACHINE
+  // Valid measurement ONLY when peak - floor >= 0.10 ÂµSv/h.
   // Newest 3 valid pairs retained.
-  // ═══════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 _fpProcessReading(dr, wallMs) {
   if (!Array.isArray(this._fpPairs)) this._fpPairs = [];
   if (typeof this._fpArmed !== 'boolean') this._fpArmed = false;
@@ -7113,19 +7219,19 @@ _fpProcessReading(dr, wallMs) {
       this._fpHighIdx = idx;
       this._fpHighTs = ts;
     }
-    // Drop from high → candidate peak
+    // Drop from high â†’ candidate peak
     if (this._fpHighDr > 0.001 && (this._fpHighDr - dr) >= FP_DROP_CONFIRM) {
       const hill = this._fpHighDr - this._fpFloorDr;
       if (hill >= FP_MIN_HILL) {
-        // Preferred: wall clock Δt (ms → s)
+        // Preferred: wall clock Î”t (ms â†’ s)
         let dtSec = (this._fpHighTs - this._fpFloorTs) / 1000.0;
         // Fallback: sample span (~1 reading/sec on your stream)
         const sampleSpan = Math.max(0, this._fpHighIdx - this._fpFloorIdx);
         if (!Number.isFinite(dtSec) || dtSec < MIN_DT_SEC) {
-          dtSec = Math.max(sampleSpan, 1) * 1.0; // 1 sample ≈ 1 s
+          dtSec = Math.max(sampleSpan, 1) * 1.0; // 1 sample â‰ˆ 1 s
         }
         dtSec = Math.max(dtSec, MIN_DT_SEC);
-        // Always a real intensity when hill is valid — never force 0
+        // Always a real intensity when hill is valid â€” never force 0
         const peakHrEq = this._fpHighDr * (3600.0 / dtSec);
         const fpCps = Array.isArray(this._fpCpsBuf)
           ? this._fpCpsBuf.slice()
@@ -7147,7 +7253,7 @@ _fpProcessReading(dr, wallMs) {
           peakIdx: this._fpHighIdx,
           floorTs: this._fpFloorTs,
           peakTs: this._fpHighTs,
-          // CPS occurring during this floor → peak interval
+          // CPS occurring during this floor â†’ peak interval
           cps: fpCps,
           cpsTotal: fpTotalCps,
           cpsPeak: fpPeakCps,
@@ -7231,7 +7337,7 @@ _fpProcessReading(dr, wallMs) {
     }
     const peak = Math.max(...combinedSeq, 1);
     const entry = {
-      n: entries[0].n + '–' + entries[entries.length - 1].n,
+      n: entries[0].n + 'â€“' + entries[entries.length - 1].n,
       peak,
       seq: combinedSeq,
       t: entries[0].t
@@ -7285,7 +7391,7 @@ _fpProcessReading(dr, wallMs) {
       box.style.display = 'block';
       return;
     }
-    box.innerHTML = `<div style="color:#666;padding:1px 0;cursor:pointer;" onclick="this.parentElement.style.display='none'">▾ ${matches.length} match${matches.length > 1 ? 'es' : ''} (click to collapse)</div>`;
+    box.innerHTML = `<div style="color:#666;padding:1px 0;cursor:pointer;" onclick="this.parentElement.style.display='none'">â–¾ ${matches.length} match${matches.length > 1 ? 'es' : ''} (click to collapse)</div>`;
     matches.forEach(entry => {
       const maxBar = Math.max(entry.peak || 1, 1);
       const barsHtml = (entry.seq || []).map(v => {
@@ -7337,7 +7443,7 @@ _fpProcessReading(dr, wallMs) {
     let msg, color;
     switch(cls){
       case 'SPIKE':
-        msg=`[${(d.peak?.wall_iso??'').slice(11,19)||ts()}] ⚡ SPIKE  start=${(d.beginning_low?.dr??0).toFixed(4)}  PEAK=${(d.peak?.dr??0).toFixed(4)}  end=${(d.ending_low?.dr??0).toFixed(4)}  rise=${(d.rise_s??0).toFixed(1)}s  fall=${(d.fall_s??0).toFixed(1)}s  total=${(d.total_s??0).toFixed(1)}s`;
+        msg=`[${(d.peak?.wall_iso??'').slice(11,19)||ts()}] âš¡ SPIKE  start=${(d.beginning_low?.dr??0).toFixed(4)}  PEAK=${(d.peak?.dr??0).toFixed(4)}  end=${(d.ending_low?.dr??0).toFixed(4)}  rise=${(d.rise_s??0).toFixed(1)}s  fall=${(d.fall_s??0).toFixed(1)}s  total=${(d.total_s??0).toFixed(1)}s`;
         color='#FF3333'; break;
       case 'FLAT_SUSTAINED':
       case 'FLAT_COMPLETE':
@@ -7434,7 +7540,7 @@ _gp._readGzOrText = async function(file){
     var next = -1;
     for (var i = start + 2; i < u8.length - 1; i++) {
       if (u8[i] === 0x1f && u8[i + 1] === 0x8b) {
-        // heuristic: gzip header flags byte + typical header — accept as new member
+        // heuristic: gzip header flags byte + typical header â€” accept as new member
         next = i;
         break;
       }
@@ -7523,13 +7629,13 @@ _gp._setPanoramaDone = function(){
   _gp._panDragOffset = 0;
   var btn = document.getElementById('gp-pan-btn');
   if (btn) {
-    btn.textContent = '⊟ LIVE';
+    btn.textContent = 'âŠŸ LIVE';
     btn.style.borderColor = '#00FFFF';
     btn.style.color = '#00FFFF';
   }
 };
 
-// ── REPLAY: temporal playback of GZ / JSONL ──────────────────────
+// â”€â”€ REPLAY: temporal playback of GZ / JSONL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _gp.openReplay = function(){
   // Always fresh picker so change always fires
   var inp = document.createElement('input');
@@ -7557,7 +7663,7 @@ _gp._replayFile = async function(file){
   var btn = document.getElementById('gp-replay-btn');
   var statusEl = document.getElementById('gp-conn-status');
   if (btn) {
-    btn.textContent = '⏳ REPLAY...';
+    btn.textContent = 'â³ REPLAY...';
     btn.style.borderColor = '#00AA44';
     btn.style.color = '#00AA44';
   }
@@ -7594,7 +7700,7 @@ _gp._replayFile = async function(file){
       statusEl.textContent = 'REPLAY READ ERROR';
       statusEl.style.color = '#FF4444';
     }
-    if (btn) btn.textContent = '⏵ REPLAY';
+    if (btn) btn.textContent = 'âµ REPLAY';
     return;
   }
 
@@ -7605,7 +7711,7 @@ _gp._replayFile = async function(file){
       statusEl.textContent = 'REPLAY: no JSONL records';
       statusEl.style.color = '#FF4444';
     }
-    if (btn) btn.textContent = '⏵ REPLAY';
+    if (btn) btn.textContent = 'âµ REPLAY';
     return;
   }
 
@@ -7628,10 +7734,10 @@ _gp._replayFile = async function(file){
       _gp._zoomFreezeN = _gp.drHistory.length;
       if (statusEl) {
         statusEl.textContent =
-          'REPLAY DONE — ' + r.records.length + ' (panorama, live OFF)';
+          'REPLAY DONE â€” ' + r.records.length + ' (panorama, live OFF)';
         statusEl.style.color = '#00FF88';
       }
-      if (btn) btn.textContent = '⏵ REPLAY';
+      if (btn) btn.textContent = 'âµ REPLAY';
       return;
     }
 
@@ -7678,7 +7784,7 @@ _gp._replayFile = async function(file){
   step();
 };
 
-// ── PROCESS ALL: instant bulk ingest, end on last sample in panorama ─
+// â”€â”€ PROCESS ALL: instant bulk ingest, end on last sample in panorama â”€
 _gp.openFastProcess = function(){
   var inp = document.createElement('input');
   inp.type = 'file';
@@ -7694,7 +7800,7 @@ _gp._fastProcessFile = async function(file){
   var btn = document.getElementById('gp-fastproc-btn');
   var statusEl = document.getElementById('gp-conn-status');
   if (btn) {
-    btn.textContent = '⏳ PROCESSING...';
+    btn.textContent = 'â³ PROCESSING...';
     btn.style.borderColor = '#FFAA00';
     btn.style.color = '#FFAA00';
   }
@@ -7712,7 +7818,7 @@ _gp._fastProcessFile = async function(file){
       statusEl.style.color = '#FF4444';
     }
     if (btn) {
-      btn.textContent = '⏩ PROCESS ALL';
+      btn.textContent = 'â© PROCESS ALL';
       btn.style.borderColor = '#FFAA00';
       btn.style.color = '#FFAA00';
     }
@@ -7745,22 +7851,22 @@ _gp._fastProcessFile = async function(file){
     } catch (e) {}
   }
 
-  // Stay on full session — last CPS on the right, scroll/zoom freely
+  // Stay on full session â€” last CPS on the right, scroll/zoom freely
   _gp._setPanoramaDone();
 
   if (statusEl) {
     statusEl.textContent =
-      'DONE — ' + processed + ' records (panorama)';
+      'DONE â€” ' + processed + ' records (panorama)';
     statusEl.style.color = '#00FF88';
   }
   if (btn) {
-    btn.textContent = '⏩ PROCESS ALL';
+    btn.textContent = 'â© PROCESS ALL';
     btn.style.borderColor = '#00AA44';
     btn.style.color = '#00AA44';
   }
 };
 
-// ── PROCESS ALL + EXPORT — parses gz, populates GUI, then auto-downloads logs
+// â”€â”€ PROCESS ALL + EXPORT â€” parses gz, populates GUI, then auto-downloads logs
 _gp.openFastProcessExport = function(){
   var inp = document.createElement('input');
   inp.type = 'file';
@@ -7796,7 +7902,7 @@ _gp._fastProcessFileExport = async function(file){
 
 _gp._fmtWallNs = function(ns) {
   ns = Number(ns) || 0;
-  if (ns <= 0) return '—';
+  if (ns <= 0) return 'â€”';
   try {
     if (typeof nsToUtcStr === 'function') {
       var frac = ((ns / 1e6) % 1000).toFixed(0).padStart(3, '0');
@@ -7829,7 +7935,7 @@ _gp._exportCpsPeakEvent = function(hit) {
   var total = hit.total;
   var secs = hit.secs;
   var rate = hit.rate != null ? hit.rate : (secs > 0 ? total / secs : 0);
-  var line = '[CPS PEAK CLICK] rate=' + rate.toFixed(3) + '/s  Σ=' + total +
+  var line = '[CPS PEAK CLICK] rate=' + rate.toFixed(3) + '/s  Î£=' + total +
     '  dt=' + secs.toFixed(3) + 's  t0=' + _gp._fmtWallNs(t0) +
     '  t1=' + _gp._fmtWallNs(t1);
   try { if (typeof fireEvent === 'function') fireEvent(line, '#FF44FF'); } catch (_) {}
@@ -7844,7 +7950,7 @@ _gp._exportCpsPeakEvent = function(hit) {
   var matched = ledger.filter(function(sig) { return _gp._sigOverlapsWindow(sig, t0, t1); });
   var stamp = new Date().toISOString().replace(/[:.]/g, '_').slice(0, 19);
   var lines = [
-    'CTW GEIGER — CPS PEAK EVENT EXPORT',
+    'CTW GEIGER â€” CPS PEAK EVENT EXPORT',
     'exported_at_utc=' + new Date().toISOString(),
     '',
     '=== PEAK BOX ===',
@@ -7956,7 +8062,7 @@ _rollingState: null,
   _overlayRaf: 0,
   _overlayActive: false,
   /*
-   * SOURCE REFERENCE — SLIDING 60-SECOND CPS WINDOW
+   * SOURCE REFERENCE â€” SLIDING 60-SECOND CPS WINDOW
    *
    * This is NOT an averaged CPS value.
    *
@@ -8112,7 +8218,7 @@ _rollingState: null,
     this._teardown();
     this._stopSourceOverlay();
     this._setStatus(
-      `Aborted — Sample ${this.readingIndex + 1} was not recorded as a completed reference sample.`
+      `Aborted â€” Sample ${this.readingIndex + 1} was not recorded as a completed reference sample.`
     );
     document.getElementById('ssig-start-btn').style.display =
       this.readings.length < this.N_READINGS ? '' : 'none';
@@ -8169,7 +8275,7 @@ _rollingState: null,
     this.startedAt = Date.now();
     const n = this.readingIndex + 1;
     this._setStatus(
-      `RECORDING — SOURCE: “${this.sourceName}” · SAMPLE ${n}/${this.N_READINGS} · 10:00`
+      `RECORDING â€” SOURCE: â€œ${this.sourceName}â€ Â· SAMPLE ${n}/${this.N_READINGS} Â· 10:00`
     );
     this._setSlot(n, 'recording', null);
     const label = document.getElementById('ssig-progress-label');
@@ -8250,7 +8356,7 @@ _rollingState: null,
     this._setStatus(
       `Sample ${n}/${this.N_READINGS} complete.`
     );
-    // FIX 3: seal rolling state for this sample — deep copy slots by value
+    // FIX 3: seal rolling state for this sample â€” deep copy slots by value
     if (this._rollingState) {
       const sealedSlots = {};
       for (let W = 2; W <= 20; W++) {
@@ -8353,7 +8459,7 @@ _rollingState: null,
      *
      *     Fano = Var(N) / E(N)
      *
-     * F ≈ 1 is the ideal Poisson reference.
+     * F â‰ˆ 1 is the ideal Poisson reference.
      *
      * This is a descriptive statistic, not an isotope identifier.
      */
@@ -8462,7 +8568,7 @@ _rollingState: null,
       dr_floor: drFloor,
       dr_peak: drPeak,
       dr_mean: muDr,
-      // FIX A: DR mode — µSv/h value that appeared most in this 10-min window
+      // FIX A: DR mode â€” ÂµSv/h value that appeared most in this 10-min window
       dr_mode: (() => {
         const freq = {};
         drs.forEach(v => {
@@ -8545,7 +8651,7 @@ _rollingState: null,
     const drMean = meanField('mu_dr');
     this.final = {
       source: this.sourceName,
-      // FIX 3: natural flag from checkbox — persists in ssigLibrary
+      // FIX 3: natural flag from checkbox â€” persists in ssigLibrary
       is_natural: this._isNatural !== false,
       // Required by server endpoint validation
       method:              'time-weighted-GM-statistical-envelope-plus-CPS-temporal-signature',
@@ -8610,7 +8716,7 @@ _rollingState: null,
           ...this.readings.map(r => Number.isFinite(Number(r.dr_peak)) ? Number(r.dr_peak) : Number(r.mu_dr) || 0)
         );
       })(),
-      // FIX B2: aggregate DR mode — most frequent µSv/h bucket across all 30 min
+      // FIX B2: aggregate DR mode â€” most frequent ÂµSv/h bucket across all 30 min
       dr_mode: (() => {
         const freq = {};
         this.readings.forEach(r => {
@@ -8746,7 +8852,7 @@ _rollingState: null,
     this._saveToServer(this.final);
     this._showResult(this.final);
     this._setStatus(
-      `COMPLETE — ${this.sourceName} reference contains 3 independent 10-minute samples.`
+      `COMPLETE â€” ${this.sourceName} reference contains 3 independent 10-minute samples.`
     );
     document.getElementById('ssig-start-btn').style.display = '';
     document.getElementById('ssig-abort-btn').style.display = 'none';
@@ -8777,7 +8883,7 @@ _rollingState: null,
         sig
       );
       this._setStatus(
-        `COMPLETE — ${sig.source} saved to authenticated user record and master repository.`
+        `COMPLETE â€” ${sig.source} saved to authenticated user record and master repository.`
       );
     } catch (e) {
       console.error(
@@ -8808,12 +8914,12 @@ _rollingState: null,
     ).textContent =
 `SOURCE       = ${f.source}
 METHOD       = ${f.method}
-SAMPLES      = ${f.n_readings} independent × ${f.reading_minutes} min
+SAMPLES      = ${f.n_readings} independent Ã— ${f.reading_minutes} min
 TOTAL COUNTS = ${a.total_counts}
-µ (µSv/h)    = ${a.mean_mu_dr.toFixed(6)}
-µ (CPS)      = ${a.mean_mu_cps.toFixed(4)}
-σ (µSv/h)    = ${a.mean_sigma_dr.toFixed(6)}
-σ (CPS)      = ${a.mean_sigma_cps.toFixed(4)}
+Âµ (ÂµSv/h)    = ${a.mean_mu_dr.toFixed(6)}
+Âµ (CPS)      = ${a.mean_mu_cps.toFixed(4)}
+Ïƒ (ÂµSv/h)    = ${a.mean_sigma_dr.toFixed(6)}
+Ïƒ (CPS)      = ${a.mean_sigma_cps.toFixed(4)}
 FANO FACTOR  = ${a.mean_fano_factor.toFixed(6)}
 Q10          = ${a.mean_q10.toFixed(6)}
 Q50          = ${a.mean_q50.toFixed(6)}
@@ -8842,8 +8948,8 @@ if (this._rollingState && this._rollingState.totalEvents > 0) {
         if (!hasHits) rs += 'No identical block sequences detected.\nConsistent with Poisson process.\n';
         rs += '\nchain-2 = 2 consecutive identical blocks (minimum signal)\n';
         rs += 'chain-N = N consecutive identical blocks of size W\n';
-        rs += 'Natural Poisson: chain-2 at W≥5 is astronomically rare.\n';
-        rs += 'Any chain≥3 at W≥5 is strong evidence of a structured source.';
+        rs += 'Natural Poisson: chain-2 at Wâ‰¥5 is astronomically rare.\n';
+        rs += 'Any chainâ‰¥3 at Wâ‰¥5 is strong evidence of a structured source.';
         rb.textContent += rs;
       }
     }
@@ -8920,17 +9026,17 @@ if (this._rollingState && this._rollingState.totalEvents > 0) {
             ${esc(s.source || '?')}
           </div>
           <div class="text-cyan-800">
-            μ=${Number(a.mean_mu_dr || 0).toFixed(5)}
-            µSv/h ·
+            Î¼=${Number(a.mean_mu_dr || 0).toFixed(5)}
+            ÂµSv/h Â·
             CPS=${Number(a.mean_mu_cps || 0).toFixed(2)}
-            ·
-            ${s.n_readings || 0}×10min
+            Â·
+            ${s.n_readings || 0}Ã—10min
           </div>
           <div class="text-cyan-900">
             Fano=${Number(a.mean_fano_factor || 0).toFixed(4)}
-            ·
+            Â·
             IAT-CV=${Number(a.mean_cv_iat || 0).toFixed(4)}
-            ·
+            Â·
             ${(s.completed_at || '').slice(0,19)}
           </div>
         </div>
@@ -8977,16 +9083,16 @@ if (this._rollingState && this._rollingState.totalEvents > 0) {
       slot.style.borderColor = '#0d9488';
       slot.style.color = '#2dd4bf';
       slot.textContent =
-        `${['①','②','③'][n-1]} RECORDING 10:00…`;
+        `${['â‘ ','â‘¡','â‘¢'][n-1]} RECORDING 10:00â€¦`;
     }
     if (state === 'done' && summary) {
       slot.style.borderColor = '#134e4a';
       slot.style.color = '#5eead4';
       slot.textContent =
-        `${['①','②','③'][n-1]} ` +
-        `μ=${summary.mu_dr.toFixed(5)} µSv/h · ` +
-        `CPS=${summary.mu_cps.toFixed(2)} · ` +
-        `F=${summary.fano_factor.toFixed(3)} · ` +
+        `${['â‘ ','â‘¡','â‘¢'][n-1]} ` +
+        `Î¼=${summary.mu_dr.toFixed(5)} ÂµSv/h Â· ` +
+        `CPS=${summary.mu_cps.toFixed(2)} Â· ` +
+        `F=${summary.fano_factor.toFixed(3)} Â· ` +
         `n=${summary.n}`;
     }
   },
@@ -9000,7 +9106,7 @@ if (this._rollingState && this._rollingState.totalEvents > 0) {
       slot.style.borderColor = '#1a2a28';
       slot.style.color = '#444';
       slot.textContent =
-        `${['①','②','③'][n-1]} Waiting…`;
+        `${['â‘ ','â‘¡','â‘¢'][n-1]} Waitingâ€¦`;
     });
   },
   _teardown(restoreName = true) {
@@ -9043,7 +9149,7 @@ if (this._rollingState && this._rollingState.totalEvents > 0) {
     text.textContent =
       this.sourceName.toUpperCase();
     meta.textContent =
-      `REFERENCE ACQUISITION · SAMPLE ${sampleNumber}/${this.N_READINGS}`;
+      `REFERENCE ACQUISITION Â· SAMPLE ${sampleNumber}/${this.N_READINGS}`;
     root.style.display = 'flex';
     if (this._overlayRaf) {
       cancelAnimationFrame(this._overlayRaf);
@@ -9088,9 +9194,9 @@ if (this._rollingState && this._rollingState.totalEvents > 0) {
     const s =
       Math.floor((left % 60000) / 1000);
     meta.textContent =
-      `REFERENCE ACQUISITION · SAMPLE ` +
+      `REFERENCE ACQUISITION Â· SAMPLE ` +
       `${this.readingIndex + 1}/${this.N_READINGS}` +
-      ` · ${m}:${String(s).padStart(2,'0')}`;
+      ` Â· ${m}:${String(s).padStart(2,'0')}`;
   },
 _stopSourceOverlay() {
     this._overlayActive = false;
@@ -9102,7 +9208,7 @@ _stopSourceOverlay() {
     if (root) root.style.display = 'none';
   },
   _initRolling() {
-    // cpsBuf is NEVER reset between samples — chains that span sample
+    // cpsBuf is NEVER reset between samples â€” chains that span sample
     // boundaries are valid contiguous occurrences.
     this._rollingState = {
       cpsBuf:      [],   // full continuous CPS sequence across all samples
@@ -9119,7 +9225,7 @@ _stopSourceOverlay() {
     const slotsEl = document.getElementById('ssig-rolling-slots');
     const logEl   = document.getElementById('ssig-rolling-log');
     if (slotsEl) slotsEl.innerHTML = '';
-    if (logEl)   logEl.innerHTML   = '<div style="color:#0a3028;font-style:italic">Recording…</div>';
+    if (logEl)   logEl.innerHTML   = '<div style="color:#0a3028;font-style:italic">Recordingâ€¦</div>';
     const countEl = document.getElementById('ssig-rolling-count');
     if (countEl) countEl.textContent = '0 events';
   },
@@ -9139,7 +9245,7 @@ _stopSourceOverlay() {
       const curStart  = blockIdx * W;
       const prevStart = (blockIdx - 1) * W;
 
-      // ── does this block match the one immediately before it? ──────────
+      // â”€â”€ does this block match the one immediately before it? â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       let match = true;
       for (let i = 0; i < W; i++) {
         if (buf[curStart + i] !== buf[prevStart + i]) { match = false; break; }
@@ -9147,12 +9253,12 @@ _stopSourceOverlay() {
 
       const runKey = W + ',' + W; // placeholder; real key computed below
       if (!match) {
-        // run ended — clean up _runDepth entries for this W that ended here
+        // run ended â€” clean up _runDepth entries for this W that ended here
         // (nothing to do; they were already credited at their final depth)
         continue;
       }
 
-      // ── walk backward to find run start ───────────────────────────────
+      // â”€â”€ walk backward to find run start â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // runStartBlockIdx = earliest block in the contiguous identical run
       let runStartBlockIdx = blockIdx - 1;
       while (runStartBlockIdx > 0) {
@@ -9169,7 +9275,7 @@ _stopSourceOverlay() {
       const depth = blockIdx - runStartBlockIdx + 1;
       const rk    = W + ',' + runStartBlockIdx;
 
-      // ── update slots: upgrade previous depth credit for this run ──────
+      // â”€â”€ update slots: upgrade previous depth credit for this run â”€â”€â”€â”€â”€â”€
       const prevDepth = rs._runDepth[rk];
       if (prevDepth !== undefined) {
         // remove the old credit
@@ -9209,7 +9315,7 @@ _stopSourceOverlay() {
     if (!rs) return;
     const countEl = document.getElementById('ssig-rolling-count');
     if (countEl) countEl.textContent = rs.totalEvents + ' events';
-    // ── slots summary ─────────────────────────────────────────────────
+    // â”€â”€ slots summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const slotsEl = document.getElementById('ssig-rolling-slots');
     if (slotsEl) {
       const rows = [];
@@ -9226,7 +9332,7 @@ _stopSourceOverlay() {
                       : dep >=  5 ? '#FF8800'
                       : dep >=  3 ? '#FFAA00'
                                   : '#00FF88';
-            return `<span style="color:${col};margin-right:6px">ch${d}:${c}×</span>`;
+            return `<span style="color:${col};margin-right:6px">ch${d}:${c}Ã—</span>`;
           }).join('');
         rows.push(
           `<div style="padding:1px 0;border-bottom:1px solid #041210">` +
@@ -9238,7 +9344,7 @@ _stopSourceOverlay() {
         ? rows.join('')
         : '<div style="color:#0a3028;font-style:italic">No matches yet</div>';
     }
-    // ── event log ─────────────────────────────────────────────────────
+    // â”€â”€ event log â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const logEl = document.getElementById('ssig-rolling-log');
     if (!logEl) return;
     const placeholder = logEl.querySelector('div[style*="italic"]');
@@ -9252,7 +9358,7 @@ _stopSourceOverlay() {
                           : '#2dd4bf';
     const blockStr = evt.block.length <= 14
       ? evt.block.join(',')
-      : evt.block.slice(0, 14).join(',') + '…';
+      : evt.block.slice(0, 14).join(',') + 'â€¦';
     const row = document.createElement('div');
     row.style.cssText = `padding:1px 0;border-bottom:1px solid #041210;color:${col};white-space:nowrap`;
     row.textContent   = `${evt.time}  W=${String(evt.W).padStart(2)}  chain=${dep}  [${blockStr}]`;
@@ -9355,9 +9461,9 @@ function applySidebarOpacity(val) {
 }
 function resetTheme(){_themeRGB={};_themeBrightness={};localStorage.removeItem('ctwTheme');document.documentElement.style.setProperty('--blue','rgb(12,22,162)');document.documentElement.style.setProperty('--theme-bg','#000');document.documentElement.style.setProperty('--theme-sidebar','#000');document.documentElement.style.setProperty('--theme-btn','rgb(12,22,162)');document.documentElement.style.setProperty('--theme-border','#1f2937');document.documentElement.style.setProperty('--theme-avatar-bg','auto');document.body.style.background='';const aside=document.querySelector('aside');if(aside)aside.style.background='';['page-feed','page-explore','page-profile','page-thread','page-messages'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.background='';});document.querySelectorAll('.post-card').forEach(el=>el.style.borderColor='');document.querySelectorAll('[style*="hsl("][class*="rounded-full"]:not(img)').forEach(el=>{el.style.background='';});if(_avatarImagesHidden)toggleAvatarImages();['theme-r','theme-g','theme-b'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('theme-preview').style.background='#000';document.getElementById('theme-brightness').value=100;}
 </script>
-<!-- ═══════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      BLOCK 4: VS ENGINE (guest chess)
-     ═══════════════════════════════════════════════ -->
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <script>
 const VSENGINE = {
   open:false, game:null, humanColor:'w',
@@ -9365,11 +9471,11 @@ const VSENGINE = {
   pendingPromotion:null, thinking:false
 };
 const VSE_PIECE = {
-  w:{p:'♙',n:'♘',b:'♗',r:'♖',q:'♕',k:'♔'},
-  b:{p:'♟',n:'♞',b:'♝',r:'♜',q:'♛',k:'♚'}
+  w:{p:'â™™',n:'â™˜',b:'â™—',r:'â™–',q:'â™•',k:'â™”'},
+  b:{p:'â™Ÿ',n:'â™ž',b:'â™',r:'â™œ',q:'â™›',k:'â™š'}
 };
 const VSE_FILES = ['a','b','c','d','e','f','g','h'];
-// ── light square colour palette ──
+// â”€â”€ light square colour palette â”€â”€
 const VSE_LIGHT = '#c8a654';   // warm parchment gold
 const VSE_DARK  = '#4a2e0a';   // deep walnut brown
 const VSE_SEL   = 'rgba(200,220,80,0.55)';
@@ -9514,12 +9620,12 @@ function vseUpdateStatus() {
     el.textContent = (g.turn()==='w' ? 'Black' : 'White') + ' wins by checkmate';
     return;
   }
-  if (g.in_stalemate())           { el.textContent = 'Draw — stalemate'; return; }
-  if (g.in_threefold_repetition()){ el.textContent = 'Draw — threefold repetition'; return; }
-  if (g.insufficient_material())  { el.textContent = 'Draw — insufficient material'; return; }
-  if (VSENGINE.thinking)          { el.textContent = 'The engine deliberates…'; return; }
+  if (g.in_stalemate())           { el.textContent = 'Draw â€” stalemate'; return; }
+  if (g.in_threefold_repetition()){ el.textContent = 'Draw â€” threefold repetition'; return; }
+  if (g.insufficient_material())  { el.textContent = 'Draw â€” insufficient material'; return; }
+  if (VSENGINE.thinking)          { el.textContent = 'The engine deliberatesâ€¦'; return; }
   const myTurn = g.turn() === VSENGINE.humanColor;
-  el.textContent = myTurn ? 'Thy move' : 'The engine moves…';
+  el.textContent = myTurn ? 'Thy move' : 'The engine movesâ€¦';
   if (g.in_check() && chk) chk.style.display = 'block';
 }
 function vseClick(sq) {
@@ -9612,9 +9718,9 @@ async function vseEngineMove() {
 // initialise labels on first open
 window.addEventListener('resize', () => { if (VSENGINE.open) { vseRenderLabels(); vseRender(); } });
 </script>
-<!-- ═══════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      BLOCK 5: SCREENSAVER
-     ═══════════════════════════════════════════════ -->
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <script>
 const SS={
   canvas:null,ctx:null,active:false,timer:null,idleTimer:null,IDLE_MS:0,
@@ -9639,9 +9745,9 @@ const SS={
   }
 };
 </script>
-<!-- ═══════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      BLOCK 6: LCD ENGINES
-     ═══════════════════════════════════════════════ -->
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <script>
 const lcd_PAL_RAW=new Uint8Array([0x3f,0x00,0x3f,0x3f,0x02,0x3d,0x3f,0x04,0x3b,0x3f,0x06,0x39,0x3f,0x08,0x37,0x3f,0x0a,0x35,0x3f,0x0c,0x33,0x3f,0x0e,0x31,0x3f,0x10,0x2f,0x3f,0x12,0x2d,0x3f,0x14,0x2b,0x3f,0x16,0x29,0x3f,0x18,0x27,0x3f,0x1a,0x25,0x3f,0x1c,0x23,0x3f,0x1e,0x21,0x3f,0x20,0x1f,0x3f,0x22,0x1d,0x3f,0x24,0x1b,0x3f,0x26,0x19,0x3f,0x28,0x17,0x3f,0x2a,0x15,0x3f,0x2c,0x13,0x3f,0x2e,0x11,0x3f,0x30,0x0f,0x3f,0x32,0x0d,0x3f,0x34,0x0b,0x3f,0x36,0x09,0x3f,0x38,0x07,0x3f,0x3a,0x05,0x3f,0x3c,0x03,0x3f,0x3e,0x01,0x3f,0x3f,0x00,0x3d,0x3f,0x02,0x3b,0x3f,0x04,0x39,0x3f,0x06,0x37,0x3f,0x08,0x35,0x3f,0x0a,0x33,0x3f,0x0c,0x31,0x3f,0x0e,0x2f,0x3f,0x10,0x2d,0x3f,0x12,0x2b,0x3f,0x14,0x29,0x3f,0x16,0x27,0x3f,0x18,0x25,0x3f,0x1a,0x23,0x3f,0x1c,0x21,0x3f,0x1e,0x1f,0x3f,0x20,0x1d,0x3f,0x22,0x1b,0x3f,0x24,0x19,0x3f,0x26,0x17,0x3f,0x28,0x15,0x3f,0x2a,0x13,0x3f,0x2c,0x11,0x3f,0x2e,0x0f,0x3f,0x30,0x0d,0x3f,0x32,0x0b,0x3f,0x34,0x09,0x3f,0x36,0x07,0x3f,0x38,0x05,0x3f,0x3a,0x03,0x3f,0x3c,0x01,0x3f,0x3e,0x00,0x3f,0x3f,0x00,0x3d,0x3f,0x00,0x3b,0x3f,0x00,0x39,0x3f,0x00,0x37,0x3f,0x00,0x35,0x3f,0x00,0x33,0x3f,0x00,0x31,0x3f,0x00,0x2f,0x3f,0x00,0x2d,0x3f,0x00,0x2b,0x3f,0x00,0x29,0x3f,0x00,0x27,0x3f,0x00,0x25,0x3f,0x00,0x23,0x3f,0x00,0x21,0x3f,0x00,0x1f,0x3f,0x00,0x1d,0x3f,0x00,0x1b,0x3f,0x00,0x19,0x3f,0x00,0x17,0x3f,0x00,0x15,0x3f,0x00,0x13,0x3f,0x00,0x11,0x3f,0x00,0x0f,0x3f,0x00,0x0d,0x3f,0x00,0x0b,0x3f,0x00,0x09,0x3f,0x00,0x07,0x3f,0x00,0x05,0x3f,0x00,0x03,0x3f,0x00,0x01,0x3f,0x00,0x00,0x3f,0x02,0x00,0x3f,0x04,0x00,0x3f,0x06,0x00,0x3f,0x08,0x00,0x3f,0x0a,0x00,0x3f,0x0c,0x00,0x3f,0x0e,0x00,0x3f,0x10,0x00,0x3f,0x12,0x00,0x3f,0x14,0x00,0x3f,0x16,0x00,0x3f,0x18,0x00,0x3f,0x1a,0x00,0x3f,0x1c,0x00,0x3f,0x1e,0x00,0x3f,0x20,0x00,0x3f,0x22,0x00,0x3f,0x24,0x00,0x3f,0x26,0x00,0x3f,0x28,0x00,0x3f,0x2a,0x00,0x3f,0x2c,0x00,0x3f,0x2e,0x00,0x3f,0x30,0x00,0x3f,0x32,0x00,0x3f,0x34,0x00,0x3f,0x36,0x00,0x3f,0x38,0x00,0x3f,0x3a,0x00,0x3f,0x3c,0x00,0x3f,0x3f,0x00,0x3f]);
 const lcd_PAL=[];for(let i=0;i<128;i++)lcd_PAL.push([(lcd_PAL_RAW[i*3+0]*255/63)|0,(lcd_PAL_RAW[i*3+1]*255/63)|0,(lcd_PAL_RAW[i*3+2]*255/63)|0]);
@@ -9728,9 +9834,9 @@ document.addEventListener('DOMContentLoaded',()=>{
   _lcdInit();
 });
 </script>
-<!-- ═══════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      BLOCK 7: FLUID-2
-     ═══════════════════════════════════════════════ -->
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <script>
 const SS_FLUID2={
   name:'Fluid2',SW:160,SH:100,BW:320,BH:200,
@@ -9800,9 +9906,9 @@ SS_ENGINES.push({id:'fluid2',label:'Fluid2',engine:SS_FLUID2});
   else inject();
 })();
 </script>
-<!-- ═══════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      BLOCK 8: CAMPFIRE
-     ═══════════════════════════════════════════════ -->
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <script>
 const SS_CAMPFIRE={
   name:'Campfire',W:320,H:200,
@@ -10076,9 +10182,9 @@ SS_ENGINES.push({id:'campfire',label:'Campfire',engine:SS_CAMPFIRE});
   else inject();
 })();
 </script>
-<!-- ═══════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      BLOCK 9: CTW CHESS ENGINE (authenticated)
-     ═══════════════════════════════════════════════ -->
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <script>
 (function(){
   const PIECE_GLYPH={w:{p:'P',n:'N',b:'B',r:'R',q:'Q',k:'K'},b:{p:'p',n:'n',b:'b',r:'r',q:'q',k:'k'}};
@@ -10110,11 +10216,11 @@ SS_ENGINES.push({id:'campfire',label:'Campfire',engine:SS_CAMPFIRE});
   renderChessBoard();
 })();
 </script>
-<!-- ═══════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      BLOCK 10: GEIGER + ALL TOGGLE FUNCTIONS
      toggleVideoPanel, toggleEnglish, toggleGeiger
      ALL defined here - AFTER chess, BEFORE English
-     ═══════════════════════════════════════════════ -->
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <script>
 const GEIGER = (() => {
   let es=null,active=false,drHistory=[],sessionPeak=0;
@@ -10137,7 +10243,7 @@ const GEIGER = (() => {
   function toggle(){toggleGeigerPanel();}
   return{toggle,connect,disconnect,probe};
 })();
-// ── All toggle functions that buttons call ─────────────────────────────────
+// â”€â”€ All toggle functions that buttons call â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function toggleGeiger(){ GEIGER.toggle(); }
 function openGeigerFullscreen(){ toggleGeigerPanel(); }
 function toggleVideoPanel(){
@@ -10171,11 +10277,11 @@ function openEnglishFullscreen(){
   englishSetLevel(ENG.currentLevel||'A0');
 }
 </script>
-<!-- ═══════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      BLOCK 11: ENGLISH LEARNING READER
      ENG, FLASH, VOCAB_BANKS, engLoadResource,
      engShowState all defined here
-     ═══════════════════════════════════════════════ -->
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <script>
 const ENG = {
   open:false, fontSize:14, currentLevel:'A0',
@@ -10565,9 +10671,9 @@ function _engResizeEnd(){
   document.removeEventListener('mouseup',_engResizeEnd);
 }
 </script>
-<!-- ═══════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      BLOCK 12: PRIVACY FOOTER + VISIT COUNTER
-     ═══════════════════════════════════════════════ -->
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div style="position:fixed;bottom:0;left:0;right:0;background:#0a0a0a;border-top:1px solid #222;padding:9px 14px;font-size:11px;color:#777;z-index:10000;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;text-align:center;">
   <div>
     This site uses <strong>localStorage</strong> only to save your theme, font, and preferences.
@@ -10651,14 +10757,14 @@ async function saveEditProfile(){
   }
 }
 </script>
-<!-- ═══════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      BLOCK 13: GEIGER PANEL COLLAPSE SYSTEM
-     ═══════════════════════════════════════════════ -->
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <script>
 (function(){
   'use strict';
   function gpSetup(){
-    // ── Generic horizontal side-panel collapser ──────────────
+    // â”€â”€ Generic horizontal side-panel collapser â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     function collapseSide(panelId, getHdr, label, color, collW, fullW){
       var panel = document.getElementById(panelId);
       if(!panel) return;
@@ -10712,7 +10818,7 @@ async function saveEditProfile(){
       hdr.addEventListener('click', toggle);
       vl.addEventListener('click',  toggle);
     }
-    // 1. LIVE READINGS — click "LIVE READINGS" label
+    // 1. LIVE READINGS â€” click "LIVE READINGS" label
     collapseSide('gp-left-panel',
       function(p){ return p.firstElementChild; },
       'LIVE READINGS', '#00FF88', '18px', '200px');
@@ -10727,7 +10833,7 @@ async function saveEditProfile(){
         return row.firstElementChild;            // "CPS SIGNATURES" text div
       },
       'SIG \u00b7 RT \u00b7 PEAK', '#00FF88', '18px', '180px');
-    // 3. RECURRENCE — click "RECURRENCE" text div
+    // 3. RECURRENCE â€” click "RECURRENCE" text div
     collapseSide('gp-recur-panel',
       function(p){
         var row = p.firstElementChild;
@@ -10760,7 +10866,7 @@ async function saveEditProfile(){
         });
       }
     }
-    // 5. BOTTOM ROW — RAW DATA + INTERPRETED EVENTS (collapses vertically)
+    // 5. BOTTOM ROW â€” RAW DATA + INTERPRETED EVENTS (collapses vertically)
     var mb = document.getElementById('gp-main-body');
     if(mb){
       var oscCol = mb.lastElementChild;
@@ -10794,16 +10900,16 @@ async function saveEditProfile(){
     document.addEventListener('DOMContentLoaded', gpSetup);
   }
 })();
-/* ═══════════════════════════════════════════════════════════════
-   METALDET – metal-detector / thermometer source classifier
-   Uses 3×10-min signature envelopes:
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   METALDET â€“ metal-detector / thermometer source classifier
+   Uses 3Ã—10-min signature envelopes:
        floor / mean / peak
-   (e)Name → energy side
-   plain Name → natural side
+   (e)Name â†’ energy side
+   plain Name â†’ natural side
    This module is intentionally standalone.
    It does NOT patch, wrap, replace, or hook any existing
    Geiger live-reading function.
-   ═══════════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 const METALDET = {
   _sources: [],
   _scaleLo: 0,
@@ -11128,7 +11234,7 @@ const METALDET = {
   },
   _fmt(n) {
     if (!Number.isFinite(n)) {
-      return '—';
+      return 'â€”';
     }
     if (n >= 1000) {
       return n.toFixed(0);
@@ -11187,11 +11293,11 @@ const METALDET = {
       const cpsPct = this._cpsToPct(v) / 100; // 0-1 envelope position
       let finalPct;
       if (RBA && RBA._ready) {
-        // Both ground truths loaded — blend envelope + RBA structure dial
+        // Both ground truths loaded â€” blend envelope + RBA structure dial
         // structureScore 0=natural(bottom/green) 1=structured(top/red)
         finalPct = 0.5 * cpsPct + 0.5 * this._structureScore;
       } else if (this._sources && this._sources.length) {
-        // Only one pool recorded — use envelope position alone
+        // Only one pool recorded â€” use envelope position alone
         // Find best source match for current CPS
         const _liveDr2 = Number(this._lastLiveDr) || 0;
         let _bestSrc = null, _bestD = Infinity;
@@ -11240,7 +11346,7 @@ const METALDET = {
     if (ro) {
       let roText = '';
       if (hits.length) {
-        roText = hits.map(h => h.display).join(' · ');
+        roText = hits.map(h => h.display).join(' Â· ');
       } else {
         roText = this._fmt(v) + ' cps';
       }
@@ -11257,7 +11363,7 @@ const METALDET = {
         const natName = RBA.getNaturalName();
         const strName = RBA.getStructuredName();
         ro.innerHTML =
-          `<span style='color:#555;font-size:.42rem'>${natName} ↔ ${strName}</span><br>` +
+          `<span style='color:#555;font-size:.42rem'>${natName} â†” ${strName}</span><br>` +
           `<span>${roText}</span> ` +
           `<span style='color:${col};font-weight:700'>${label} ${pct}%</span>`;
       } else if (RBA && !RBA._ready) {
@@ -11359,14 +11465,14 @@ const METALDET = {
     }
   }
 };
-/* ═══════════════════════════════════════════════════════════════════════════
-   RBA — Rolling Block Analysis comparison engine
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   RBA â€” Rolling Block Analysis comparison engine
    Compares live 60s CPS stream against two ground-truth signatures:
-     - natural  (e.g. Thorium)          → Poisson baseline per W column
-     - structured (e.g. Unknown Pattern) → structured baseline per W column
+     - natural  (e.g. Thorium)          â†’ Poisson baseline per W column
+     - structured (e.g. Unknown Pattern) â†’ structured baseline per W column
    Produces a 0-1 score per W column and a mean dial position.
    0 = indistinguishable from natural, 1 = matches structured source.
-   ═══════════════════════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 const RBA = {
   // Auto-classified name storage (set by _loadGroundTruth)
   _autoNaturalName:    null,
@@ -11376,7 +11482,7 @@ const RBA = {
   _naturalCounts:    {},  // W -> totalChainCount from natural signature
   _structuredCounts: {},  // W -> totalChainCount from structured signature
 
-  // Live rolling scan state — mirrors _rollingIngest logic but on 60s window
+  // Live rolling scan state â€” mirrors _rollingIngest logic but on 60s window
   _liveBuf:      [],       // rolling 60s of CPS values (capped at 3600)
   _liveSlots:    {},       // W -> { depth -> count } for current window
   _liveRunDepth: {},       // W+','+runStartBlockIdx -> currentDepth
@@ -11386,11 +11492,11 @@ const RBA = {
   _dialPosition:  0,  // mean across all W columns, 0=natural 1=structured
   _ready:         false,
 
-  // Auto-classification reports — read-only
+  // Auto-classification reports â€” read-only
   getNaturalName()    { return this._autoNaturalName    || '(not yet classified)'; },
   getStructuredName() { return this._autoStructuredName || '(not yet classified)'; },
 
-  // ── Auto-classify ground truth from ssigLibrary ─────────────────────────
+  // â”€â”€ Auto-classify ground truth from ssigLibrary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // No manual labeling required. Scans all completed signatures and picks:
   //   natural    = signature with LOWEST aggregate chain count W=5..20
   //   structured = signature with HIGHEST aggregate chain count W=5..20
@@ -11467,7 +11573,7 @@ const RBA = {
     );
   },
 
-  // ── Ingest one live CPS sample into the rolling scan ────────────────────
+  // â”€â”€ Ingest one live CPS sample into the rolling scan â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Called from METALDET.onReading on every live detector tick.
   ingest(cps) {
     const v = Math.max(0, Math.round(Number(cps) || 0));
@@ -11475,7 +11581,7 @@ const RBA = {
     // Keep buffer to last 3600 samples (1 hour max)
     if (this._liveBuf.length > 3600) {
       this._liveBuf.shift();
-      // Trim stale _liveRunDepth keys — keys referencing
+      // Trim stale _liveRunDepth keys â€” keys referencing
       // block indices that no longer exist in the window
       // are simply ignored when looked up; no active purge needed.
     }
@@ -11525,7 +11631,7 @@ const RBA = {
     if (n % 20 === 0) this._recomputeDial();
   },
 
-  // ── Compute column scores and mean dial position ─────────────────────────
+  // â”€â”€ Compute column scores and mean dial position â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   _recomputeDial() {
     if (!this._ready) { this._dialPosition = 0; return; }
 
@@ -11541,7 +11647,7 @@ const RBA = {
 
       let score;
       if (span <= 0) {
-        // No difference between natural and structured for this column —
+        // No difference between natural and structured for this column â€”
         // use absolute live count normalised to structured count
         score = str > 0 ? Math.min(1, liveTotal / str) : 0;
       } else {
@@ -11565,7 +11671,7 @@ const RBA = {
     }
   },
 
-  // ── Auto-load ground truth on init ──────────────────────────────────────
+  // â”€â”€ Auto-load ground truth on init â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   init() {
     this._loadGroundTruth();
     // Expose name pickers to console for easy setup
@@ -11576,7 +11682,7 @@ const RBA = {
     );
   },
 
-  // ── Return current state for display ────────────────────────────────────
+  // â”€â”€ Return current state for display â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   getState() {
     return {
       dialPosition:   this._dialPosition,
