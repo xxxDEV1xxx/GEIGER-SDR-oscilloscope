@@ -6486,6 +6486,10 @@ togglePanorama(){
     const lines=this.sigLedger.map(e=>
       `${e.t}\tSIG#${e.n}\t[${(e.seq||[]).join(',')}]\tpk=${e.peak}\tlen=${e.len}`
     );
+    
+    if (this._formatRecurExport) {
+      lines.push(this._formatRecurExport());
+    }
     const blob=new Blob([lines.join('\n')],{type:'text/plain'});
     const a=document.createElement('a');
     a.href=URL.createObjectURL(blob);
@@ -6549,7 +6553,7 @@ togglePanorama(){
       lastEnd: -1,      // buffer index where current streak's last block ended
       lastNs: 0,
       lastEndNsMap: Object.create(null),
-      ledger: []
+      ledger: (this._recurState && this._recurState.ledger) ? this._recurState.ledger : []
     };
     const el = document.getElementById('gp-recur-ledger');
     if (el) el.innerHTML = '';
@@ -6574,7 +6578,9 @@ togglePanorama(){
     if (!ledger) return;
     const st = this._recurState;
     st.ledger.push(entry);
-    if (st.ledger.length > 300) st.ledger.shift();
+    if (!this._recurPersist) this._recurPersist = [];
+    this._recurPersist.push(entry);
+    /* keep all recurrence entries */
     st.lastEndNsMap[entry.pattern] = entry.t1;
 
     const col = entry.run >= 6 ? '#FF4444'
@@ -6599,7 +6605,8 @@ togglePanorama(){
       '<span style="color:' + col + '">×' + entry.run + '</span> ' +
       '<span style="color:#445544">' + tStr + gap + '</span>';
     ledger.insertBefore(row, ledger.firstChild);
-    while (ledger.children.length > 80) ledger.removeChild(ledger.lastChild);
+    while (ledger.children.length > 500) ledger.removeChild(ledger.lastChild);
+    // full history remains in this._recurState.ledger (export uses that)
     const cnt = document.getElementById('gp-recur-count');
     if (cnt) cnt.textContent = String(st.ledger.length);
   },
@@ -6682,6 +6689,32 @@ togglePanorama(){
   },
   _checkRecur(entry) {},
   _emitRecur() {},
+
+  _formatRecurExport() {
+    const st = this._recurState;
+    const rows = (this._recurPersist && this._recurPersist.length) ? this._recurPersist : ((st && st.ledger) ? st.ledger : []);
+    const lines = [];
+    lines.push('');
+    lines.push('ROLLING BLOCK RECURRENCE (6-gram consecutive blocks)');
+    lines.push('----------------------------------------------------');
+    lines.push('pattern\trun\tt0_ns\tt1_ns\tgap_s\tidx0\tidx1');
+    for (let i = 0; i < rows.length; i++) {
+      const e = rows[i];
+      const gap = (e.gap_s != null && isFinite(e.gap_s)) ? e.gap_s.toFixed(3) : '';
+      lines.push(
+        '[' + e.pattern + ']\t' +
+        e.run + '\t' +
+        (e.t0 || '') + '\t' +
+        (e.t1 || '') + '\t' +
+        gap + '\t' +
+        (e.idx0 != null ? e.idx0 : '') + '\t' +
+        (e.idx1 != null ? e.idx1 : '')
+      );
+    }
+    lines.push('TOTAL_RECUR_ENTRIES\t' + rows.length);
+    return lines.join('\n');
+  },
+
   _flushRecur() {
     if (this._recurState && this._recurState.key &&
         this._recurState.run >= (this._recurMinRun || 2))
