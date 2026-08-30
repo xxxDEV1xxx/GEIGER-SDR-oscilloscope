@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GNSS Forensic Map — CTW</title>
+<style>
+  :root {
+    --bg:     #060809;
+    --panel:  #0a0d10;
+    --border: #1a2028;
+    --accent: #00e5ff;
+    --warn:   #ffb300;
+    --danger: #ff1744;
+    --text:   #90a4ae;
+    --font:   'Courier New', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    overflow: hidden;
+  }
+
+  #header {
+    height: 52px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+
+  #header .title {
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: bold;
+    letter-spacing: 3px;
+  }
+
+  #header .sub {
+    color: #1e3040;
+    font-size: 9px;
+    letter-spacing: 1px;
+  }
+
+  #body {
+    display: flex;
+    height: calc(100vh - 52px);
+  }
+
+  #left {
+    width: 320px;
+    flex-shrink: 0;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #drop-zone {
+    margin: 16px;
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 24px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    flex-shrink: 0;
+  }
+
+  #drop-zone:hover,
+  #drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(0,229,255,0.04);
+  }
+
+  #drop-zone i {
+    font-size: 28px;
+    color: var(--accent);
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  #drop-zone .dz-title {
+    font-size: 11px;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  #drop-zone .dz-sub {
+    font-size: 9px;
+    color: #1e3040;
+    letter-spacing: 1px;
+  }
+
+  #file-input { display: none; }
+
+  #truth-controls {
+    margin: 0 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  #truth-controls input {
+    width: 100%;
+    background: #060809;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px;
+    font-family: var(--font);
+    font-size: 10px;
+    outline: none;
+  }
+
+  #truth-controls input:focus {
+    border-color: var(--accent);
+  }
+  #tower-controls { margin:0 16px 10px; background:#060809; border:1px solid var(--border); border-radius:8px; padding:7px 9px; flex-shrink:0; }
+  #tower-filter-body { padding-top:5px; }
+  .ts-help { color:#37474f; font-size:8px; line-height:1.55; margin-bottom:6px; }
+  .ts-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+  .ts-grid input { width:100%; min-width:0; background:#060809; color:var(--text); border:1px solid var(--border); border-radius:5px; padding:7px; font-family:var(--font); font-size:9px; outline:none; }
+  .ts-grid input:last-child { grid-column:1 / -1; }
+  .ts-grid input:focus { border-color:var(--accent); }
+  .ts-check { display:flex; align-items:center; gap:6px; margin-top:7px; color:#90a4ae; font-size:8px; letter-spacing:.6px; cursor:pointer; }
+  .ts-check input { margin:0; accent-color:var(--accent); }
+  .ts-status { margin-top:7px; color:#456; font-size:8px; line-height:1.45; min-height:12px; }
+
+
+  #stats {
+    margin: 0 16px 12px;
+    background: #060809;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 10px;
+    display: none;
+    flex-shrink: 0;
+  }
+
+  #stats .stat-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 0;
+    border-bottom: 1px solid #0d1520;
+  }
+
+  #stats .stat-row:last-child { border-bottom: none; }
+
+  #stats .stat-label {
+    color: #1e3040;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  #stats .stat-val {
+    color: var(--accent);
+    font-weight: bold;
+  }
+
+  #stats .stat-val.warn { color: var(--warn); }
+  #stats .stat-val.danger { color: var(--danger); }
+
+  #anomaly-list {
+    flex: 1;
+    overflow-y: auto;
+    margin: 0 16px 16px;
+    display: none;
+  }
+
+  #anomaly-list h3 {
+    font-size: 9px;
+    color: #1e3040;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+  }
+
+  .anom-item {
+    background: #060809;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    font-size: 10px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+
+  .anom-item:hover { border-color: var(--accent); }
+
+  .anom-item .ai-cat {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 3px;
+    font-weight: bold;
+  }
+
+  .anom-item .ai-detail {
+    color: #37474f;
+    font-size: 9px;
+  }
+
+  .cat-reserved_tac { color: #ccc; }
+  .cat-pci_collision { color: var(--danger); }
+  .cat-flash_cell { color: var(--warn); }
+  .cat-rsrq_invalid { color: #a78bfa; }
+
+  #map-frame {
+    flex: 1;
+    border: none;
+    background: #000;
+    display: none;
+  }
+
+  #placeholder {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: #1e3040;
+  }
+
+  #placeholder i {
+    font-size: 48px;
+    color: #0d1520;
+  }
+
+  #placeholder p {
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  #loading {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    color: var(--accent);
+  }
+
+  #loading i {
+    font-size: 32px;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  #progress {
+    height: 2px;
+    background: var(--border);
+    flex-shrink: 0;
+    display: none;
+  }
+
+  #progress-bar {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.3s;
+    box-shadow: 0 0 6px var(--accent);
+  }
+
+  #toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 20px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: bold;
+    z-index: 1000;
+    display: none;
+    letter-spacing: 1px;
+  }
+
+  #toast.err { background: var(--danger); color: #fff; }
+  #toast.ok { background: #00ba7c; color: #fff; }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: #000; }
+  ::-webkit-scrollbar-thumb { background: #1a2028; border-radius: 4px; }
+
+  #instructions {
+    margin: 0 16px 12px;
+    padding: 10px 12px;
+    background: #060809;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 9px;
+    color: #1e3040;
+    line-height: 1.8;
+    flex-shrink: 0;
+  }
+
+  #instructions b {
+    color: #37474f;
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  #instructions code {
+    background: #0a0d10;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 4px;
+    color: var(--accent);
+    font-size: 9px;
+  }
+
+  /* ── left sidebar collapse (full map when closed) ── */
+  #left {
+    width: 320px;
+    transition: width 0.2s ease, min-width 0.2s ease, padding 0.2s ease;
+    position: relative;
+  }
+  #left.collapsed {
+    width: 40px;
+    min-width: 40px;
+    overflow: hidden;
+  }
+  #left.collapsed > *:not(#sidebar-toggle) {
+    display: none !important;
+  }
+  #sidebar-toggle {
+    position: absolute;
+    top: 8px;
+    right: 6px;
+    z-index: 20;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #060809;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  #sidebar-toggle:hover {
+    border-color: var(--accent);
+    background: rgba(0,229,255,0.08);
+  }
+  #left.collapsed #sidebar-toggle {
+    position: static;
+    width: 100%;
+    height: 100%;
+    border: none;
+    border-radius: 0;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    letter-spacing: 2px;
+    font-size: 10px;
+    font-weight: bold;
+    color: var(--accent);
+    padding: 12px 0;
+  }
+  .sec-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+    padding: 4px 0;
+    color: #37474f;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+  .sec-head .chev { opacity: 0.7; font-size: 9px; color: var(--accent); }
+  .sec-body.collapsed { display: none !important; }
+</style>
+<link rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+</head>
+<body>
+
+<div id="header">
+  <div>
+    <div class="title">GNSS FORENSIC MAP</div>
+    <div class="sub">CTW · SEQUENCE GRADIENT · CELL ANOMALY · LEAFLET</div>
+  </div>
+</div>
+
+<div id="body">
+  <div id="left">
+    <button type="button" id="sidebar-toggle" title="Collapse / expand panel" onclick="toggleSidebar()" aria-label="Toggle sidebar">◀</button>
+    <div id="drop-zone"
+         onclick="document.getElementById('file-input').click()"
+         ondragover="dzOver(event)"
+         ondragleave="dzLeave()"
+         ondrop="dzDrop(event)">
+      <i class="fa-solid fa-satellite-dish"></i>
+      <div class="dz-title">Drop file(s) here</div>
+      <div class="dz-sub">1st = gradient base · more = overlays ≤10</div>
+    </div>
+    <input
+      type="file"
+      id="file-input"
+      multiple
+      accept=".csv,.txt,.nmea,.json,.dat,text/csv,text/plain,application/json"
+      onchange="onFilesPicked(this.files)"
+    >
+    <div id="file-list" style="margin:0 16px 8px;font-size:9px;color:#567;max-height:100px;overflow-y:auto;display:none;flex-shrink:0;"></div>
+    <div style="margin:0 16px 10px;display:flex;gap:6px;flex-shrink:0;">
+      <button type="button" id="btn-render" disabled
+        onclick="renderStack()"
+        style="flex:1;padding:8px;border-radius:8px;border:1px solid #00e5ff;background:rgba(0,229,255,0.08);color:#00e5ff;font:10px 'Courier New',monospace;cursor:pointer;">
+        RENDER / UPDATE MAP
+      </button>
+      <button type="button" id="btn-clear"
+        onclick="clearStack()"
+        style="padding:8px 10px;border-radius:8px;border:1px solid #333;background:transparent;color:#666;font:10px 'Courier New',monospace;cursor:pointer;">
+        CLEAR
+      </button>
+    </div>
+    <div id="truth-controls">
+      <input type="number" id="truth_lat"
+             placeholder="Ground truth lat (e.g. 33.782700)" step="any">
+      <input type="number" id="truth_lon"
+             placeholder="Ground truth lon (e.g. -117.228600)" step="any">
+    </div>
+
+    <div id="tower-controls">
+      <div class="sec-head" onclick="toggleSec('tower-filter-body','chev-tower-filter')">
+        <span>TOWER / FCC GROUND TRUTH FILTER</span>
+        <span class="chev" id="chev-tower-filter">▼</span>
+      </div>
+      <div class="sec-body" id="tower-filter-body">
+        <div class="ts-help">JSON = public tower data · DAT = FCC ULS REG data. Tower dots can be restricted to a radius around ground truth.</div>
+        <div class="ts-grid">
+          <input type="number" id="tower_lat" placeholder="Ground truth latitude" step="any">
+          <input type="number" id="tower_lon" placeholder="Ground truth longitude" step="any">
+          <input type="number" id="tower_radius" placeholder="Radius in meters" step="any" min="0">
+        </div>
+        <label class="ts-check">
+          <input type="checkbox" id="tower_filter_enabled" checked>
+          <span>ONLY SHOW TOWERS INSIDE RADIUS</span>
+        </label>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button type="button" onclick="towerUseMainTruth()" style="flex:1;padding:6px;border:1px solid #1a2028;border-radius:6px;background:#060809;color:#00e5ff;font:9px 'Courier New',monospace;cursor:pointer">USE ABOVE GROUND TRUTH</button>
+          <button type="button" onclick="towerApplyFilter()" style="padding:6px 9px;border:1px solid #1a2028;border-radius:6px;background:#060809;color:#90a4ae;font:9px 'Courier New',monospace;cursor:pointer">APPLY</button>
+        </div>
+        <div id="tower-status" class="ts-status">No tower files loaded.</div>
+      </div>
+    </div>
+    <div id="progress"><div id="progress-bar"></div></div>
+    <div style="margin-bottom:6px;">
+      <a href="/downloads/GNSS_AttackModel.ps1" download
+         style="display:block;background:#001100;border:1px solid #00FF41;color:#00FF41;font-family:monospace;font-size:11px;padding:6px 10px;text-decoration:none;text-align:center;letter-spacing:1px;margin-bottom:4px;">
+        ⬇ GNSS_AttackModel.ps1
+      </a>
+    </div>
+    <div id="instructions">
+      <div class="sec-head" onclick="toggleSec('sec-instructions','chev-instructions')">
+        <span>HOW TO USE / GRADIENT / ANOMALY</span>
+        <span class="chev" id="chev-instructions">▼</span>
+      </div>
+      <div class="sec-body" id="sec-instructions">
+      Drop GNSSLogger <code>.txt</code>/<code>.nmea</code>, public tower <code>.json</code>, or FCC ULS <code>.dat</code> files for mapping,
+      or a <code>points.csv</code> from <code>GNSS_AttackModel.ps1</code> for full cell anomaly detection.<br><br>
+      <b>TRACK ORDER / GRADIENT</b><br>
+      Numbered dots = chronological sequence (<b style="color:#ff4444">#1 = earliest</b>).<br>
+      Path color = full spectrum (<span style="color:#ff0000">red</span> earliest →
+      <span style="color:#cc00ff">violet</span> latest).<br>
+      Click a point for <b>Sequence #n / N</b> in the info panel.<br><br>
+      <b>ANOMALY DETECTION</b>
+      <span style="color:#444;font-size:.65rem">(CSV only)</span><br>
+      Reserved TAC · PCI collision · Flash cell · RSRQ out-of-spec<br><br><b>MULTI STACK</b><br>
+      Add up to 10 files (they accumulate). File #1 = spectrum gradient base.
+      Files #2–#10 overlay on top. Each layer has a checkbox toggle on the map.
+      Press RENDER / UPDATE MAP after adding files.
+      </div>
+    </div>
+    <div id="stats-wrap" style="display:none;margin:0 16px 12px;flex-shrink:0;">
+      <div class="sec-head" id="sec-stats-head" onclick="toggleSec('stats','chev-stats')">
+        <span>STATS</span>
+        <span class="chev" id="chev-stats">▼</span>
+      </div>
+      <div id="stats" class="sec-body"></div>
+    </div>
+    <div id="anomaly-list">
+      <div class="sec-head" onclick="toggleSec('anom-items','chev-anom')">
+        <span>ANOMALIES DETECTED</span>
+        <span class="chev" id="chev-anom">▼</span>
+      </div>
+      <div id="anom-items" class="sec-body"></div>
+    </div>
+  </div>
+
+  <div id="placeholder">
+    <i class="fa-solid fa-earth-americas"></i>
+    <p>Upload GNSS files, public tower JSON, or FCC ULS .dat files to begin</p>
+  </div>
+  <div id="loading" style="display:none">
+    <i class="fa-solid fa-circle-notch"></i>
+    <span style="font-size:11px;letter-spacing:2px">PROCESSING…</span>
+  </div>
+  <iframe
+    id="map-frame"
+    sandbox="allow-scripts allow-same-origin allow-popups"
+    referrerpolicy="strict-origin-when-cross-origin">
+  </iframe>
+</div>
+
+<div id="toast"></div>
+
+<script>
+
+function toggleSidebar() {
+  var left = document.getElementById('left');
+  var btn = document.getElementById('sidebar-toggle');
+  left.classList.toggle('collapsed');
+  var closed = left.classList.contains('collapsed');
+  if (btn) {
+    btn.textContent = closed ? 'GNSS ▶' : '◀';
+    btn.title = closed ? 'Expand panel' : 'Collapse panel (full map)';
+  }
+  try {
+    var frame = document.getElementById('map-frame');
+    if (frame && frame.contentWindow) {
+      setTimeout(function () {
+        try { frame.contentWindow.dispatchEvent(new Event('resize')); } catch (e) {}
+      }, 220);
+    }
+  } catch (e) {}
+}
+
+function toggleSec(bodyId, chevId) {
+  var body = document.getElementById(bodyId);
+  var chev = document.getElementById(chevId);
+  if (!body) return;
+  body.classList.toggle('collapsed');
+  if (chev) chev.textContent = body.classList.contains('collapsed') ? '▶' : '▼';
+}
+function dzOver(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.add('drag-over');
+}
+function dzLeave() {
+  document.getElementById('drop-zone').classList.remove('drag-over');
+}
+function dzDrop(e) {
+  e.preventDefault();
+  dzLeave();
+  if (e.dataTransfer.files && e.dataTransfer.files.length) {
+    onFilesPicked(e.dataTransfer.files);
+  }
+}
+
+
+/* ── multi-file stack: first = gradient base, rest = overlays ── */
+let selectedFiles = [];
+
+function fileExt(f) {
+  const n=(f&&f.name?f.name:'').toLowerCase();
+  const i=n.lastIndexOf('.');
+  return i>=0?n.slice(i+1):'';
+}
+function isTowerFile(f) { const e=fileExt(f); return e==='json'||e==='dat'; }
+function isGnssFile(f) {
+  const n=(f.name||'').toLowerCase();
+  return n.endsWith('.csv')||n.endsWith('.txt')||n.endsWith('.nmea')||f.type==='text/csv'||f.type==='text/plain';
+}
+function isSupportedFile(f) { return isGnssFile(f)||isTowerFile(f); }
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+
+
+let towerRecords=[];
+let towerLayer=null, towerTruthLayer=null, towerRadiusLayer=null;
+
+function onFilesPicked(fileList){
+  const ok=Array.from(fileList||[]).filter(isSupportedFile);
+  if(!ok.length){toast('Upload .csv/.txt/.nmea, tower .json, or FCC .dat','err');return;}
+  for(const f of ok){if(selectedFiles.length>=10){toast('Max 10 files','err');break;}selectedFiles.push(f);}
+  refreshFileList();
+}
+function refreshFileList(){
+  const box=document.getElementById('file-list'); if(!box)return;
+  if(!selectedFiles.length){box.style.display='none';box.innerHTML='';const b=document.getElementById('btn-render');if(b)b.disabled=true;return;}
+  box.style.display='block';
+  box.innerHTML=selectedFiles.map((f,i)=>{
+    const role=isTowerFile(f)?'TOWER/FCC':(i===0?'BASE (gradient)':'overlay '+i);
+    return '<div style="display:flex;justify-content:space-between;border-bottom:1px solid #121820;padding:3px 0"><span style="color:#8ab;overflow:hidden;text-overflow:ellipsis;max-width:200px">'+(i+1)+'. '+esc(f.name)+' <span style="color:#456">['+role+']</span></span><span>'+Math.round(f.size/1024)+' KB</span></div>';
+  }).join('');
+  const b=document.getElementById('btn-render');if(b)b.disabled=false;
+}
+function clearStack(){
+  selectedFiles=[];towerRecords=[];clearTowerLayer();refreshFileList();towerSetStatus('No tower files loaded.');toast('Stack cleared','ok');
+}
+function towerSetStatus(s){const e=document.getElementById('tower-status');if(e)e.textContent=s;}
+function towerTruth(){
+  const lat=parseFloat(document.getElementById('tower_lat')?.value),lon=parseFloat(document.getElementById('tower_lon')?.value),radius=parseFloat(document.getElementById('tower_radius')?.value);
+  return {lat:Number.isFinite(lat)?lat:null,lon:Number.isFinite(lon)?lon:null,radius:Number.isFinite(radius)&&radius>=0?radius:null,enabled:!!document.getElementById('tower_filter_enabled')?.checked};
+}
+function towerUseMainTruth(){
+  const a=document.getElementById('truth_lat')?.value.trim()||'',b=document.getElementById('truth_lon')?.value.trim()||'';
+  if(a)document.getElementById('tower_lat').value=a;if(b)document.getElementById('tower_lon').value=b;towerApplyFilter();
+}
+function towerApplyFilter(){towerInjectWhenReady();}
+function haversineM(a,b,c,d){const R=6371008.8,p1=a*Math.PI/180,p2=c*Math.PI/180,dp=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180,q=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;return 2*R*Math.asin(Math.min(1,Math.sqrt(q)));}
+function num(v){const n=Number(v);return Number.isFinite(n)?n:null;}
+function dms(d,m,s,h){const a=num(d),b=num(m),c=num(s);if(a==null||b==null||c==null)return null;let v=Math.abs(a)+Math.abs(b)/60+Math.abs(c)/3600;if(/^[SW]$/i.test(String(h||'')))v=-v;return v;}
+function webMerc(x,y){const R=6378137;return {lat:(2*Math.atan(Math.exp(y/R))-Math.PI/2)*180/Math.PI,lon:x/R*180/Math.PI};}
+function ensureProj4(){
+  if(window.proj4)return Promise.resolve(window.proj4);if(window.__tsProj4)return window.__tsProj4;
+  window.__tsProj4=new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/proj4@2.11.0/dist/proj4.js';s.onload=()=>{try{proj4.defs('EPSG:2230','+proj=lcc +lat_0=32.1666666666667 +lon_0=-116.25 +lat_1=33.8833333333333 +lat_2=32.7833333333333 +x_0=2000000.0001016 +y_0=500000.0001016 +datum=NAD83 +units=us-ft +no_defs');resolve(proj4);}catch(e){reject(e);}};s.onerror=()=>reject(new Error('Could not load proj4.js for EPSG:2230'));document.head.appendChild(s);});
+  return window.__tsProj4;
+}
+function directLL(o){
+  if(!o||typeof o!=='object')return null;
+  for(const pair of [[o.latitude,o.longitude],[o.lat,o.lon],[o.lat,o.lng],[o.Latitude,o.Longitude],[o.LATITUDE,o.LONGITUDE],[o.ESRIGNSS_LATITUDE,o.ESRIGNSS_LONGITUDE]]){
+    const a=num(pair[0]),b=num(pair[1]);if(a!=null&&b!=null&&Math.abs(a)<=90&&Math.abs(b)<=180)return {lat:a,lon:b,crs:'WGS84'};
+  }
+  return null;
+}
+function rawXY(feature,parent){
+  const g=feature?.geometry||feature?.properties?.geometry||feature; if(!g)return null;
+  const x=num(g.x),y=num(g.y);if(x==null||y==null)return null;
+  const a=feature?.attributes||feature?.properties||{};
+  const hint=JSON.stringify(parent?.spatialReference||parent?.crs||a.spatialReference||'');
+  const layer=String(parent?.layer||'').toLowerCase();
+  if(/3857|102100|102113|web.?mercator/i.test(hint)|| (Math.abs(x)>1e7&&Math.abs(y)<1e7))return {...webMerc(x,y),crs:'EPSG:3857'};
+  if(/2230|california.*zone.*6|state.?plane.*zone.?6/i.test(hint)||/cell_tower/.test(layer)|| (x>5e6&&x<7e6&&y>1e6&&y<4e6))return {x,y,crs:'EPSG:2230'};
+  return null;
+}
+async function featureRecord(feature,parent,index){
+  const a=feature?.attributes||feature?.properties||feature||{};let p=directLL(a)||directLL(feature);
+  if(!p){const g=rawXY(feature,parent);if(!g)return null;if(g.crs==='EPSG:2230'){const p4=await ensureProj4(),xy=p4('EPSG:2230','EPSG:4326',[g.x,g.y]);p={lat:Number(xy[1]),lon:Number(xy[0]),crs:g.crs};}else p=g;}
+  if(!p||Math.abs(p.lat)>90||Math.abs(p.lon)>180)return null;
+  return {lat:p.lat,lon:p.lon,crs:p.crs||'WGS84',source:parent?.__filename||parent?.layer||'tower',name:String(a.Brand||a.Name||a.name||a.CallSign||a.ApplicationID||('Tower '+(index+1))),objectid:a.OBJECTID??a.objectid??index+1,applicationId:a.ApplicationID||'',uniqueId:a.UniqueID||'',fileNum:a.FileNum||'',locationNum:a.LocationNum||'',brand:a.Brand||'',address:a.Address||'',city:a.City||'',zip:a.Zip||'',status:a.Status||a.TowerStatus||'',locationDescription:a.LocationDescription||'',comments:a.Comments||'',owner:a.EntityName||'',towerType:a.TowerType||'',structureType:a.StructureType||'',structureHeight:a.StructureHeight||'',overallHeight:a.OverallHeight||'',groundElevation:a.GroundElevation||'',aboveMeanSeaLevel:a.AboveMeanSeaLevel||'',lastActionDate:a.LastActionDate||'',lightingRequired:a.LightingRequired||'',history:[],engineering:[],safety:[]};
+}
+async function parseTowerJson(raw,filename){
+  let data;try{data=JSON.parse(raw);}catch(e){throw Error(filename+': invalid JSON');}
+  const fs=[];
+  function collect(x,parent){if(!x)return;if(x.type==='FeatureCollection'&&Array.isArray(x.features)){x.features.forEach(y=>collect(y,x));return;}if(x.type==='Feature'){fs.push({feature:{attributes:x.properties||{},geometry:x.geometry?.type==='Point'?{x:x.geometry.coordinates?.[0],y:x.geometry.coordinates?.[1]}:x.geometry},parent});return;}if(Array.isArray(x.features)){x.features.forEach(y=>collect(y,x));return;}if(Array.isArray(x.towers)){x.towers.forEach(y=>collect(y,x));return;}if(x.attributes||x.properties||x.geometry)fs.push({feature:x,parent});}
+  collect(data,data);
+  for(let i=0;i<fs.length;i++){const r=await featureRecord(fs[i].feature,{...fs[i].parent,__filename:filename},i);if(r)towerRecords.push(r);}
+}
+function field(p,i){return String(p[i]==null?'':p[i]).trim();}
+function key(a,b,c){return [a||'',b||'',c||''].join('|');}
+function mapEvents(lines,type){const m=new Map();for(const line of lines){const p=line.split('|');if(field(p,0)!==type||field(p,1)!=='REG')continue;const k=key(field(p,2),field(p,3),field(p,4));let row;if(type==='HS')row={date:field(p,5),description:field(p,6)};else if(type==='RE')row={sourceCode:field(p,5),date:field(p,6),actionCode:field(p,7),description:field(p,8)};else row={date:field(p,5),actionCode:field(p,6),description:field(p,7)};if(!m.has(k))m.set(k,[]);m.get(k).push(row);}return m;}
+function mapEN(lines){const m=new Map();for(const line of lines){const p=line.split('|');if(field(p,0)!=='EN'||field(p,1)!=='REG')continue;m.set(key(field(p,2),field(p,3),field(p,4)),{owner:field(p,9),email:field(p,16),address:[field(p,17),field(p,18),field(p,19)].filter(Boolean).join(', '),city:field(p,20),state:field(p,21),zip:field(p,22),contact:field(p,23)});}return m;}
+function mapRA(lines){const m=new Map();for(const line of lines){const p=line.split('|');if(field(p,0)!=='RA'||field(p,1)!=='REG')continue;m.set(key(field(p,2),field(p,3),field(p,4)),{status:field(p,5),towerType:field(p,6),structureType:field(p,7),ownershipCode:field(p,8),grantDate:field(p,9),constructedDate:field(p,12),lastActionDate:field(p,14),actionCode:field(p,15),firstName:field(p,17),lastName:field(p,19),contactTitle:field(p,21),streetAddress:field(p,23),city:field(p,24),state:field(p,25),zip:field(p,27),groundElevation:field(p,28),structureHeight:field(p,29),overallHeight:field(p,30),aboveMeanSeaLevel:field(p,31),structureClass:field(p,32),faaStudyDate:field(p,33),faaStudyNumber:field(p,34),faaStudyType:field(p,35),faaRegion:field(p,36),faaFrequencies:field(p,37),faaService:field(p,38),lightingRequired:field(p,40)});}return m;}
+async function parseFCC(raw,filename){
+  const lines=raw.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+  const en=mapEN(lines),ra=mapRA(lines),hs=mapEvents(lines,'HS'),re=mapEvents(lines,'RE'),sc=mapEvents(lines,'SC');
+  function lookup(map,app,file,loc){
+    let v=map.get(key(app,file,loc)); if(v) return v;
+    for(const [k,val] of map){
+      if(k.startsWith(app+'|'+file+'|')) return val;
+      if(file && k.includes('|'+file+'|')) return val;
+      if(app && k.startsWith(app+'|')) return val;
+    }
+    return null;
+  }
+  let n=0;
+  for(const line of lines){
+    const p=line.split('|');
+    if(field(p,0)!=='CO'||field(p,1)!=='REG') continue;
+    const lat=dms(field(p,6),field(p,7),field(p,8),field(p,9));
+    const lon=dms(field(p,11),field(p,12),field(p,13),field(p,14));
+    if(lat==null||lon==null) continue;
+    const app=field(p,2), file=field(p,3), regOrCall=field(p,4), loc='';
+    const r={
+      lat,lon,crs:'WGS84',source:filename,
+      name:regOrCall||app||('Tower '+(n+1)),
+      objectid:++n,
+      applicationId:app,uniqueId:app,fileNum:file,locationNum:loc,
+      brand:'',address:'',city:'',zip:'',status:'',
+      owner:'',towerType:'',structureType:'',
+      structureHeight:'',overallHeight:'',groundElevation:'',
+      aboveMeanSeaLevel:'',lastActionDate:'',lightingRequired:'',
+      faaStudyNumber:'',
+      history: hs.get(key(app,file,loc)) || lookup(hs,app,file,loc) || [],
+      engineering: re.get(key(app,file,loc)) || lookup(re,app,file,loc) || [],
+      safety: sc.get(key(app,file,loc)) || lookup(sc,app,file,loc) || []
+    };
+    const E=lookup(en,app,file,loc);
+    if(E){ r.owner=E.owner||''; r.address=E.address||''; r.city=E.city||''; r.zip=E.zip||''; }
+    const A=lookup(ra,app,file,loc);
+    if(A) Object.assign(r,A);
+    if(!Array.isArray(r.history)) r.history=[];
+    if(!Array.isArray(r.engineering)) r.engineering=[];
+    if(!Array.isArray(r.safety)) r.safety=[];
+    towerRecords.push(r);
+  }
+}
+async function loadTowerFile(f){const raw=await f.text();if(fileExt(f)==='json')await parseTowerJson(raw,f.name);else await parseFCC(raw,f.name);}
+
+function findLeafletMap(win){
+  if(!win||!win.L) return null;
+  try{ if(win.map && win.map instanceof win.L.Map) return win.map; }catch(e){}
+  var names=['MAP','leafletMap','gnssMap','ctwMap','_map'];
+  for(var i=0;i<names.length;i++){ try{ if(win[names[i]]&&win[names[i]] instanceof win.L.Map) return win[names[i]]; }catch(e){} }
+  try{ for(var k in win){ try{ var v=win[k]; if(v&&v instanceof win.L.Map) return v; }catch(e){} } }catch(e){}
+  return null;
+}
+function clearTowerLayer(){try{towerLayer?.remove();towerTruthLayer?.remove();towerRadiusLayer?.remove();}catch(e){}towerLayer=towerTruthLayer=towerRadiusLayer=null;}
+function towerInjectWhenReady(){
+  const frame=document.getElementById('map-frame');if(!frame?.contentWindow)return false;const map=findLeafletMap(frame.contentWindow);if(!map)return false;towerRenderOnMap(map,frame.contentWindow);return true;
+}
+function towerRenderOnMap(map,win){
+  if(!map||!win||!win.L) return;
+  clearTowerLayer();
+  towerLayer=win.L.layerGroup();
+  var t=towerTruth();
+  var shown=0,excluded=0,capped=0;
+  var MAX_MARKERS=8000;
+  var list=towerRecords.slice();
+  if(t.enabled&&t.lat!=null&&t.lon!=null&&t.radius!=null){
+    list=list.filter(function(r){
+      var d=haversineM(t.lat,t.lon,r.lat,r.lon);
+      if(d>t.radius){ excluded++; return false; }
+      r.__dist=d;
+      return true;
+    });
+  }
+  if(list.length>MAX_MARKERS){
+    capped=list.length-MAX_MARKERS;
+    list=list.slice(0,MAX_MARKERS);
+  }
+  for(var i=0;i<list.length;i++){
+    var r=list[i];
+    var d=(typeof r.__dist==='number')?r.__dist:null;
+    if(d==null&&t.lat!=null&&t.lon!=null) d=haversineM(t.lat,t.lon,r.lat,r.lon);
+    var c=/\.dat$/i.test(r.source)?'#ffb300':(r.brand||r.status?'#00e5ff':'#a78bfa');
+    var mk=win.L.circleMarker([r.lat,r.lon],{radius:4,weight:1,color:'#fff',fillColor:c,fillOpacity:0.85,opacity:0.9});
+    var h='<div style="font:10px Courier New,monospace;line-height:1.45;max-width:370px"><b style="color:'+c+'">'+esc(r.name)+'</b>';
+    var fields=[['Source',r.source],['Brand',r.brand],['Status',r.status],['Address',r.address],['City / ZIP',[r.city,r.zip].filter(Boolean).join(' ')],['Owner',r.owner],['Application',r.applicationId],['File / Location',[r.fileNum,r.locationNum].filter(Boolean).join(' / ')],['Tower type',r.towerType],['Structure',r.structureType],['Structure height',r.structureHeight],['Overall height',r.overallHeight],['Ground elevation',r.groundElevation],['AMSL',r.aboveMeanSeaLevel],['FAA study',r.faaStudyNumber],['Lighting',r.lightingRequired],['Last action',r.lastActionDate],['Lat / Lon',r.lat.toFixed(8)+' / '+r.lon.toFixed(8)]];
+    for(var fi=0;fi<fields.length;fi++){
+      var a=fields[fi][0],b=fields[fi][1];
+      if(b!==undefined&&b!==null&&String(b)!=='') h+='<br><span style="color:#667">'+esc(a)+':</span> '+esc(b);
+    }
+    if(d!=null) h+='<br><span style="color:#00ff88">Distance to GT:</span> '+d.toFixed(1)+' m';
+    var ev=(r.history||[]).slice(-1)[0]; if(ev) h+='<br><span style="color:#ffb300">HS:</span> '+esc((ev.date||'')+' '+(ev.description||''));
+    var er=(r.engineering||[]).slice(-1)[0]; if(er) h+='<br><span style="color:#a78bfa">RE:</span> '+esc((er.date||'')+' '+(er.description||''));
+    var sc=(r.safety||[]).slice(-1)[0]; if(sc) h+='<br><span style="color:#ff7043">SC:</span> '+esc((sc.date||'')+' '+(sc.description||''));
+    h+='</div>';
+    mk.bindPopup(h);
+    mk.addTo(towerLayer);
+    shown++;
+  }
+  towerLayer.addTo(map);
+  towerTruthLayer=null;
+  towerRadiusLayer=null;
+  var truthOK=t.lat!=null&&t.lon!=null;
+  if(truthOK){
+    towerTruthLayer=win.L.circleMarker([t.lat,t.lon],{radius:8,weight:2,color:'#00ff88',fillColor:'#00ff88',fillOpacity:0.18}).bindTooltip('GROUND TRUTH · '+t.lat.toFixed(8)+' / '+t.lon.toFixed(8)).addTo(map);
+    if(t.enabled&&t.radius>0){
+      towerRadiusLayer=win.L.circle([t.lat,t.lon],{radius:t.radius,weight:1,color:'#00ff88',fillColor:'#00ff88',fillOpacity:0.025,dashArray:'6 5'}).addTo(map);
+    }
+  }
+  var msg='TOWERS: '+towerRecords.length+' · SHOWN: '+shown+' · EXCLUDED: '+excluded;
+  if(capped) msg+=' · CAPPED: '+capped+' (set radius to filter)';
+  if(t.enabled&&truthOK&&t.radius!=null) msg+=' · RADIUS: '+t.radius.toLocaleString()+' m';
+  else msg+=' · FILTER: OFF / INCOMPLETE GT';
+  towerSetStatus(msg);
+  try{
+    if(truthOK&&t.radius>0) map.fitBounds(win.L.latLng(t.lat,t.lon).toBounds(t.radius*2.2));
+    else if(shown>0&&shown<=2000){
+      var b=[];
+      towerLayer.eachLayer(function(layer){ if(layer.getLatLng) b.push(layer.getLatLng()); });
+      if(b.length) map.fitBounds(b,{padding:[30,30],maxZoom:14});
+    }
+  }catch(e){}
+}
+
+async function renderStack(){
+  if(!selectedFiles.length)return;
+  const gnss=selectedFiles.filter(isGnssFile),towers=selectedFiles.filter(isTowerFile);
+  try{
+    if(towers.length){towerRecords=[];showLoading(true);setProgress(10);for(let i=0;i<towers.length;i++){await loadTowerFile(towers[i]);setProgress(10+Math.round((i+1)/towers.length*30));}towerSetStatus('Loaded '+towerRecords.length+' tower coordinates from '+towers.length+' JSON/DAT file(s).');}
+    if(gnss.length){
+      const fd=new FormData();gnss.forEach(f=>fd.append('files',f));
+      const tl=document.getElementById('truth_lat').value.trim(),tn=document.getElementById('truth_lon').value.trim();
+      showLoading(true);setProgress(45);
+      let body=fd,url=gnss.length===1?'/api/gnss/map':'/api/gnss/map-multi';
+      if(gnss.length===1){body=new FormData();body.append('file',gnss[0]);if(tl)body.append('truth_lat',tl);if(tn)body.append('truth_lon',tn);}
+      const r=await fetch(url,{method:'POST',body});setProgress(70);if(!r.ok){const e=await r.json().catch(()=>({detail:r.statusText}));throw Error(e.detail||r.statusText||'GNSS map request failed');}
+      const data=await r.json();if(!data.html)throw Error('Server returned no map HTML');
+      const frame=document.getElementById('map-frame');frame.onload=()=>{if(towerRecords.length){let n=0;(function wait(){if(towerInjectWhenReady())return;if(++n<50)setTimeout(wait,200);})();}};frame.src=URL.createObjectURL(new Blob([data.html],{type:'text/html'}));frame.style.display='block';document.getElementById('placeholder').style.display='none';document.getElementById('loading').style.display='none';
+      if(data.summary){const st=document.getElementById('stats'),sw=document.getElementById('stats-wrap');if(sw)sw.style.display='block';if(st){st.style.display='block';st.innerHTML='<div class="stat-row"><span class="stat-label">GNSS</span><span class="stat-val">'+gnss.length+' file(s)</span></div>'+data.summary.map((s,i)=>'<div class="stat-row"><span class="stat-label">['+(i?'OV':'BASE')+'] '+esc(s.label||'')+'</span><span class="stat-val">'+(s.n||0)+' pts</span></div>').join('');}}
+    } else {
+      await towerOnlyMap();
+    }
+    setTimeout(()=>{if(towerRecords.length){let n=0;(function wait(){if(towerInjectWhenReady())return;if(++n<50)setTimeout(wait,200);})();}},100);
+    setProgress(100);setTimeout(()=>setProgress(0),800);toast((gnss.length?'GNSS '+gnss.length+' · ':'')+(towers.length?'TOWERS '+towerRecords.length:''),'ok');
+    showLoading(false);
+  }catch(e){console.error(e);toast(e.message||'Map processing failed','err');showLoading(false);setProgress(0);}
+}
+async function towerOnlyMap(){
+  const f=document.getElementById('map-frame');
+  const t=towerTruth();
+  const pts=towerRecords.filter(r=>Number.isFinite(r.lat)&&Number.isFinite(r.lon)).map(r=>[r.lat,r.lon]);
+  const center=(t.lat!=null&&t.lon!=null)?[t.lat,t.lon]:(pts[0]||[33.75,-117.2]);
+  const h='<!DOCTYPE html><html><head><meta charset="utf-8">'
+    +'<meta name="viewport" content="width=device-width,initial-scale=1">'
+    +'<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">'
+    +'<style>'
+    +'html,body,#map{margin:0;width:100%;height:100%;background:#060809}'
+    +'.leaflet-container{background:#060809;font:11px Courier New,monospace}'
+    +'.leaflet-control-layers{background:#0a0d10!important;border:1px solid #1a2028!important;color:#90a4ae!important;border-radius:8px!important}'
+    +'.leaflet-control-layers label{color:#90a4ae!important;font:10px Courier New,monospace}'
+    +'.leaflet-control-zoom a{background:#0a0d10!important;color:#00e5ff!important;border-color:#1a2028!important}'
+    +'.leaflet-control-attribution{background:rgba(6,8,9,.85)!important;color:#37474f!important;font:9px Courier New,monospace!important}'
+    +'.leaflet-popup-content-wrapper{background:#0a0d10;color:#90a4ae;border:1px solid #1a2028;border-radius:8px}'
+    +'.leaflet-popup-tip{background:#0a0d10}'
+    +'</style></head><body><div id="map"></div>'
+    +'<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>'
+    +'<script>(function(){'
+    +'var map=L.map("map",{preferCanvas:true});window.map=map;'
+    +'var dark=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",{maxZoom:20,subdomains:"abcd",attribution:"\\u00a9 OSM \\u00a9 CARTO"});'
+    +'var street=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",{maxZoom:20,subdomains:"abcd",attribution:"\\u00a9 OSM \\u00a9 CARTO"});'
+    +'var sat=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"\\u00a9 Esri"});'
+    +'dark.addTo(map);'
+    +'L.control.layers({"Dark":dark,"Street":street,"Satellite":sat},null,{position:"topright",collapsed:false}).addTo(map);'
+    +'map.setView(['+center[0]+','+center[1]+'],12);'
+    +'setTimeout(function(){try{map.invalidateSize();}catch(e){}},250);'
+    +'})();<\/script></body></html>';
+  f.onload=null;
+  f.src=URL.createObjectURL(new Blob([h],{type:'text/html'}));
+  f.style.display='block';
+  var ph=document.getElementById('placeholder'); if(ph) ph.style.display='none';
+  var ld=document.getElementById('loading'); if(ld) ld.style.display='none';
+  await new Promise(function(resolve){ f.onload=function(){ setTimeout(resolve,300); }; setTimeout(resolve,2000); });
+  try{ f.contentWindow.dispatchEvent(new Event('resize')); }catch(e){}
+  var n=0;
+  (function wait(){ if(typeof towerInjectWhenReady==='function'&&towerInjectWhenReady()) return; if(++n<80) setTimeout(wait,120); })();
+}
+async function handleFile(file){if(file){selectedFiles=[file];refreshFileList();await renderStack();}}
+function renderMap(html,filename){parseAndShowStats(html,filename);const f=document.getElementById('map-frame');f.src=URL.createObjectURL(new Blob([html],{type:'text/html'}));f.style.display='block';document.getElementById('placeholder').style.display='none';document.getElementById('loading').style.display='none';f.onload=()=>{if(towerRecords.length){let n=0;(function w(){if(towerInjectWhenReady())return;if(++n<50)setTimeout(w,200);})();}};}
+
+function parseAndShowStats(html, filename) {
+  const cats = {
+    reserved_tac: (html.match(/"reserved_tac"/g) || []).length,
+    pci_collision: (html.match(/"pci_collision"/g) || []).length,
+    flash_cell: (html.match(/"flash_cell"/g) || []).length,
+    rsrq_invalid: (html.match(/"rsrq_invalid"/g) || []).length
+  };
+  const ptMatch = html.match(/"lat":/g);
+  const total = ptMatch ? ptMatch.length : 0;
+  const anomaly =
+    cats.reserved_tac + cats.pci_collision + cats.flash_cell + cats.rsrq_invalid;
+  const stats = document.getElementById('stats');
+  const statsWrap = document.getElementById('stats-wrap');
+  if (statsWrap) statsWrap.style.display = 'block';
+  stats.style.display = 'block';
+  stats.classList.remove('collapsed');
+  stats.innerHTML =
+    '<div class="stat-row"><span class="stat-label">File</span>' +
+    '<span class="stat-val" style="font-size:9px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' +
+    filename + '">' + filename + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Total points</span>' +
+    '<span class="stat-val">' + total + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Anomalies</span>' +
+    '<span class="stat-val' + (anomaly > 0 ? ' danger' : '') + '">' + anomaly + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Reserved TAC</span>' +
+    '<span class="stat-val' + (cats.reserved_tac > 0 ? ' danger' : '') + '">' + cats.reserved_tac + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">PCI collision</span>' +
+    '<span class="stat-val' + (cats.pci_collision > 0 ? ' warn' : '') + '">' + cats.pci_collision + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Flash cell</span>' +
+    '<span class="stat-val' + (cats.flash_cell > 0 ? ' warn' : '') + '">' + cats.flash_cell + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">RSRQ invalid</span>' +
+    '<span class="stat-val' + (cats.rsrq_invalid > 0 ? ' warn' : '') + '">' + cats.rsrq_invalid + '</span></div>';
+
+  const alDiv = document.getElementById('anomaly-list');
+  const aiDiv = document.getElementById('anom-items');
+  aiDiv.innerHTML = '';
+  if (anomaly > 0) {
+    alDiv.style.display = 'block';
+    try {
+      const m = html.match(/const pts = (\[.*?\]);/s);
+      if (m) {
+        const pts = JSON.parse(m[1]);
+        const catLabels = {
+          reserved_tac: 'Reserved TAC',
+          pci_collision: 'PCI Collision',
+          flash_cell: 'Flash Cell',
+          rsrq_invalid: 'RSRQ Invalid'
+        };
+        const colorCat = {
+          '#111111': 'reserved_tac',
+          '#e53935': 'pci_collision',
+          '#e67e22': 'flash_cell',
+          '#8e44ad': 'rsrq_invalid'
+        };
+        pts.forEach(function (p) {
+          const cat = colorCat[p.color];
+          if (!cat) return;
+          const div = document.createElement('div');
+          div.className = 'anom-item';
+          const tip = p.tooltip ? p.tooltip.replace(/\\'/g, "'") : '';
+          const seq = p.seq ? ('#' + p.seq + (p.n ? '/' + p.n + ' · ' : ' · ')) : '';
+          div.innerHTML =
+            '<div class="ai-cat cat-' + cat + '">' + (catLabels[cat] || cat) + '</div>' +
+            '<div class="ai-detail">' + seq + tip + '</div>';
+          aiDiv.appendChild(div);
+        });
+      }
+    } catch (e) {
+      console.warn('Could not parse anomaly data:', e);
+    }
+  } else {
+    alDiv.style.display = 'none';
+  }
+}
+
+function showLoading(on){
+  var loading=document.getElementById('loading');
+  var placeholder=document.getElementById('placeholder');
+  var frame=document.getElementById('map-frame');
+  if(loading) loading.style.display=on?'flex':'none';
+  if(on){
+    if(placeholder) placeholder.style.display='none';
+    if(frame) frame.style.display='none';
+  }else{
+    var hasMap=!!(frame&&frame.src&&frame.src!=='about:blank');
+    if(frame) frame.style.display=hasMap?'block':'none';
+    if(placeholder) placeholder.style.display=hasMap?'none':'flex';
+  }
+}
+
+function setProgress(pct) {
+  const bar = document.getElementById('progress-bar');
+  const wrap = document.getElementById('progress');
+  if (pct <= 0) {
+    wrap.style.display = 'none';
+    bar.style.width = '0%';
+    return;
+  }
+  wrap.style.display = 'block';
+  bar.style.width = pct + '%';
+}
+
+let toastTimer = null;
+function toast(msg, type) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = type;
+  el.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { el.style.display = 'none'; }, 4000);
+}
+</script>
+</body>
+</html>
